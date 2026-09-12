@@ -216,12 +216,17 @@ public sealed class MassClient : IDisposable
     public Task<List<MediaItem>> GetLibraryItemsAsync(string mediaType, string? search, bool favoriteOnly, int limit, int offset, string orderBy = "sort_name")
         => SendAsync<List<MediaItem>>($"music/{mediaType}/library_items", new
         {
-            favorite = favoriteOnly ? true : (bool?)null,
-            search   = string.IsNullOrWhiteSpace(search) ? null : search,
+            favorite   = favoriteOnly ? true : (bool?)null,
+            search     = string.IsNullOrWhiteSpace(search) ? null : search,
             limit,
             offset,
-            order_by = orderBy,
+            order_by   = orderBy,
+            hide_empty = mediaType == "genres" ? true : (bool?)null,   // genres without any library item are noise (the web app hides them too)
         });
+
+    /// <summary>Genre page rows: one folder per media type (Artists, Albums, Tracks, ...) with its items, like the web app's genre view.</summary>
+    public Task<List<MediaItem>> GetGenreOverviewAsync(string itemId, string provider)
+        => SendAsync<List<MediaItem>>("music/genres/overview", new { item_id = itemId, provider_instance_id_or_domain = provider });
 
     public Task<MediaItem> GetItemByUriAsync(string uri)
         => SendAsync<MediaItem>("music/item_by_uri", new { uri });

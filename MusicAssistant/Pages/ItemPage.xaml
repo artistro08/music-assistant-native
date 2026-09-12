@@ -64,7 +64,10 @@
         </ListView.Header>
 
         <ListView.Footer>
-            <controls:MediaRow x:Name="AlbumsRow" Title="Albums" Margin="-16,16,-16,0" MaxWidth="{StaticResource ContentMaxWidth}" Visibility="Collapsed" />
+            <!-- Albums strip for artists; genre pages add one row per media type here -->
+            <StackPanel x:Name="RowsHost" MaxWidth="{StaticResource ContentMaxWidth}">
+                <controls:MediaRow x:Name="AlbumsRow" Title="Albums" Margin="-16,16,-16,0" Visibility="Collapsed" />
+            </StackPanel>
         </ListView.Footer>
     </ListView>
 </Page>

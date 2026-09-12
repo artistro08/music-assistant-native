@@ -39,6 +39,7 @@ public sealed partial class ItemPage : Page
         TracksTitle.Visibility = Visibility.Collapsed;
         EmptyText.Visibility   = Visibility.Collapsed;
         AlbumsRow.Visibility   = Visibility.Collapsed;
+        while (RowsHost.Children.Count > 1) RowsHost.Children.RemoveAt(1);   // genre rows from the previous item
         Busy.IsActive          = true;
         Busy.Visibility        = Visibility.Visible;
     }
@@ -74,6 +75,7 @@ public sealed partial class ItemPage : Page
 
             List<MediaItem>? tracks = null;
             List<MediaItem>? albums = null;
+            List<MediaItem>  rows   = [];   // genre: one row per media type
             var title = "Tracks";
             switch (target.MediaType)
             {
@@ -82,7 +84,11 @@ public sealed partial class ItemPage : Page
                     tracks = await App.Client.GetPodcastEpisodesAsync(target.ItemId, target.Provider);
                     break;
                 case "genre":
-                    tracks = await App.Client.GetGenreTracksAsync(target.ItemId);
+                    // Overview folders (Artists, Albums, Tracks, Playlists, ...) as the web app shows them; tracks go in the list
+                    var folders = await App.Client.GetGenreOverviewAsync(target.ItemId, target.Provider);
+                    var trackFolder = folders.FirstOrDefault(f => f.Items?.All(i => i.MediaType == "track") == true && f.Items.Count > 0);
+                    tracks = trackFolder?.Items ?? (folders.Count == 0 ? await App.Client.GetGenreTracksAsync(target.ItemId) : []);
+                    rows   = folders.Where(f => f != trackFolder && f.Items is { Count: > 0 }).ToList();
                     break;
                 case "audiobook":
                     break;
@@ -109,6 +115,11 @@ public sealed partial class ItemPage : Page
                 AlbumsRow.Items      = albums.OrderByDescending(a => a.Year ?? 0).ToList();
                 AlbumsRow.Visibility = albums.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
+            foreach (var folder in rows)
+            {
+                RowsHost.Children.Add(new Controls.MediaRow { Title = folder.Name, Items = folder.Items!, Margin = AlbumsRow.Margin });
+            }
+            if (rows.Count > 0) EmptyText.Visibility = Visibility.Collapsed;   // a genre with artists or albums but no tracks is not empty
         }
         catch (ApiException ex)
         {
