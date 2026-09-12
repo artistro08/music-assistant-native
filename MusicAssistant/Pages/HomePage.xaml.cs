@@ -1,0 +1,103 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+using MusicAssistant.Api;
+using MusicAssistant.Controls;
+
+namespace MusicAssistant.Pages;
+
+/// <summary>
+/// Home (Discover): players row, Top Picks collage, then the server's
+/// recommendation rows as paged card rows, mirroring the web frontend.
+/// </summary>
+public sealed partial class HomePage : Page
+{
+    private string playersSignature = "";
+    private bool   loaded;
+
+    public HomePage()
+    {
+        InitializeComponent();
+        GreetingText.Text = Greeting();
+
+        PlayersRow.ItemTemplate = (DataTemplate)Application.Current.Resources["PlayerCardTemplate"];
+
+        // The page is cached for back/forward, so load only once
+        Loaded += (_, _) => { if (!loaded) { loaded = true; _ = LoadAsync(); } };
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e) => App.StateChanged += RefreshPlayers;
+    protected override void OnNavigatedFrom(NavigationEventArgs e) => App.StateChanged -= RefreshPlayers;
+
+    private static string Greeting()
+    {
+        var name = App.Client.CurrentUser?.DisplayName ?? App.Client.CurrentUser?.Username;
+        var part = DateTime.Now.Hour switch { < 12 => "Good morning", < 18 => "Good afternoon", _ => "Good evening" };
+        return string.IsNullOrEmpty(name) ? part : $"{part}, {name}";
+    }
+
+    // Players
+
+    /// <summary>Rebuild the players row only when something visible changed; player events arrive every second while playing.</summary>
+    private void RefreshPlayers()
+    {
+        var players = App.Client.Players.Values.Where(p => p.IsVisible)
+            .OrderByDescending(p => p.IsPlaying).ThenBy(p => p.Name).ToList();
+
+        var signature = string.Join("|", players.Select(p => $"{p.PlayerId}:{p.PlaybackState}:{p.NowPlayingText}")) + "#" + App.Settings.ActivePlayerId;
+        if (signature == playersSignature) return;
+        playersSignature = signature;
+
+        var playing = players.Count(p => p.IsPlaying);
+        PlayersRow.Subtitle   = playing == 0 ? null : $"{playing} playing";
+        PlayersRow.Items      = players;
+        PlayersRow.Visibility = players.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Recommendations
+
+    private async Task LoadAsync()
+    {
+        RefreshPlayers();
+        try
+        {
+            var recentTask  = App.Client.GetRecentlyPlayedAsync(20);
+            var foldersTask = App.Client.GetRecommendationsAsync();
+            await Task.WhenAll(recentTask, foldersTask);
+
+            var folders   = foldersTask.Result.Where(f => f.EnabledByDefault != false).ToList();
+            var itemTasks = folders.Select(LoadFolderItemsAsync).ToArray();
+            await Task.WhenAll(itemTasks);
+
+            var rows = folders.Zip(itemTasks.Select(t => t.Result), (folder, items) => (folder, items)).ToList();
+
+            Picks.Load(rows.Select(r => (r.folder.Name, r.items)), recentTask.Result);
+
+            AddRow("Recently played", "Pick up where you left off", recentTask.Result);
+            foreach (var (folder, items) in rows) AddRow(folder.Name, folder.Subtitle, items);
+        }
+        catch (ApiException ex)
+        {
+            App.Window.ShowMessage(ex.Message);
+        }
+        finally
+        {
+            Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
+            EmptyText.Visibility = Rows.Children.Count == 0 && Picks.Visibility == Visibility.Collapsed ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private static async Task<List<MediaItem>> LoadFolderItemsAsync(MediaItem folder)
+    {
+        // Folders may already carry items; otherwise fetch the row on its own so one slow provider cannot block the page.
+        if (folder.Items is { Count: > 0 }) return folder.Items;
+        try { return await App.Client.GetRecommendationItemsAsync(folder.Provider, folder.ItemId); }
+        catch (ApiException) { return []; }
+    }
+
+    private void AddRow(string title, string? subtitle, List<MediaItem> items)
+    {
+        if (items.Count == 0) return;
+        Rows.Children.Add(new MediaRow { Title = title, Subtitle = subtitle, Items = items });
+    }
+}

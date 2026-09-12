@@ -1,0 +1,70 @@
+<Page
+    x:Class="MusicAssistant.Pages.ItemPage"
+    NavigationCacheMode="Required"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:MusicAssistant.Controls">
+
+    <!-- The track list is the scrolling element; header and album strip ride along as Header/Footer so long lists stay virtualized -->
+    <ListView x:Name="TrackList" Style="{StaticResource TrackListStyle}" Padding="24,0,24,24" ItemClick="OnTrackClick">
+        <ListView.ItemsPanel>
+            <ItemsPanelTemplate>
+                <ItemsStackPanel MaxWidth="{StaticResource ContentMaxWidth}" />
+            </ItemsPanelTemplate>
+        </ListView.ItemsPanel>
+
+        <ListView.Header>
+            <StackPanel Padding="0,16,0,8" Spacing="16" MaxWidth="{StaticResource ContentMaxWidth}">
+
+                <!-- Header -->
+                <Grid Margin="8,0" ColumnSpacing="24">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Width="200" Height="200" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <FontIcon x:Name="TypeIcon" FontSize="56" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        <Image x:Name="ArtImage" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
+                    </Grid>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Spacing="8">
+                        <TextBlock x:Name="TypeText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="NameText" Style="{StaticResource TitleLargeTextBlockStyle}" TextWrapping="Wrap" MaxLines="2" />
+                        <TextBlock x:Name="SubtitleText" Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="DescriptionText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Style="{StaticResource AccentButtonStyle}" Click="OnPlay">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE768;" FontSize="14" />
+                                    <TextBlock Text="Play" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="OnShuffle">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE8B1;" FontSize="14" />
+                                    <TextBlock Text="Shuffle" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="OnPlayNext" Content="Play next" />
+                            <Button Click="OnAddToQueue" Content="Add to queue" />
+                            <ToggleButton x:Name="FavoriteToggle" Click="OnFavorite" ToolTipService.ToolTip="Favorite" AutomationProperties.Name="Favorite">
+                                <FontIcon Glyph="&#xEB51;" FontSize="14" />
+                            </ToggleButton>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+                <!-- /Header -->
+
+                <ProgressRing x:Name="Busy" IsActive="True" />
+                <TextBlock x:Name="TracksTitle" Text="Tracks" Style="{StaticResource SubtitleTextBlockStyle}" Margin="8,0" Visibility="Collapsed" />
+                <TextBlock x:Name="EmptyText" Margin="8,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
+            </StackPanel>
+        </ListView.Header>
+
+        <ListView.Footer>
+            <controls:MediaRow x:Name="AlbumsRow" Title="Albums" Margin="-16,16,-16,0" MaxWidth="{StaticResource ContentMaxWidth}" Visibility="Collapsed" />
+        </ListView.Footer>
+    </ListView>
+</Page>

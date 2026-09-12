@@ -1,0 +1,93 @@
+<Page
+    x:Class="MusicAssistant.Pages.QueuePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Page.Resources>
+        <!-- Section Header ("NOW PLAYING", "UP NEXT 7") -->
+        <DataTemplate x:Key="QueueHeaderTemplate" x:DataType="x:String">
+            <Grid ColumnSpacing="12" Padding="4,16,4,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{x:Bind}" FontSize="11" FontWeight="SemiBold" CharacterSpacing="80" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                <Rectangle Grid.Column="1" Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" VerticalAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Top Bar -->
+        <Grid Padding="16,12" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Style="{StaticResource SubtleButtonStyle}" HorizontalAlignment="Left" Click="OnClose" AutomationProperties.Name="Close now playing">
+                <FontIcon Glyph="&#xE70D;" FontSize="14" />
+            </Button>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <ToggleButton x:Name="AutoplayToggle" Click="OnAutoplay" ToolTipService.ToolTip="Keep playing similar music when the queue ends">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE895;" FontSize="14" />
+                        <TextBlock Text="Autoplay" />
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="CrossfadeToggle" Click="OnCrossfade" ToolTipService.ToolTip="Crossfade between tracks">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE71B;" FontSize="14" />
+                        <TextBlock Text="Crossfade" />
+                    </StackPanel>
+                </ToggleButton>
+                <Button Content="Clear queue" Click="OnClear" />
+            </StackPanel>
+        </Grid>
+        <!-- /Top Bar -->
+
+        <!-- Body -->
+        <Grid Grid.Row="1" ColumnSpacing="24" Padding="24,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Now Playing -->
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="24" MaxWidth="560">
+                <Grid Width="380" Height="380" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <FontIcon Glyph="&#xEC4F;" FontSize="64" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    <Image x:Name="ArtImage" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
+                </Grid>
+                <StackPanel Spacing="8" HorizontalAlignment="Center">
+                    <TextBlock x:Name="TitleText" Style="{StaticResource TitleLargeTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="ArtistText" Style="{StaticResource SubtitleTextBlockStyle}" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </StackPanel>
+            <!-- /Now Playing -->
+
+            <!-- Queue -->
+            <Grid Grid.Column="1">
+                <ListView
+                    x:Name="List"
+                    IsItemClickEnabled="True"
+                    SelectionMode="Single"
+                    CanDragItems="True"
+                    CanReorderItems="True"
+                    AllowDrop="True"
+                    ItemClick="OnItemClick"
+                    DragItemsStarting="OnDragStarting"
+                    DragItemsCompleted="OnDragCompleted"
+                    ContainerContentChanging="OnContainerContentChanging" />
+                <ProgressRing x:Name="Busy" IsActive="True" />
+                <TextBlock x:Name="EmptyText" Text="The queue is empty." Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
+            <!-- /Queue -->
+        </Grid>
+        <!-- /Body -->
+    </Grid>
+</Page>

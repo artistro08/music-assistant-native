@@ -1,0 +1,60 @@
+<Page
+    x:Class="MusicAssistant.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel Padding="24,16,24,24" Spacing="16" MaxWidth="720" HorizontalAlignment="Left">
+            <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <!-- Server -->
+            <StackPanel Spacing="8" Padding="16" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <TextBlock Text="Server" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="ServerText" IsTextSelectionEnabled="True" />
+                <TextBlock x:Name="VersionText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <HyperlinkButton x:Name="WebLink" Content="Open web interface (provider setup, player settings)" Padding="0" />
+            </StackPanel>
+            <!-- /Server -->
+
+            <!-- This PC as a Speaker -->
+            <StackPanel Spacing="8" Padding="16" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <TextBlock Text="Play on this PC" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <ToggleSwitch x:Name="SpeakerSwitch" Header="Use this PC as a Music Assistant player" OnContent="On" OffContent="Off" Toggled="OnSpeakerToggled" />
+                <TextBlock x:Name="SpeakerStatusText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="This PC shows up as a player named after the computer. Audio plays through the default Windows output and can be grouped with your other speakers, in sync." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+            <!-- /This PC as a Speaker -->
+
+            <!-- Remote Access -->
+            <StackPanel Spacing="8" Padding="16" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <TextBlock Text="Remote access" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="ConnectionText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Away from home, the app connects through the Music Assistant relay using your server's Remote ID. The connection is end-to-end encrypted and pinned to your server's certificate." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+                <!-- Server side (admins) -->
+                <StackPanel x:Name="ServerRemotePanel" Spacing="8" Visibility="Collapsed">
+                    <ToggleSwitch x:Name="RemoteEnabledSwitch" Header="Enable remote access on the server" OnContent="On" OffContent="Off" Toggled="OnRemoteToggled" />
+                    <TextBlock x:Name="RemoteStatusText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock x:Name="ServerRemoteIdText" IsTextSelectionEnabled="True" FontFamily="Consolas" VerticalAlignment="Center" />
+                        <Button x:Name="CopyRemoteIdButton" Content="Copy" Click="OnCopyRemoteId" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- This PC -->
+                <TextBox x:Name="RemoteIdBox" Header="Remote ID used by this PC" PlaceholderText="XXXXXXXX-XXXXX-XXXXX-XXXXXXXX" CharacterCasing="Upper" LostFocus="OnRemoteIdEdited" />
+            </StackPanel>
+            <!-- /Remote Access -->
+
+            <!-- Account -->
+            <StackPanel Spacing="8" Padding="16" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <TextBlock Text="Account" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="UserText" />
+                <Button Content="Sign out" Click="OnSignOut" HorizontalAlignment="Left" />
+            </StackPanel>
+            <!-- /Account -->
+
+            <TextBlock x:Name="AppVersionText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

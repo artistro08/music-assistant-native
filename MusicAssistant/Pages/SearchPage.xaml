@@ -1,0 +1,36 @@
+<Page
+    x:Class="MusicAssistant.Pages.SearchPage"
+    NavigationCacheMode="Required"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:MusicAssistant.Controls">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="24,16,24,8" Spacing="12" MaxWidth="{StaticResource ContentMaxWidth}">
+            <TextBlock Text="Search" Style="{StaticResource TitleTextBlockStyle}" />
+            <AutoSuggestBox x:Name="QueryBox" PlaceholderText="Search artists, albums, tracks, playlists, radio" QueryIcon="Find" QuerySubmitted="OnQuerySubmitted" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Padding="0,8,0,24" MaxWidth="{StaticResource ContentMaxWidth}">
+                <ProgressRing x:Name="Busy" IsActive="False" Margin="0,24" />
+                <controls:MediaRow x:Name="ArtistsRow" Title="Artists" Visibility="Collapsed" />
+                <controls:MediaRow x:Name="AlbumsRow" Title="Albums" Visibility="Collapsed" />
+                <controls:MediaRow x:Name="PlaylistsRow" Title="Playlists" Visibility="Collapsed" />
+                <controls:MediaRow x:Name="RadioRow" Title="Radio" Visibility="Collapsed" />
+
+                <StackPanel x:Name="TracksSection" Visibility="Collapsed">
+                    <TextBlock Text="Tracks" Style="{StaticResource SubtitleTextBlockStyle}" Margin="32,0,32,8" />
+                    <ListView x:Name="TrackList" Style="{StaticResource TrackListStyle}" Margin="24,0" ItemClick="OnTrackClick" />
+                </StackPanel>
+
+                <TextBlock x:Name="EmptyText" Text="No results." Margin="32,16" Visibility="Collapsed" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

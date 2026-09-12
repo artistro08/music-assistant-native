@@ -1,0 +1,57 @@
+<Page
+    x:Class="MusicAssistant.Pages.LibraryPage"
+    NavigationCacheMode="Required"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Margin="24,16,24,8" ColumnSpacing="12" MaxWidth="{StaticResource ContentMaxWidth}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="TitleText" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+            <ToggleButton x:Name="FavoritesToggle" Grid.Column="1" Content="Favorites" Click="OnFilterChanged" />
+            <AutoSuggestBox x:Name="SearchBox" Grid.Column="2" Width="260" PlaceholderText="Filter" QueryIcon="Find" QuerySubmitted="OnQuerySubmitted" />
+        </Grid>
+        <!-- /Header -->
+
+        <!-- Lists scroll themselves so only visible items are realized -->
+        <GridView x:Name="CardGrid" Grid.Row="1" Padding="24,0,24,24" SizeChanged="OnGridSizeChanged" ItemTemplate="{StaticResource CardButtonTemplate}" ItemContainerStyle="{StaticResource BareGridViewItemStyle}" SelectionMode="None">
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <!-- Six per row: cell size is set in code from the available width -->
+                    <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="6" ItemWidth="216" ItemHeight="276" MaxWidth="{StaticResource ContentMaxWidth}" />
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+        </GridView>
+        <ListView x:Name="List" Grid.Row="1" Padding="24,0,24,24" Style="{StaticResource TrackListStyle}" ItemClick="OnItemClick" Visibility="Collapsed">
+            <ListView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsStackPanel MaxWidth="{StaticResource ContentMaxWidth}" />
+                </ItemsPanelTemplate>
+            </ListView.ItemsPanel>
+        </ListView>
+
+        <!-- Footer (attached to whichever list is visible) -->
+        <StackPanel x:Name="Footer" Padding="0,8,0,16" MaxWidth="{StaticResource ContentMaxWidth}">
+            <ProgressRing x:Name="Busy" IsActive="False" />
+            <Button x:Name="MoreButton" Content="Load more" HorizontalAlignment="Center" Click="OnLoadMore" Visibility="Collapsed" />
+        </StackPanel>
+
+        <!-- Empty State -->
+        <StackPanel x:Name="EmptyState" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="Collapsed">
+            <FontIcon x:Name="EmptyIcon" Glyph="&#xE93C;" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" HorizontalAlignment="Center" />
+            <TextBlock x:Name="EmptyText" Style="{StaticResource BodyStrongTextBlockStyle}" HorizontalAlignment="Center" />
+            <TextBlock x:Name="EmptyHint" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" />
+        </StackPanel>
+        <!-- /Empty State -->
+    </Grid>
+</Page>

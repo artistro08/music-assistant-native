@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MusicAssistant</RootNamespace>
+    <AssemblyName>MusicAssistant</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <AssemblyTitle>Music Assistant</AssemblyTitle>
+    <Product>Music Assistant</Product>
+    <Company>Devin Green</Company>
+    <Version>1.0.0</Version>
+    <Platforms>x64;arm64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- Unpackaged by default; pass -p:WindowsPackageType=MSIX to build the installer package -->
+    <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
+    <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+    <GenerateAppxPackageOnBuild Condition="'$(WindowsPackageType)' == 'MSIX'">true</GenerateAppxPackageOnBuild>
+    <AppxPackageDir>$(MSBuildProjectDirectory)\..\dist\</AppxPackageDir>
+    <AppxBundle>Never</AppxBundle>
+    <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <!-- Memory: workstation non-concurrent GC (no background GC thread/heap), conserve memory, no satellite resource strings -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <TieredPGO>false</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Window and tray icon, loaded from disk at runtime -->
+    <Content Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Remote access bridge page, loaded into a hidden WebView2 -->
+    <Content Include="Assets\bridge\**" CopyToOutputDirectory="PreserveNewest" />
+    <None Remove="Assets\app-1024.png" />
+    <Content Include="Assets\Package\*.png" Condition="'$(WindowsPackageType)' == 'MSIX'" />
+    <AppxManifest Include="Package.appxmanifest" Condition="'$(WindowsPackageType)' == 'MSIX'"><SubType>Designer</SubType></AppxManifest>
+    <None Remove="Assets\music-assistant-fluent.svg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <RuntimeHostConfigurationOption Include="System.GC.RetainVM" Value="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.6584" />
+  </ItemGroup>
+
+</Project>

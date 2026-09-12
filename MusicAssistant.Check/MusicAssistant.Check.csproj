@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Protocol self-check: runs MassClient against a fake Music Assistant websocket server. `dotnet run` exits 0 on pass. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MusicAssistant.Check</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\MusicAssistant\Api\Models.cs" Link="Api\Models.cs" />
+    <Compile Include="..\MusicAssistant\Api\MassClient.cs" Link="Api\MassClient.cs" />
+    <Compile Include="..\MusicAssistant\Api\IMassTransport.cs" Link="Api\IMassTransport.cs" />
+    <Compile Include="..\MusicAssistant\Api\WebSocketTransport.cs" Link="Api\WebSocketTransport.cs" />
+    <Compile Include="..\MusicAssistant\Api\OAuthLoopback.cs" Link="Api\OAuthLoopback.cs" />
+  </ItemGroup>
+
+</Project>

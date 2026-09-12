@@ -1,0 +1,26 @@
+<Page
+    x:Class="MusicAssistant.Pages.HomePage"
+    NavigationCacheMode="Required"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:MusicAssistant.Controls">
+
+    <ScrollViewer>
+        <StackPanel Padding="0,8,0,24" MaxWidth="{StaticResource ContentMaxWidth}">
+            <TextBlock x:Name="GreetingText" Style="{StaticResource PageHeaderTextStyle}" />
+
+            <!-- Players -->
+            <controls:MediaRow x:Name="PlayersRow" Title="Players" Visibility="Collapsed" />
+
+            <!-- Top Picks -->
+            <controls:TopPicks x:Name="Picks" Visibility="Collapsed" />
+
+            <ProgressRing x:Name="Busy" IsActive="True" Margin="0,48" />
+
+            <!-- Recommendation Rows -->
+            <StackPanel x:Name="Rows" />
+
+            <TextBlock x:Name="EmptyText" Text="Nothing to show yet. Play something and it will show up here." Margin="32,24" Visibility="Collapsed" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>
