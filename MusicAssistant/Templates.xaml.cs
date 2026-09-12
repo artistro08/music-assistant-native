@@ -124,6 +124,9 @@ public sealed partial class Templates : ResourceDictionary
         if (((Button)sender).Content is MediaItem item) _ = App.OpenAsync(item);
     }
 
+    /// <summary>Check mark visibility for the selected player in pickers.</summary>
+    public static Visibility ActiveVis(string playerId) => Vis(playerId == App.Settings.ActivePlayerId);
+
     /// <summary>Accent outline for the active player card, subtle stroke otherwise.</summary>
     public static Brush PlayerBorder(string playerId)
         => (Brush)Application.Current.Resources[playerId == App.Settings.ActivePlayerId ? "AccentFillColorDefaultBrush" : "CardStrokeColorDefaultBrush"];

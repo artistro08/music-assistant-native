@@ -1,7 +1,10 @@
 <UserControl
     x:Class="MusicAssistant.Controls.PlayerBar"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:api="using:MusicAssistant.Api"
+    xmlns:controls="using:MusicAssistant.Controls"
+    xmlns:local="using:MusicAssistant">
 
     <Grid
         Height="96"
@@ -138,7 +141,37 @@
                     <TextBlock x:Name="PlayerNameText" Text="No player" MaxWidth="140" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
                 <DropDownButton.Flyout>
-                    <MenuFlyout x:Name="PlayerMenu" Placement="Top" Opening="OnPlayerMenuOpening" />
+                    <!-- Player Picker: check mark on the selected player, live bars on players that are playing -->
+                    <Flyout x:Name="PlayerFlyout" Placement="Top" Opening="OnPlayerMenuOpening">
+                        <Flyout.FlyoutPresenterStyle>
+                            <Style TargetType="FlyoutPresenter">
+                                <Setter Property="Padding" Value="4" />
+                                <Setter Property="MinWidth" Value="260" />
+                                <Setter Property="MaxHeight" Value="480" />
+                                <Setter Property="CornerRadius" Value="{StaticResource OverlayCornerRadius}" />
+                            </Style>
+                        </Flyout.FlyoutPresenterStyle>
+                        <Grid>
+                            <ListView x:Name="PlayerList" IsItemClickEnabled="True" SelectionMode="None" ItemClick="OnPlayerPicked">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="api:Player">
+                                        <Grid ColumnSpacing="12" MinHeight="36" AutomationProperties.Name="{x:Bind DisplayName}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="16" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Glyph="&#xE73E;" FontSize="12" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.ActiveVis(PlayerId)}" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind DisplayName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            <controls:NowPlayingBars Grid.Column="2" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <TextBlock x:Name="NoPlayersText" Text="No players available" Margin="12,8" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
+                        </Grid>
+                    </Flyout>
+                    <!-- /Player Picker -->
                 </DropDownButton.Flyout>
             </DropDownButton>
         </StackPanel>

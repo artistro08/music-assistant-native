@@ -281,27 +281,19 @@ public sealed partial class PlayerBar : UserControl
 
     // Player Picker
 
+    /// <summary>Fresh list each time the picker opens: check on the selected player, live bars on playing ones.</summary>
     private void OnPlayerMenuOpening(object? sender, object e)
     {
-        PlayerMenu.Items.Clear();
-        var players = App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name);
+        var players = App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name).ToList();
+        PlayerList.ItemsSource       = players;
+        PlayerList.Visibility        = players.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoPlayersText.Visibility     = players.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
 
-        foreach (var player in players)
-        {
-            var item = new ToggleMenuFlyoutItem
-            {
-                Text      = player.IsPlaying ? $"{player.DisplayName}  ▶" : player.DisplayName,
-                IsChecked = player.PlayerId == App.Settings.ActivePlayerId,
-                Tag       = player.PlayerId,
-            };
-            item.Click += (s, _) => App.SetActivePlayer((string)((FrameworkElement)s).Tag);
-            PlayerMenu.Items.Add(item);
-        }
-
-        if (PlayerMenu.Items.Count == 0)
-        {
-            PlayerMenu.Items.Add(new MenuFlyoutItem { Text = "No players available", IsEnabled = false });
-        }
+    private void OnPlayerPicked(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is Player player) App.SetActivePlayer(player.PlayerId);
+        PlayerFlyout.Hide();
     }
 
     private void OnImageOpened(object sender, RoutedEventArgs e) => Templates.FadeIn((UIElement)sender);
