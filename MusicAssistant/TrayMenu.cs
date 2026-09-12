@@ -65,8 +65,8 @@ public sealed class TrayMenu
             presenter.IsMinimizable  = false;
         }
 
-        // Owned by the main window (same z-order family), tool window (no taskbar entry), fully transparent
-        SetWindowLongPtr(hwnd, GWLP_HWNDPARENT, owner);
+        // Tool window (no taskbar entry), fully transparent. Deliberately not owned by the main window:
+        // activating an owned window drags its owner to the front, and the menu must not raise the app
         var style = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
         SetWindowLongPtr(hwnd, GWL_EXSTYLE, (IntPtr)(style | WS_EX_LAYERED | WS_EX_TOOLWINDOW));
         SetLayeredWindowAttributes(hwnd, 0, 0, LWA_ALPHA);
@@ -191,7 +191,7 @@ public sealed class TrayMenu
     // WIN32
     // =========================================================================
 
-    private const int  GWL_EXSTYLE = -20, GWLP_HWNDPARENT = -8, SW_HIDE = 0, SW_SHOWNORMAL = 1;
+    private const int  GWL_EXSTYLE = -20, SW_HIDE = 0, SW_SHOWNORMAL = 1;
     private const long WS_EX_TOOLWINDOW = 0x00000080, WS_EX_LAYERED = 0x00080000;
     private const uint LWA_ALPHA = 0x2, MONITOR_DEFAULTTONEAREST = 2;
 
