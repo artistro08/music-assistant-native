@@ -110,13 +110,30 @@ public sealed partial class LibraryPage : Page
         EmptyState.Visibility = Visibility.Visible;
     }
 
-    /// <summary>Six cards per row: cell width follows the grid width, cell height is the square art plus two text lines.</summary>
+    private bool panelHooked;
+
+    /// <summary>
+    /// Six cards per row. The cell size is taken from the wrap panel's own width (not the GridView's),
+    /// so scrollbars, padding and the 1600px cap are already accounted for; a cell computed from a
+    /// slightly wider number wraps to five per row at certain widths and flickers between the two.
+    /// </summary>
     private void OnGridSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (CardGrid.ItemsPanelRoot is not ItemsWrapGrid panel) return;
+        if (!panelHooked)
+        {
+            panelHooked = true;
+            panel.SizeChanged += (_, args) => ApplyCellSize(panel, args.NewSize.Width);
+        }
+        ApplyCellSize(panel, panel.ActualWidth);
+    }
+
+    private static void ApplyCellSize(ItemsWrapGrid panel, double panelWidth)
+    {
         const int columns = 6, gap = 4, textBlock = 60;
-        var available = Math.Min(e.NewSize.Width - CardGrid.Padding.Left - CardGrid.Padding.Right, panel.MaxWidth);
-        var cell      = Math.Max(120, Math.Floor(available / columns));
+        if (panelWidth <= 0) return;
+        var cell = Math.Max(48, Math.Floor((panelWidth - 1) / columns));   // 1px slack so rounding can never push a card to the next row; no larger floor, or narrow windows drop to five
+        if (Math.Abs(panel.ItemWidth - cell) < 0.5) return;
         panel.ItemWidth  = cell;
         panel.ItemHeight = cell - gap + textBlock;   // art is (cell - gap - padding) square, plus padding and text
     }
