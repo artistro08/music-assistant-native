@@ -49,10 +49,20 @@ public sealed class WasapiOutput : IDisposable
         if (running) return;
 
         var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
-        enumerator.GetDefaultAudioEndpoint(EDataFlow.Render, ERole.Multimedia, out var device);
-        var iid = typeof(IAudioClient).GUID;
-        device.Activate(ref iid, ClsCtxAll, IntPtr.Zero, out var clientObject);
-        client = (IAudioClient)clientObject;
+        IMMDevice? device = null;
+        try
+        {
+            enumerator.GetDefaultAudioEndpoint(EDataFlow.Render, ERole.Multimedia, out device);
+            var iid = typeof(IAudioClient).GUID;
+            device.Activate(ref iid, ClsCtxAll, IntPtr.Zero, out var clientObject);
+            client = (IAudioClient)clientObject;
+        }
+        finally
+        {
+            // The enumerator and device are only needed to reach the client; release them now, not at GC
+            if (device is not null) Marshal.ReleaseComObject(device);
+            Marshal.ReleaseComObject(enumerator);
+        }
 
         client.GetMixFormat(out var formatPtr);
         try
@@ -91,9 +101,10 @@ public sealed class WasapiOutput : IDisposable
         if (!running) return;
         running = false;
         wake?.Set();
-        thread?.Join(1000);
-        try { client?.Stop(); } catch (Exception) { }
-        Release();
+        // The render thread owns the COM objects and tears them down in its own finally, so a slow in-flight
+        // WASAPI call is never released out from under it. If the join times out, cleanup happens when the
+        // thread finally exits, not here.
+        thread?.Join(3000);
     }
 
     private void RenderLoop()
@@ -119,6 +130,8 @@ public sealed class WasapiOutput : IDisposable
         finally
         {
             if (mmcss != IntPtr.Zero) AvRevertMmThreadCharacteristics(mmcss);
+            try { client?.Stop(); } catch (Exception) { }
+            Release();   // the thread that used the COM objects is the one that releases them
         }
     }
 

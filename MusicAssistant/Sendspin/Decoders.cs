@@ -134,10 +134,11 @@ public sealed class ChunkDecoder
                 output[f * outputChannels + c] = a + (b - a) * frac;
             }
         }
-        // Keep the last frame consumed so the next chunk interpolates from it
-        var consumed = (int)position;
+        // Keep the last frame consumed so the next chunk interpolates from it. The clamped index must also
+        // anchor resamplePosition, or the fractional offset drifts one frame from where the tail begins.
+        var consumed = Math.Min((int)position, sourceFrames - 1);
         resamplePosition = position - consumed;
-        resampleTail = source.AsSpan((Math.Min(consumed, sourceFrames - 1)) * outputChannels).ToArray();
+        resampleTail = source.AsSpan(consumed * outputChannels).ToArray();
         return (output, outFrames);
     }
 

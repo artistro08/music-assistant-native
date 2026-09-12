@@ -38,7 +38,11 @@ public static class NoiseCrypto
     public static byte[] Dh(byte[] privateKey, byte[] peerPublicKey)
     {
         var shared = new byte[KeySize];
-        X25519.ScalarMult(privateKey, 0, peerPublicKey, 0, shared, 0);
+        // CalculateAgreement returns false for a small-order / all-zero result (RFC 7748 6.1); reject it
+        if (!X25519.CalculateAgreement(privateKey, 0, peerPublicKey, 0, shared, 0))
+        {
+            throw new CryptographicException("X25519 produced a degenerate shared secret");
+        }
         return shared;
     }
 

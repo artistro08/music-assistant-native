@@ -43,7 +43,9 @@ public sealed class RemotePeer : IDisposable
     private TaskCompletionSource<JsonElement>? connectedSignal;
     private TaskCompletionSource? apiOpen;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<HttpReply>> httpWaiting = new();
-    private readonly ConcurrentDictionary<long, (int Count, string?[] Parts, int Received)> chunkGroups = new();
+    private const int MaxChunkGroups = 32;   // a stalled or hostile peer must not accumulate reassembly buffers without bound
+    private static readonly TimeSpan ChunkGroupMaxAge = TimeSpan.FromSeconds(30);
+    private readonly ConcurrentDictionary<long, (int Count, string?[] Parts, int Received, DateTime Started)> chunkGroups = new();
     private readonly SemaphoreSlim signalingSend = new(1, 1);
     private readonly object gate = new();
     private bool closed;
@@ -302,10 +304,22 @@ public sealed class RemotePeer : IDisposable
         var piece = frame.GetProperty("b64").GetString() ?? "";
         if (count <= 0 || count > 100_000 || seq < 0 || seq >= count) return;
 
+        // Drop groups that never completed (a dropped final frame, or a hostile peer opening many ids) so
+        // reassembly state cannot grow without bound
+        if (chunkGroups.Count >= MaxChunkGroups)
+        {
+            var cutoff = DateTime.UtcNow - ChunkGroupMaxAge;
+            foreach (var (staleId, g) in chunkGroups)
+            {
+                if (g.Started < cutoff) chunkGroups.TryRemove(staleId, out _);
+            }
+            if (chunkGroups.Count >= MaxChunkGroups && !chunkGroups.ContainsKey(id)) return;   // still full: refuse a new group
+        }
+
         // Each frame is base64-encoded on its own, so decode per frame and join the bytes; joining the base64
         // strings first would put '=' padding mid-string and throw, killing the SCTP transport.
         byte[][] parts;
-        var group = chunkGroups.GetOrAdd(id, _ => (count, new string?[count], 0));
+        var group = chunkGroups.GetOrAdd(id, _ => (count, new string?[count], 0, DateTime.UtcNow));
         lock (group.Parts)
         {
             if (group.Parts[seq] is null) group.Received++;

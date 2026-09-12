@@ -141,6 +141,7 @@ public sealed class SendspinConnection : IDisposable
                 {
                     if (payload.GetProperty("version").GetInt32() != 1) { Fail("Server speaks an unsupported Sendspin version"); return; }
                     ServerId = payload.GetProperty("server_id").GetString() ?? "";
+                    if (Base64Url.Decode(ServerId).Length != NoiseCrypto.KeySize) { Fail("Server sent an invalid server_id"); return; }
                     var prologue = (byte[])[.. rawClientInit, .. Encoding.UTF8.GetBytes(text)];
                     handshake = new HandshakeState(initiator: false, prologue, identity.PrivateKey, identity.PublicKey, Base64Url.Decode(ServerId));
                     state = State.AwaitNoise1;
@@ -160,8 +161,10 @@ public sealed class SendspinConnection : IDisposable
             }
             Fail("Unexpected message during handshake");
         }
-        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or FormatException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
+        catch (Exception ex)
         {
+            // Any error handling attacker-controlled handshake input is fatal to this connection, not just the
+            // known JSON/crypto types: fail cleanly with a reason instead of leaking the exception up the read loop.
             Fail("Handshake failed: " + ex.Message);
         }
     }
@@ -276,11 +279,16 @@ public sealed class SendspinConnection : IDisposable
             switch (type)
             {
                 case "noise/handshake":
-                    lock (gate)
+                    // A re-handshake failure is fatal, not a droppable message, so it fails the connection
+                    try
                     {
-                        var next = new HandshakeState(initiator: false, HandshakeHash, identity.PrivateKey, identity.PublicKey, Base64Url.Decode(ServerId));
-                        CompleteHandshake(next, Base64Url.Decode(payload.GetProperty("data").GetString() ?? ""), rehandshake: true);
+                        lock (gate)
+                        {
+                            var next = new HandshakeState(initiator: false, HandshakeHash, identity.PrivateKey, identity.PublicKey, Base64Url.Decode(ServerId));
+                            CompleteHandshake(next, Base64Url.Decode(payload.GetProperty("data").GetString() ?? ""), rehandshake: true);
+                        }
                     }
+                    catch (Exception ex) { Fail("Re-handshake failed: " + ex.Message); }
                     return;
                 case "server/activate":
                     Quiesced = false;

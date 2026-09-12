@@ -64,11 +64,11 @@ public sealed class Speaker
     {
         loop?.Cancel();
         loop = null;
-        if (player is not null)
+        // Exchange so only one caller ever disposes: Stop and the reconnect loop can both run at a session drop
+        var current = Interlocked.Exchange(ref player, null);
+        if (current is not null)
         {
-            player.Disconnect("user_request");
-            player.Dispose();
-            player = null;
+            try { current.Disconnect("user_request"); current.Dispose(); } catch (Exception ex) { App.Debug("Speaker stop: " + ex.Message); }
         }
         attempt = 0;
         if (notify) SetStatus("Off");
@@ -117,8 +117,7 @@ public sealed class Speaker
                 SetStatus(ex.Message);
             }
 
-            player?.Dispose();
-            player = null;
+            try { Interlocked.Exchange(ref player, null)?.Dispose(); } catch (Exception ex) { App.Debug("Speaker cleanup: " + ex.Message); }
             if (ct.IsCancellationRequested || !App.Client.IsConnected) { SetStatus("Off"); return; }
 
             var delay = Backoff[Math.Min(attempt++, Backoff.Length - 1)];
