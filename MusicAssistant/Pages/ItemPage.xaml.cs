@@ -39,7 +39,7 @@ public sealed partial class ItemPage : Page
         TracksTitle.Visibility = Visibility.Collapsed;
         EmptyText.Visibility   = Visibility.Collapsed;
         AlbumsRow.Visibility   = Visibility.Collapsed;
-        while (RowsHost.Children.Count > 1) RowsHost.Children.RemoveAt(1);   // genre rows from the previous item
+        HeaderRows.Children.Clear();   // genre rows from the previous item
         Busy.IsActive          = true;
         Busy.Visibility        = Visibility.Visible;
     }
@@ -50,6 +50,8 @@ public sealed partial class ItemPage : Page
         TypeText.Text     = item.MediaType.ToUpperInvariant();
         NameText.Text     = item.Name;
         SubtitleText.Text = item.SubtitleText;
+        SubtitleText.Visibility = string.Equals(item.SubtitleText, item.MediaType, StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Collapsed : Visibility.Visible;   // "Genre" / "Artist" would just repeat the type label above the name
         FavoriteToggle.IsChecked = item.Favorite;
 
         var description = item.Metadata?.Description;
@@ -84,11 +86,9 @@ public sealed partial class ItemPage : Page
                     tracks = await App.Client.GetPodcastEpisodesAsync(target.ItemId, target.Provider);
                     break;
                 case "genre":
-                    // Overview folders (Artists, Albums, Tracks, Playlists, ...) as the web app shows them; tracks go in the list
-                    var folders = await App.Client.GetGenreOverviewAsync(target.ItemId, target.Provider);
-                    var trackFolder = folders.FirstOrDefault(f => f.Items?.All(i => i.MediaType == "track") == true && f.Items.Count > 0);
-                    tracks = trackFolder?.Items ?? (folders.Count == 0 ? await App.Client.GetGenreTracksAsync(target.ItemId) : []);
-                    rows   = folders.Where(f => f != trackFolder && f.Items is { Count: > 0 }).ToList();
+                    // Overview rows (Artists, Albums, Tracks, Playlists, ...) as the web app shows them; plain track list only as a fallback
+                    rows = (await App.Client.GetGenreOverviewAsync(target.ItemId, target.Provider)).Where(f => f.Items is { Count: > 0 }).ToList();
+                    if (rows.Count == 0) tracks = await App.Client.GetGenreTracksAsync(target.ItemId);
                     break;
                 case "audiobook":
                     break;
@@ -117,9 +117,8 @@ public sealed partial class ItemPage : Page
             }
             foreach (var folder in rows)
             {
-                RowsHost.Children.Add(new Controls.MediaRow { Title = folder.Name, Items = folder.Items!, Margin = AlbumsRow.Margin });
+                HeaderRows.Children.Add(new Controls.MediaRow { Title = folder.Name, Items = folder.Items! });
             }
-            if (rows.Count > 0) EmptyText.Visibility = Visibility.Collapsed;   // a genre with artists or albums but no tracks is not empty
         }
         catch (ApiException ex)
         {

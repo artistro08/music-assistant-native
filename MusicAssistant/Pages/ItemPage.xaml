@@ -58,16 +58,15 @@
                 <!-- /Header -->
 
                 <ProgressRing x:Name="Busy" IsActive="True" />
+                <!-- Genre pages: one paged row per media type (Artists, Albums, Tracks, ...) right under the header -->
+                <StackPanel x:Name="HeaderRows" Margin="-16,0" />
                 <TextBlock x:Name="TracksTitle" Text="Tracks" Style="{StaticResource SubtitleTextBlockStyle}" Margin="8,0" Visibility="Collapsed" />
                 <TextBlock x:Name="EmptyText" Margin="8,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
             </StackPanel>
         </ListView.Header>
 
         <ListView.Footer>
-            <!-- Albums strip for artists; genre pages add one row per media type here -->
-            <StackPanel x:Name="RowsHost" MaxWidth="{StaticResource ContentMaxWidth}">
-                <controls:MediaRow x:Name="AlbumsRow" Title="Albums" Margin="-16,16,-16,0" Visibility="Collapsed" />
-            </StackPanel>
+            <controls:MediaRow x:Name="AlbumsRow" Title="Albums" Margin="-16,16,-16,0" MaxWidth="{StaticResource ContentMaxWidth}" Visibility="Collapsed" />
         </ListView.Footer>
     </ListView>
 </Page>
