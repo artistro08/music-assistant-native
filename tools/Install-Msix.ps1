@@ -7,41 +7,45 @@
     store (that needs administrator rights, so it re-launches itself elevated),
     then installs the .msix for the current user.
 
-    Usage: put Install-Msix.ps1, the .cer and the .msix in one folder, then
-    right-click the script and choose "Run with PowerShell".
+    Used standalone (right-click, Run with PowerShell) and by the setup exe that
+    tools\make-setup.ps1 builds, which extracts the package and runs this script.
 
     Depends on the built-in Add-AppxPackage cmdlet:
     https://learn.microsoft.com/powershell/module/appx/add-appxpackage
 #>
 
 $ErrorActionPreference = 'Stop'
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$here  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$shell = New-Object -ComObject WScript.Shell
 
-# Elevate
+# Elevate (wait, so a calling installer does not clean up the folder too early)
 $is_admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $is_admin) {
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
+    try {
+        Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
+    }
+    catch {
+        $shell.Popup('Music Assistant needs administrator approval to install.', 0, 'Music Assistant Setup', 48) | Out-Null
+    }
     return
 }
 
 # Find Package and Certificate
 $msix = Get-ChildItem $here -Filter *.msix | Select-Object -First 1
 $cer  = Get-ChildItem $here -Filter *.cer  | Select-Object -First 1
-if (-not $msix) { Write-Host 'No .msix file found next to this script.'; Read-Host 'Press Enter to close'; return }
-
-# Trust Certificate
-if ($cer) {
-    Import-Certificate -FilePath $cer.FullName -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
-    Write-Host "Trusted certificate $($cer.Name)"
+if (-not $msix) {
+    $shell.Popup('No .msix file found next to this script.', 0, 'Music Assistant Setup', 16) | Out-Null
+    return
 }
 
-# Install
+# Trust Certificate and Install
 try {
+    if ($cer) {
+        Import-Certificate -FilePath $cer.FullName -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+    }
     Add-AppxPackage -Path $msix.FullName
-    Write-Host "Installed $($msix.Name). Music Assistant is in the Start Menu."
+    $shell.Popup('Music Assistant is installed. Find it in the Start Menu.', 0, 'Music Assistant Setup', 64) | Out-Null
 }
 catch {
-    Write-Host "Install failed: $($_.Exception.Message)"
+    $shell.Popup("Install failed:`n`n$($_.Exception.Message)", 0, 'Music Assistant Setup', 16) | Out-Null
 }
-
-Read-Host 'Press Enter to close'

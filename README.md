@@ -33,13 +33,11 @@ What you get:
 
 ## Install
 
-Two downloads on the [Releases](../../releases) page, both self-contained (no .NET or Windows App SDK runtime needed):
+Download `MusicAssistant-Setup.exe` from the [Releases](../../releases) page and run it. One administrator prompt, then Music Assistant is in the Start Menu. The package is self-contained (no .NET or Windows App SDK runtime needed) and later versions install over the top.
 
-**Portable (no certificate needed)**: download `MusicAssistant-portable-x64.zip`, extract it anywhere, run `MusicAssistant.exe`. SmartScreen may show "Windows protected your PC" the first time; choose More info › Run anyway. The app adds its own Start Menu entry on first run.
+> SmartScreen may show "Windows protected your PC" because the setup exe is not signed with a publicly trusted certificate yet. Choose **More info › Run anyway**.
 
-**MSIX installer**: `MusicAssistant_x.y.z.0_x64.msix`. Windows only installs MSIX packages whose signature it trusts. Until the package is signed with a publicly trusted certificate, trust the test certificate once: download `Install-Msix.ps1`, the `.cer` and the `.msix` into one folder, right-click `Install-Msix.ps1` › Run with PowerShell, and approve the elevation prompt. The script imports the certificate into the machine's Trusted People store and installs the package. After that, newer `.msix` files install by double-click.
-
-If you would rather do it by hand, from an elevated PowerShell:
+What the setup exe does: it unpacks `MusicAssistant_x.y.z.0_x64.msix` plus its test certificate and runs `tools\Install-Msix.ps1`, which trusts the certificate in the machine's Trusted People store and installs the package. That is needed because Windows refuses to install an MSIX whose signature it does not trust. If you prefer to use the bare `.msix` from the release, do the same two steps from an elevated PowerShell:
 
 ```powershell
 Import-Certificate -FilePath .\MusicAssistant-TestSigning.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
@@ -56,7 +54,7 @@ Windows trusts MSIX signatures from certificates that chain to a public root. Op
 2. **Azure Trusted Signing**: a low monthly fee, keys stay in Azure, signs with a Microsoft-trusted certificate; `signtool` picks it up. Works for MSIX and for the portable exe (no SmartScreen warning after reputation builds).
 3. **A code-signing certificate from a public CA** (DigiCert, Sectigo, SSL.com): OV or EV, yearly cost, hardware token for EV.
 
-With any of those, build with `-p:PackageCertificateThumbprint=<your cert>` and the certificate steps above disappear.
+With any of those, build with `-p:PackageCertificateThumbprint=<your cert>`; the `.msix` then installs by double-click and the setup exe stops showing the SmartScreen warning.
 
 ## Build and run
 
@@ -114,6 +112,8 @@ Music Assistant streams to players over its own Sendspin protocol: a Noise-encry
 cd MusicAssistant
 dotnet build -c Release -p:Platform=x64 -r win-x64 -p:WindowsPackageType=MSIX -p:AppxPackageSigningEnabled=true -p:PackageCertificateThumbprint=<thumbprint>
 ```
+
+`tools\make-setup.ps1` then wraps the package, its certificate and `tools\Install-Msix.ps1` into `dist\MusicAssistant-Setup.exe` with IExpress (built into Windows), which is what the release ships.
 
 `Package.appxmanifest` carries the identity (`DevinGreen.MusicAssistant`, publisher `CN=Devin Green`, which must match the certificate subject) and the capabilities: `internetClient`, `privateNetworkClientServer` for the LAN server and loopback listeners, and `runFullTrust`. `tools/make-msix-assets.ps1` regenerates the tile logos from the app icon. For public distribution, sign with a certificate from a public CA or publish through the Microsoft Store; the self-signed certificate is for testing only.
 
