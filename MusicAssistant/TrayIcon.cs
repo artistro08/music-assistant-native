@@ -1,32 +1,41 @@
 using System.Runtime.InteropServices;
-using Microsoft.UI.Xaml.Controls;
 using MusicAssistant.Api;
 
 namespace MusicAssistant;
 
 /// <summary>
-/// Notification-area (tray) icon with a native right-click menu.
+/// Notification-area (tray) icon with its right-click menu.
 ///
-/// Plain Win32: Shell_NotifyIcon for the icon, a Fluent MenuFlyout for the actions (see TrayMenu),
-/// and a window subclass on the main window to receive the icon's messages.
-/// No packages.
+/// Plain Win32, the way the Shell documents it: Shell_NotifyIcon adds the icon
+/// (NOTIFYICON_VERSION_4, so the shell sends WM_CONTEXTMENU with the anchor
+/// point), a window subclass on the main window receives its messages, and the
+/// menu is a TrackPopupMenuEx popup. The menu is placed at the point the shell
+/// hands over, and the documented SetForegroundWindow / WM_NULL bracket makes
+/// it close when the user clicks elsewhere. No helper windows, no packages.
 /// </summary>
 /// <remarks>
-/// @link https://learn.microsoft.com/windows/win32/shell/notification-area
+/// @link https://learn.microsoft.com/windows/win32/api/shellapi/nf-shellapi-shell_notifyiconw
+/// @link https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-trackpopupmenuex
 /// </remarks>
 public sealed class TrayIcon : IDisposable
 {
-    private const uint  TrayMessage    = 0x8000 + 1;   // WM_APP + 1
-    private const int   WM_LBUTTONDBLCLK = 0x0203, WM_RBUTTONUP = 0x0205, WM_LBUTTONUP = 0x0202, WM_COMMAND = 0x0111;
-    private const uint  NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
-    private const uint  NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
+    private const uint TrayMessage = 0x8000 + 1;   // WM_APP + 1
+
+    private const int  WM_NULL = 0x0000, WM_CONTEXTMENU = 0x007B, WM_LBUTTONUP = 0x0202, WM_LBUTTONDBLCLK = 0x0203, NIN_SELECT = 0x0400, NIN_KEYSELECT = 0x0401;
+    private const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
+    private const uint NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
+    private const uint MF_STRING = 0x0000, MF_GRAYED = 0x0001, MF_CHECKED = 0x0008, MF_POPUP = 0x0010, MF_SEPARATOR = 0x0800, MF_BYCOMMAND = 0x0000;
+    private const uint TPM_RIGHTBUTTON = 0x0002, TPM_RIGHTALIGN = 0x0008, TPM_NONOTIFY = 0x0080, TPM_RETURNCMD = 0x0100;
+    private const int  SM_MENUDROPALIGNMENT = 40;
+
+    // Menu command ids
+    private const uint IdOpen = 1, IdPlayPause = 2, IdNext = 3, IdPrevious = 4, IdExit = 9, IdPlayerBase = 100;
 
     private readonly IntPtr hwnd;
     private readonly IntPtr icon;
     private readonly SubclassProc subclass;   // kept alive for the native callback
     private readonly Action open;
     private readonly Action exit;
-    private readonly TrayMenu menu = new();
     private bool added;
 
     public TrayIcon(IntPtr hwnd, string iconPath, Action open, Action exit)
@@ -45,7 +54,7 @@ public sealed class TrayIcon : IDisposable
         data.hIcon            = icon;
         data.szTip            = "Music Assistant";
         added = Shell_NotifyIcon(NIM_ADD, ref data);
-        data.uVersion = 4;
+        data.uVersion = 4;   // NOTIFYICON_VERSION_4: WM_CONTEXTMENU / NIN_SELECT with coordinates
         Shell_NotifyIcon(NIM_SETVERSION, ref data);
     }
 
@@ -86,14 +95,17 @@ public sealed class TrayIcon : IDisposable
 
         if (msg == TrayMessage)
         {
+            // Version 4: low word of lParam is the event, wParam carries the anchor point
             switch ((int)(lParam.ToInt64() & 0xFFFF))
             {
+                case NIN_SELECT:
+                case NIN_KEYSELECT:
                 case WM_LBUTTONUP:
                 case WM_LBUTTONDBLCLK:
                     open();
                     break;
-                case WM_RBUTTONUP:
-                    ShowMenu();
+                case WM_CONTEXTMENU:
+                    ShowMenu((short)(wParam.ToInt64() & 0xFFFF), (short)((wParam.ToInt64() >> 16) & 0xFFFF));
                     break;
             }
             return IntPtr.Zero;
@@ -101,57 +113,61 @@ public sealed class TrayIcon : IDisposable
         return DefSubclassProc(h, msg, wParam, lParam);
     }
 
-    /// <summary>Fluent menu built fresh each time so labels and enabled state match the player.</summary>
-    private void ShowMenu()
+    /// <summary>Menu built fresh each time so labels and enabled state match the player.</summary>
+    private void ShowMenu(int x, int y)
     {
         var player  = App.ActivePlayer;
         var playing = player?.IsPlaying == true;
-        var enabled = player is not null;
+        var enabled = player is null ? MF_GRAYED : 0;
+        var players = App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name).ToList();
 
-        GetCursorPos(out var pt);
-        menu.Show(pt.X, pt.Y,
-        [
-            Item("Open Music Assistant", "\uE8A7", open),
-            new MenuFlyoutSeparator(),
-            Item(playing ? "Pause" : "Play", playing ? "\uE769" : "\uE768", () => Send(player, "play_pause"), enabled),
-            Item("Next",     "\uE893", () => Send(player, "next"),     enabled),
-            Item("Previous", "\uE892", () => Send(player, "previous"), enabled),
-            new MenuFlyoutSeparator(),
-            PlayerSubMenu(player),
-            new MenuFlyoutSeparator(),
-            Item("Exit", "\uE7E8", exit),
-        ]);
-    }
+        var menu = CreatePopupMenu();
+        AppendMenu(menu, MF_STRING, IdOpen, "Open Music Assistant");
+        AppendMenu(menu, MF_SEPARATOR, 0, null);
+        AppendMenu(menu, MF_STRING | enabled, IdPlayPause, playing ? "Pause" : "Play");
+        AppendMenu(menu, MF_STRING | enabled, IdNext,      "Next");
+        AppendMenu(menu, MF_STRING | enabled, IdPrevious,  "Previous");
+        AppendMenu(menu, MF_SEPARATOR, 0, null);
 
-    /// <summary>"Speaker" submenu listing every visible player; the active one is checked.</summary>
-    private static MenuFlyoutItemBase PlayerSubMenu(Player? active)
-    {
-        var sub = new MenuFlyoutSubItem
+        // Speaker submenu: every visible player, the active one radio-checked
+        var speakers = CreatePopupMenu();
+        for (var i = 0; i < players.Count; i++)
         {
-            Text = active is null ? "Speaker" : $"Speaker: {active.Name}",
-            Icon = new FontIcon { Glyph = "\uE7F5" },
-        };
-
-        foreach (var player in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name))
-        {
-            var entry = new ToggleMenuFlyoutItem
-            {
-                Text      = player.IsPlaying ? $"{player.Name}  \u25B6" : player.Name,
-                IsChecked = player.PlayerId == active?.PlayerId,
-            };
-            entry.Click += (_, _) => App.SetActivePlayer(player.PlayerId);
-            sub.Items.Add(entry);
+            AppendMenu(speakers, MF_STRING, IdPlayerBase + (uint)i, players[i].IsPlaying ? $"{players[i].Name}  ▶" : players[i].Name);
         }
+        if (players.Count == 0)
+        {
+            AppendMenu(speakers, MF_STRING | MF_GRAYED, 0, "No players available");
+        }
+        var active = players.FindIndex(p => p.PlayerId == player?.PlayerId);
+        if (active >= 0)
+        {
+            CheckMenuRadioItem(speakers, IdPlayerBase, IdPlayerBase + (uint)players.Count - 1, IdPlayerBase + (uint)active, MF_BYCOMMAND);
+        }
+        AppendMenu(menu, MF_POPUP, (uint)speakers, player is null ? "Speaker" : $"Speaker: {player.Name}");
 
-        if (sub.Items.Count == 0) sub.Items.Add(new MenuFlyoutItem { Text = "No players available", IsEnabled = false });
-        return sub;
-    }
+        AppendMenu(menu, MF_SEPARATOR, 0, null);
+        AppendMenu(menu, MF_STRING, IdExit, "Exit");
 
-    private static MenuFlyoutItem Item(string text, string glyph, Action action, bool enabled = true)
-    {
-        var item = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph }, IsEnabled = enabled };
-        item.Click += (_, _) => action();
-        return item;
+        // Documented bracket: the window must be foreground for the menu to dismiss on an outside click,
+        // and WM_NULL afterwards lets the menu close cleanly when the window goes back to the background
+        var align   = GetSystemMetrics(SM_MENUDROPALIGNMENT) != 0 ? TPM_RIGHTALIGN : 0;
+        SetForegroundWindow(hwnd);
+        var command = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON | align, x, y, hwnd, IntPtr.Zero);
+        PostMessage(hwnd, WM_NULL, IntPtr.Zero, IntPtr.Zero);
+        DestroyMenu(menu);   // destroys the submenu with it
+
+        switch (command)
+        {
+            case IdOpen:      open(); break;
+            case IdExit:      exit(); break;
+            case IdPlayPause: Send(player, "play_pause"); break;
+            case IdNext:      Send(player, "next"); break;
+            case IdPrevious:  Send(player, "previous"); break;
+            case >= IdPlayerBase when command - IdPlayerBase < players.Count:
+                App.SetActivePlayer(players[(int)(command - IdPlayerBase)].PlayerId);
+                break;
+        }
     }
 
     private static void Send(Player? player, string command)
@@ -186,9 +202,6 @@ public sealed class TrayIcon : IDisposable
         public IntPtr hBalloonIcon;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Point { public int X, Y; }
-
     private delegate IntPtr SubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, IntPtr refData);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern bool Shell_NotifyIcon(uint message, ref NotifyIconData data);
@@ -197,5 +210,12 @@ public sealed class TrayIcon : IDisposable
     [DllImport("comctl32.dll")] private static extern IntPtr DefSubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr LoadImage(IntPtr inst, string name, uint type, int cx, int cy, uint load);
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr hIcon);
-    [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point pt);
+    [DllImport("user32.dll")] private static extern IntPtr CreatePopupMenu();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(IntPtr hMenu, uint flags, uint idNewItem, string? newItem);
+    [DllImport("user32.dll")] private static extern bool CheckMenuRadioItem(IntPtr hMenu, uint first, uint last, uint check, uint flags);
+    [DllImport("user32.dll")] private static extern uint TrackPopupMenuEx(IntPtr hMenu, uint flags, int x, int y, IntPtr hWnd, IntPtr lptpm);
+    [DllImport("user32.dll")] private static extern bool DestroyMenu(IntPtr hMenu);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern int  GetSystemMetrics(int index);
 }
