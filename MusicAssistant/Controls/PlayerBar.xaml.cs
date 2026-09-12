@@ -80,7 +80,9 @@ public sealed partial class PlayerBar : UserControl
         }
 
         var playing = player?.IsPlaying == true;
-        PlayPauseIcon.Glyph = playing ? "\uE769" : "\uE768";
+        PlayPauseIcon.Glyph  = playing ? "\uE769" : "\uE768";
+        PlayerLive.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
+        PlayerIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
 
         // Loading overlay while a clicked item is being started
         var loading = App.PendingItem is not null;
