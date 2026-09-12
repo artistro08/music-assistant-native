@@ -130,7 +130,7 @@ public sealed partial class LibraryPage : Page
 
     private static void ApplyCellSize(ItemsWrapGrid panel, double panelWidth)
     {
-        const int columns = 6, gap = 4, textBlock = 60;
+        const int columns = 6, gap = 12, textBlock = 60;   // gap = BareGridViewItemStyle margin
         if (panelWidth <= 0) return;
         var cell = Math.Max(48, Math.Floor((panelWidth - 1) / columns));   // 1px slack so rounding can never push a card to the next row; no larger floor, or narrow windows drop to five
         if (Math.Abs(panel.ItemWidth - cell) < 0.5) return;

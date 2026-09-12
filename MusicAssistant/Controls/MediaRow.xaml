@@ -27,7 +27,8 @@
         </Grid>
         <!-- /Header -->
 
-        <!-- Slots: five equal star columns created once; paging only swaps their content -->
-        <Grid x:Name="Slots" ColumnSpacing="12" Background="Transparent" PointerWheelChanged="OnPointerWheel" />
+        <!-- Slots: five equal star columns created once; paging only swaps their content.
+             Slot buttons bleed 8px each side for their hover surface, so 28 leaves 12px between hover surfaces -->
+        <Grid x:Name="Slots" ColumnSpacing="28" Background="Transparent" PointerWheelChanged="OnPointerWheel" />
     </StackPanel>
 </UserControl>
