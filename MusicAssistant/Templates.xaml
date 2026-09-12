@@ -29,7 +29,7 @@
             <Viewbox Stretch="Uniform">
                 <Grid Width="184" Height="184" CornerRadius="{StaticResource ControlCornerRadius}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                    <Image Source="{x:Bind local:Templates.ToImage(ThumbUrl)}" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
+                    <Image Source="{x:Bind local:Templates.ToImage(ThumbUrl)}" Opacity="{x:Bind local:Templates.Ready(ThumbUrl)}" Stretch="UniformToFill" ImageOpened="OnImageOpened" />
                     <Grid Background="#80000000" Visibility="{x:Bind IsLoading, Mode=OneWay}">
                         <ProgressRing IsActive="{x:Bind IsLoading, Mode=OneWay}" Foreground="White" Width="40" Height="40" />
                     </Grid>
@@ -135,7 +135,7 @@
                 </MenuFlyout>
             </Grid.ContextFlyout>
             <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="32" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-            <Image Source="{x:Bind local:Templates.ToLargeImage(LargeImageUrl)}" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
+            <Image Source="{x:Bind local:Templates.ToLargeImage(LargeImageUrl)}" Opacity="{x:Bind local:Templates.ReadyLarge(LargeImageUrl)}" Stretch="UniformToFill" ImageOpened="OnImageOpened" />
             <Rectangle Fill="{StaticResource HeroScrimBrush}" />
             <Grid Background="#80000000" Visibility="{x:Bind IsLoading, Mode=OneWay}">
                 <ProgressRing IsActive="{x:Bind IsLoading, Mode=OneWay}" Foreground="White" Width="40" Height="40" />
@@ -170,7 +170,7 @@
 
             <Grid Width="40" Height="40" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                 <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="16" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                <Image Source="{x:Bind local:Templates.ToThumb(ThumbUrl)}" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
+                <Image Source="{x:Bind local:Templates.ToThumb(ThumbUrl)}" Opacity="{x:Bind local:Templates.ReadyThumb(ThumbUrl)}" Stretch="UniformToFill" ImageOpened="OnImageOpened" />
                 <Grid Background="#80000000" Visibility="{x:Bind IsLoading, Mode=OneWay}">
                     <ProgressRing IsActive="{x:Bind IsLoading, Mode=OneWay}" Foreground="White" Width="20" Height="20" />
                 </Grid>
@@ -211,7 +211,7 @@
 
             <Grid Width="40" Height="40" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                 <FontIcon Glyph="&#xEC4F;" FontSize="16" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                <Image Source="{x:Bind local:Templates.ToThumb(ThumbUrl)}" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
+                <Image Source="{x:Bind local:Templates.ToThumb(ThumbUrl)}" Opacity="{x:Bind local:Templates.ReadyThumb(ThumbUrl)}" Stretch="UniformToFill" ImageOpened="OnImageOpened" />
             </Grid>
 
             <StackPanel Grid.Column="1" VerticalAlignment="Center">

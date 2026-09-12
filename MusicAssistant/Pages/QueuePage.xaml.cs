@@ -62,8 +62,8 @@ public sealed partial class QueuePage : Page
         var imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 512) : media?.ImageUrl;
         if (imageUrl != lastImageUrl)
         {
-            lastImageUrl    = imageUrl;
-            ArtImage.Source = Templates.Decode(imageUrl, 380);
+            lastImageUrl = imageUrl;
+            Templates.Show(ArtImage, imageUrl, 380);
         }
 
         AutoplayToggle.IsChecked  = queue?.AutoplayEnabled == true;

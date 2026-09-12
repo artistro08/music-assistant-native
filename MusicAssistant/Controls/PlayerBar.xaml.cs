@@ -75,8 +75,8 @@ public sealed partial class PlayerBar : UserControl
         var imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 160) : media?.ImageUrl;
         if (imageUrl != lastImageUrl)
         {
-            lastImageUrl    = imageUrl;
-            ArtImage.Source = Templates.Decode(imageUrl, 64);
+            lastImageUrl = imageUrl;
+            Templates.Show(ArtImage, imageUrl, 64);
         }
 
         var playing = player?.IsPlaying == true;

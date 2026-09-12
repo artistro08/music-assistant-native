@@ -58,7 +58,7 @@ public sealed partial class ItemPage : Page
         DescriptionText.Text       = description ?? "";
         DescriptionText.Visibility = string.IsNullOrWhiteSpace(description) ? Visibility.Collapsed : Visibility.Visible;
 
-        ArtImage.Source = Templates.Decode(item.LargeImageUrl, 200);
+        Templates.Show(ArtImage, item.LargeImageUrl, 200);
     }
 
     private async Task LoadAsync(int version)
