@@ -103,8 +103,12 @@ public partial class App : Application
     /// <summary>The item currently being started, or null. Drives the loading overlay on the player bar.</summary>
     public static MediaItem? PendingItem { get; private set; }
 
-    /// <summary>Play a media item on the active player. option: play, replace, next, replace_next, add.</summary>
-    public static async Task PlayAsync(MediaItem item, string option = "play", string? startItem = null)
+    /// <summary>
+    /// Play a media item on the active player. option: play, replace, next, replace_next, add, or null
+    /// to let the server apply its configured default for the media type (what the web app's play button
+    /// does: replace the queue for albums and playlists, insert and play for single tracks).
+    /// </summary>
+    public static async Task PlayAsync(MediaItem item, string? option = null, string? startItem = null)
     {
         if (ActivePlayer is not { } player)
         {
@@ -113,7 +117,7 @@ public partial class App : Application
         }
 
         // Only immediate playback shows a loading state; queueing for later is instant
-        var startsNow = option is "play" or "replace";
+        var startsNow = option is null or "play" or "replace";
         if (startsNow) BeginLoading(item);
 
         try

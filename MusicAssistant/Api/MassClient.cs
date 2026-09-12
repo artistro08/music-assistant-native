@@ -295,10 +295,11 @@ public sealed class MassClient : IDisposable
         => SendAsync<List<QueueItem>>("player_queues/items", new { queue_id = queueId, limit, offset });
 
     /// <summary>
-    /// Play media on a queue. option: play, replace, next, replace_next, add.
-    /// startItem is a uri inside media (for example a track within its album).
+    /// Play media on a queue. option: play, replace, next, replace_next, add; null lets the server apply
+    /// its configured default for the media type. startItem is the item id of an item inside media
+    /// (a track within its album or playlist), which is what the web app sends.
     /// </summary>
-    public Task PlayMediaAsync(string queueId, string mediaUri, string option = "play", string? startItem = null, bool? shuffle = null)
+    public Task PlayMediaAsync(string queueId, string mediaUri, string? option = null, string? startItem = null, bool? shuffle = null)
         => SendAsync<JsonElement>("player_queues/play_media", new
         {
             queue_id   = queueId,

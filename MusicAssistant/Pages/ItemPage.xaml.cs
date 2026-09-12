@@ -141,7 +141,7 @@ public sealed partial class ItemPage : Page
 
     // Actions
 
-    private void OnPlay(object sender, RoutedEventArgs e)       => _ = App.PlayAsync(item, "play");
+    private void OnPlay(object sender, RoutedEventArgs e)       => _ = App.PlayAsync(item);   // server default: albums and playlists replace the queue
     private void OnPlayNext(object sender, RoutedEventArgs e)   => _ = App.PlayAsync(item, "next");
     private void OnAddToQueue(object sender, RoutedEventArgs e) => _ = App.PlayAsync(item, "add");
 
@@ -162,10 +162,11 @@ public sealed partial class ItemPage : Page
     {
         if (e.ClickedItem is not MediaItem track) return;
 
-        // Albums, playlists and podcasts play in context starting at the clicked item; artist and genre tracks play alone
+        // Albums, playlists and podcasts play in context starting at the clicked item (the server's default option,
+        // which replaces the queue, so the previous song cannot linger); artist and genre tracks play alone
         _ = item.MediaType is "artist" or "genre"
-            ? App.PlayAsync(track, "play")
-            : App.PlayAsync(item, "play", startItem: track.Uri);
+            ? App.PlayAsync(track)
+            : App.PlayAsync(item, startItem: track.ItemId);
     }
 
     private void OnImageOpened(object sender, RoutedEventArgs e) => Templates.FadeIn((UIElement)sender);
