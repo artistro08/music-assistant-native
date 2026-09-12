@@ -25,23 +25,23 @@
     </UserControl.Resources>
 
     <!-- Bars -->
-    <Grid ColumnSpacing="2" VerticalAlignment="Stretch">
+    <Grid ColumnSpacing="3" VerticalAlignment="Stretch">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="3" />
-            <ColumnDefinition Width="3" />
-            <ColumnDefinition Width="3" />
-            <ColumnDefinition Width="3" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
-        <Rectangle Grid.Column="0" Fill="{ThemeResource AccentFillColorDefaultBrush}" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,1">
+        <Rectangle Grid.Column="0" Fill="{ThemeResource AccentTextFillColorPrimaryBrush}" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,1">
             <Rectangle.RenderTransform><ScaleTransform x:Name="Bar1Scale" ScaleY="0.35" /></Rectangle.RenderTransform>
         </Rectangle>
-        <Rectangle Grid.Column="1" Fill="{ThemeResource AccentFillColorDefaultBrush}" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,1">
+        <Rectangle Grid.Column="1" Fill="{ThemeResource AccentTextFillColorPrimaryBrush}" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,1">
             <Rectangle.RenderTransform><ScaleTransform x:Name="Bar2Scale" ScaleY="1.0" /></Rectangle.RenderTransform>
         </Rectangle>
-        <Rectangle Grid.Column="2" Fill="{ThemeResource AccentFillColorDefaultBrush}" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,1">
+        <Rectangle Grid.Column="2" Fill="{ThemeResource AccentTextFillColorPrimaryBrush}" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,1">
             <Rectangle.RenderTransform><ScaleTransform x:Name="Bar3Scale" ScaleY="0.6" /></Rectangle.RenderTransform>
         </Rectangle>
-        <Rectangle Grid.Column="3" Fill="{ThemeResource AccentFillColorDefaultBrush}" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,1">
+        <Rectangle Grid.Column="3" Fill="{ThemeResource AccentTextFillColorPrimaryBrush}" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,1">
             <Rectangle.RenderTransform><ScaleTransform x:Name="Bar4Scale" ScaleY="0.45" /></Rectangle.RenderTransform>
         </Rectangle>
     </Grid>

@@ -118,7 +118,7 @@
             </StackPanel>
 
             <!-- Live indicator: pulsing accent bars while the player plays -->
-            <controls:NowPlayingBars Grid.Column="2" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}" />
+            <controls:NowPlayingBars Grid.Column="2" Width="26" Height="22" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}" />
         </Grid>
     </DataTemplate>
     <!-- /Player Card -->
