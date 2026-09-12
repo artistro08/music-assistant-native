@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:api="using:MusicAssistant.Api"
+    xmlns:controls="using:MusicAssistant.Controls"
     xmlns:local="using:MusicAssistant">
 
     <!-- Shared Brushes -->
@@ -116,10 +117,8 @@
                 <TextBlock Text="{x:Bind NowPlayingText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
 
-            <!-- Playing badge: accent disc with a play mark -->
-            <Border Grid.Column="2" Width="26" Height="26" CornerRadius="13" Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}">
-                <FontIcon Glyph="&#xE768;" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Margin="1,0,0,0" />
-            </Border>
+            <!-- Live indicator: pulsing accent bars while the player plays -->
+            <controls:NowPlayingBars Grid.Column="2" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}" />
         </Grid>
     </DataTemplate>
     <!-- /Player Card -->
