@@ -13,24 +13,30 @@ namespace MusicAssistant;
 /// Fluent (WinUI) context menu for the tray icon.
 ///
 /// WinUI menus need a XAML window to live in and the main window may be
-/// hidden, so the menu is hosted by an invisible tool window that is sized to
-/// the menu and moved to where a native tray menu would go (Win32
-/// CalculatePopupWindowPosition, so it stays on the work area). The window is
-/// brought to the foreground, the flyout fills it, and the menu closes when the
-/// window loses activation, which is what an outside click does. Same approach
-/// as H.NotifyIcon's second-window mode.
+/// hidden, so the menu is hosted by an invisible tool window. Like the
+/// Windows shell's own tray flyouts, the menu is placed off the taskbar edge:
+/// the icon's rectangle (Shell_NotifyIconGetRect) and the monitor's work area
+/// tell which edge the taskbar is on, the host window is parked in the work
+/// area corner next to the icon, and the flyout opens from that corner
+/// towards the screen. The host is brought to the foreground and the menu
+/// closes when it loses activation, which is what an outside click does.
 /// </summary>
 /// <remarks>
-/// @link https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-calculatepopupwindowposition
+/// @link https://learn.microsoft.com/windows/win32/api/shellapi/nf-shellapi-shell_notifyicongetrect
+/// @link https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getmonitorinfow
 /// </remarks>
 public sealed class TrayMenu
 {
+    private const int HostWidth = 600, HostHeight = 800;   // physical pixels; room for the menu at any scale, clamped to the work area
+
+    private readonly IntPtr     owner;
     private readonly Window     window;
     private readonly IntPtr     hwnd;
     private readonly Grid       root;
-    private readonly MenuFlyout flyout = new() { Placement = FlyoutPlacementMode.Full };
+    private readonly Grid       target = new() { Width = 1, Height = 1 };   // the flyout opens from this corner of the host
+    private readonly MenuFlyout flyout = new();
 
-    // Persistent items: relabeled per show, so their measured size is available before the window is placed
+    // Persistent items, relabeled per show
     private readonly MenuFlyoutItem    openItem     = Item("Open Music Assistant", "");
     private readonly MenuFlyoutItem    playItem     = Item("Play", "");
     private readonly MenuFlyoutItem    nextItem     = Item("Next", "");
@@ -42,7 +48,9 @@ public sealed class TrayMenu
 
     public TrayMenu(IntPtr owner, Action open, Action exit)
     {
+        this.owner = owner;
         root   = new Grid { Background = new SolidColorBrush(Colors.Transparent) };
+        root.Children.Add(target);
         window = new Window { Content = root, SystemBackdrop = null };
         hwnd   = WinRT.Interop.WindowNative.GetWindowHandle(window);
         window.AppWindow.IsShownInSwitchers = false;
@@ -76,42 +84,65 @@ public sealed class TrayMenu
         flyout.Closed    += (_, _) => Close();
         window.Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated) Close(); };
 
-        // Warm-up: load the XAML tree and the menu items once so they can be measured later, then hide
-        root.Loaded += (_, _) =>
-        {
-            flyout.ShowAt(root, new FlyoutShowOptions { ShowMode = FlyoutShowMode.Transient });
-            flyout.Hide();
-            ShowWindow(hwnd, SW_HIDE);
-        };
+        // Warm-up: load the XAML tree once (a first ShowAt on a never-shown window is not reliable), then hide
         window.Activate();
         ShowWindow(hwnd, SW_HIDE);
     }
 
-    /// <summary>Show the menu for the tray icon at screen point (x, y) in physical pixels.</summary>
+    /// <summary>Show the menu for the tray icon; (x, y) is the shell's anchor point in physical pixels, used when the icon rectangle is unavailable.</summary>
     public void Show(int x, int y)
     {
         if (visible) Close();
         Refresh();
 
-        var scale = root.XamlRoot?.RasterizationScale ?? 1.0;
-        var size  = Measure(scale);
+        // Icon rectangle and the work area of its monitor
+        var id = new NOTIFYICONIDENTIFIER { cbSize = (uint)Marshal.SizeOf<NOTIFYICONIDENTIFIER>(), hWnd = owner, uID = 1 };
+        if (Shell_NotifyIconGetRect(ref id, out var icon) != 0) icon = new RECT { Left = x, Top = y, Right = x + 1, Bottom = y + 1 };
+        var info = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
+        GetMonitorInfo(MonitorFromRect(ref icon, MONITOR_DEFAULTTONEAREST), ref info);
+        var work = info.rcWork;
 
-        // Same placement rules as a native tray menu: on the work area, next to the icon, never over it
-        var pad     = (int)Math.Round(36 * scale);
-        var anchor  = new POINT { X = x, Y = y };
-        var wanted  = new SIZE  { cx = size.Width, cy = size.Height };
-        var exclude = new RECT  { Left = x - pad / 2, Top = y - pad / 2, Right = x + pad / 2, Bottom = y + pad / 2 };
-        if (!CalculatePopupWindowPosition(ref anchor, ref wanted, TPM_BOTTOMALIGN | TPM_WORKAREA, ref exclude, out var rect))
+        // The taskbar is on the monitor edge the icon sits against
+        int toTop  = icon.Top  - info.rcMonitor.Top,  toBottom = info.rcMonitor.Bottom - icon.Bottom;
+        int toLeft = icon.Left - info.rcMonitor.Left, toRight  = info.rcMonitor.Right  - icon.Right;
+        var edge = Math.Min(Math.Min(toTop, toBottom), Math.Min(toLeft, toRight)) switch
         {
-            rect = new RECT { Left = x - size.Width, Top = y - size.Height, Right = x, Bottom = y };
-        }
+            var m when m == toBottom => Edge.Bottom,
+            var m when m == toTop    => Edge.Top,
+            var m when m == toLeft   => Edge.Left,
+            _                        => Edge.Right,
+        };
+
+        // Park the host in the work-area corner next to the icon; the flyout grows from that corner into the screen
+        var w = Math.Min(HostWidth,  work.Right - work.Left);
+        var h = Math.Min(HostHeight, work.Bottom - work.Top);
+        var right  = Math.Clamp(icon.Right,  work.Left + w, work.Right);
+        var bottom = Math.Clamp(icon.Bottom, work.Top + h,  work.Bottom);
+        var host = edge switch
+        {
+            Edge.Bottom => new RECT { Left = right - w, Top = work.Bottom - h, Right = right, Bottom = work.Bottom },
+            Edge.Top    => new RECT { Left = right - w, Top = work.Top, Right = right, Bottom = work.Top + h },
+            Edge.Left   => new RECT { Left = work.Left, Top = bottom - h, Right = work.Left + w, Bottom = bottom },
+            _           => new RECT { Left = work.Right - w, Top = bottom - h, Right = work.Right, Bottom = bottom },
+        };
+        target.HorizontalAlignment = edge == Edge.Left ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        target.VerticalAlignment   = edge == Edge.Top  ? VerticalAlignment.Top    : VerticalAlignment.Bottom;
+        flyout.Placement = edge switch
+        {
+            Edge.Bottom => FlyoutPlacementMode.TopEdgeAlignedRight,
+            Edge.Top    => FlyoutPlacementMode.BottomEdgeAlignedRight,
+            Edge.Left   => FlyoutPlacementMode.RightEdgeAlignedBottom,
+            _           => FlyoutPlacementMode.LeftEdgeAlignedBottom,
+        };
 
         visible = true;
-        window.AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top));
+        window.AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(host.Left, host.Top, host.Right - host.Left, host.Bottom - host.Top));
         ShowWindow(hwnd, SW_SHOWNORMAL);
         SetForegroundWindow(hwnd);
-        if (!flyout.IsOpen) flyout.ShowAt(root, new FlyoutShowOptions { ShowMode = FlyoutShowMode.Transient });
+        if (!flyout.IsOpen) flyout.ShowAt(target, new FlyoutShowOptions { ShowMode = FlyoutShowMode.Transient, Placement = flyout.Placement });
     }
+
+    private enum Edge { Bottom, Top, Left, Right }
 
     private void Close()
     {
@@ -146,21 +177,6 @@ public sealed class TrayMenu
         if (speakerItem.Items.Count == 0) speakerItem.Items.Add(new MenuFlyoutItem { Text = "No players available", IsEnabled = false });
     }
 
-    /// <summary>Menu size in physical pixels from the items' desired sizes (they were loaded once at warm-up).</summary>
-    private SIZE Measure(double scale)
-    {
-        double width = 0, height = 4;   // top and bottom margin
-        foreach (var item in flyout.Items)
-        {
-            if (item is not MenuFlyoutSeparator) { item.Height = 32; item.Padding = new Thickness(11, 0, 11, 0); }
-            item.Measure(new Windows.Foundation.Size(10000, 10000));
-            width   = Math.Max(width, item.DesiredSize.Width);
-            height += item.DesiredSize.Height;
-        }
-        if (width < 100) width = 260;   // not measurable yet: a sensible default so the menu still lands next to the icon
-        return new SIZE { cx = (int)Math.Round(scale * width + 4), cy = (int)Math.Round(scale * height + 4) };
-    }
-
     private static MenuFlyoutItem Item(string text, string glyph) => new() { Text = text, Icon = new FontIcon { Glyph = glyph } };
 
     private static void Send(string command)
@@ -177,16 +193,18 @@ public sealed class TrayMenu
 
     private const int  GWL_EXSTYLE = -20, GWLP_HWNDPARENT = -8, SW_HIDE = 0, SW_SHOWNORMAL = 1;
     private const long WS_EX_TOOLWINDOW = 0x00000080, WS_EX_LAYERED = 0x00080000;
-    private const uint LWA_ALPHA = 0x2, TPM_BOTTOMALIGN = 0x0020, TPM_WORKAREA = 0x10000;
+    private const uint LWA_ALPHA = 0x2, MONITOR_DEFAULTTONEAREST = 2;
 
-    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
-    [StructLayout(LayoutKind.Sequential)] private struct SIZE  { public int cx, cy; public int Width => cx; public int Height => cy; }
-    [StructLayout(LayoutKind.Sequential)] private struct RECT  { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public uint cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
+    [StructLayout(LayoutKind.Sequential)] private struct NOTIFYICONIDENTIFIER { public uint cbSize; public IntPtr hWnd; public uint uID; public Guid guidItem; }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr value);
     [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint key, byte alpha, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int cmd);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] private static extern bool CalculatePopupWindowPosition(ref POINT anchor, ref SIZE size, uint flags, ref RECT exclude, out RECT position);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromRect(ref RECT rect, uint flags);
+    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+    [DllImport("shell32.dll")] private static extern int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER identifier, out RECT rect);
 }
