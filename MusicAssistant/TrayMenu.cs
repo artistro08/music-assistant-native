@@ -152,6 +152,13 @@ public sealed class TrayMenu
         ShowWindow(hwnd, SW_HIDE);
     }
 
+    /// <summary>Tear the host window down on exit; a live window would keep the process running after the main window closed.</summary>
+    public void Dispose()
+    {
+        Close();
+        window.Close();
+    }
+
     /// <summary>Labels and enabled state follow the active player; the Speaker submenu lists every visible player.</summary>
     private void Refresh()
     {

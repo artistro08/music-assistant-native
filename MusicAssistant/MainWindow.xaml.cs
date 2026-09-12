@@ -88,7 +88,8 @@ public sealed partial class MainWindow : Window
     private void ExitApp()
     {
         exiting = true;
-        Close();
+        Close();                      // Closed handler stops the speaker, removes the tray icon and its menu window, disconnects
+        Application.Current.Exit();   // nothing else may keep the process alive
     }
 
     private void UpdateTrayTip()

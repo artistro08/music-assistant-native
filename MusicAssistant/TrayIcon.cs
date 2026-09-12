@@ -60,6 +60,7 @@ public sealed class TrayIcon : IDisposable
 
     public void Dispose()
     {
+        menu.Dispose();
         if (added)
         {
             var data = NewData();
