@@ -27,8 +27,9 @@
         <GridView x:Name="CardGrid" Grid.Row="1" Padding="24,0,24,24" SizeChanged="OnGridSizeChanged" ItemTemplate="{StaticResource CardButtonTemplate}" ItemContainerStyle="{StaticResource BareGridViewItemStyle}" SelectionMode="None">
             <GridView.ItemsPanel>
                 <ItemsPanelTemplate>
-                    <!-- Six per row: cell size is set in code from the available width -->
-                    <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="6" ItemWidth="216" ItemHeight="276" MaxWidth="{StaticResource ContentMaxWidth}" />
+                    <!-- Six per row: cell size and max width are set in code from the available width.
+                         Bleeds 14px each side (6px item margin + 8px hover padding) so artwork, not hover chrome, meets the content edges -->
+                    <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="6" ItemWidth="216" ItemHeight="276" Margin="-14,0,-14,0" />
                 </ItemsPanelTemplate>
             </GridView.ItemsPanel>
         </GridView>

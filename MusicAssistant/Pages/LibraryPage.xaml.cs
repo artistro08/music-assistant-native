@@ -110,30 +110,24 @@ public sealed partial class LibraryPage : Page
         EmptyState.Visibility = Visibility.Visible;
     }
 
-    private bool panelHooked;
-
     /// <summary>
-    /// Six cards per row. The cell size is taken from the wrap panel's own width (not the GridView's),
-    /// so scrollbars, padding and the 1600px cap are already accounted for; a cell computed from a
-    /// slightly wider number wraps to five per row at certain widths and flickers between the two.
+    /// Six cards per row, artwork flush with the page content edges.
+    /// The panel gets an explicit width of exactly six whole-pixel cells (fractional cells wrap to five
+    /// at some widths), centered, with room for the 14px hover bleed on each side, so the first and
+    /// last artwork line up with the header, which is 1600px max and 24px in from the window.
     /// </summary>
     private void OnGridSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (CardGrid.ItemsPanelRoot is not ItemsWrapGrid panel) return;
-        if (!panelHooked)
-        {
-            panelHooked = true;
-            panel.SizeChanged += (_, args) => ApplyCellSize(panel, args.NewSize.Width);
-        }
-        ApplyCellSize(panel, panel.ActualWidth);
-    }
+        const int columns = 6, bleed = 14, gap = 12, textBlock = 60;   // gap = BareGridViewItemStyle margin, bleed = gap/2 + card padding
 
-    private static void ApplyCellSize(ItemsWrapGrid panel, double panelWidth)
-    {
-        const int columns = 6, gap = 12, textBlock = 60;   // gap = BareGridViewItemStyle margin
-        if (panelWidth <= 0) return;
-        var cell = Math.Max(48, Math.Floor((panelWidth - 1) / columns));   // 1px slack so rounding can never push a card to the next row; no larger floor, or narrow windows drop to five
-        if (Math.Abs(panel.ItemWidth - cell) < 0.5) return;
+        var content   = Math.Min(e.NewSize.Width - CardGrid.Padding.Left - CardGrid.Padding.Right, (double)Application.Current.Resources["ContentMaxWidth"]);
+        var available = content + 2 * bleed;
+        var cell      = Math.Max(48, Math.Floor((available - 1) / columns));   // 1px slack so rounding can never push a card to the next row
+        if (Math.Abs(panel.ItemWidth - cell) < 0.5 && Math.Abs(panel.Width - cell * columns) < 0.5) return;
+
+        panel.HorizontalAlignment = HorizontalAlignment.Center;
+        panel.Width      = cell * columns;
         panel.ItemWidth  = cell;
         panel.ItemHeight = cell - gap + textBlock;   // art is (cell - gap - padding) square, plus padding and text
     }

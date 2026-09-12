@@ -63,8 +63,9 @@
 
     <!-- Bare item container: no built-in chrome, the card button draws its own hover -->
     <Style x:Key="BareGridViewItemStyle" TargetType="GridViewItem">
-        <!-- 12px between cards so neighboring hover surfaces do not touch -->
-        <Setter Property="Margin" Value="0,0,12,12" />
+        <!-- 12px between cards so neighboring hover surfaces do not touch; split evenly so the panel can bleed
+             symmetrically (LibraryPage) and the first and last artwork line up with the page content edges -->
+        <Setter Property="Margin" Value="6,0,6,12" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="MinHeight" Value="0" />
