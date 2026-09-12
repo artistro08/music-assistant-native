@@ -33,15 +33,30 @@ What you get:
 
 ## Install
 
-Grab the latest `MusicAssistant_x.y.z.0_x64.msix` from the [Releases](../../releases) page. Until the package is signed with a public code-signing certificate, Windows needs the publisher's test certificate once:
+Two downloads on the [Releases](../../releases) page, both self-contained (no .NET or Windows App SDK runtime needed):
 
-1. Download `MusicAssistant-TestSigning.cer` from the same release.
-2. Double-click it, choose **Install Certificate**, **Local Machine** (approve the elevation prompt), then **Place all certificates in the following store** and pick **Trusted People**.
-3. Double-click the `.msix` and click **Install**.
+**Portable (no certificate needed)**: download `MusicAssistant-portable-x64.zip`, extract it anywhere, run `MusicAssistant.exe`. SmartScreen may show "Windows protected your PC" the first time; choose More info › Run anyway. The app adds its own Start Menu entry on first run.
 
-The `Install.ps1` next to the package in `dist\` does the same two steps in one go if you build locally.
+**MSIX installer**: `MusicAssistant_x.y.z.0_x64.msix`. Windows only installs MSIX packages whose signature it trusts. Until the package is signed with a publicly trusted certificate, trust the test certificate once: download `Install-Msix.ps1`, the `.cer` and the `.msix` into one folder, right-click `Install-Msix.ps1` › Run with PowerShell, and approve the elevation prompt. The script imports the certificate into the machine's Trusted People store and installs the package. After that, newer `.msix` files install by double-click.
 
-The package is self-contained: no .NET or Windows App SDK runtime install is needed. Updates install over the top.
+If you would rather do it by hand, from an elevated PowerShell:
+
+```powershell
+Import-Certificate -FilePath .\MusicAssistant-TestSigning.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+Add-AppxPackage .\MusicAssistant_1.0.0.0_x64.msix
+```
+
+> Installing the certificate into the *current user's* store, or double-clicking the `.cer` without picking Local Machine, is not enough: the installer reports error `0x800B0109` (root certificate not trusted).
+
+### Getting rid of the certificate step
+
+Windows trusts MSIX signatures from certificates that chain to a public root. Options, cheapest first:
+
+1. **Microsoft Store**: free developer account (one-time fee), the Store signs the package and handles updates. Best for a wide audience.
+2. **Azure Trusted Signing**: a low monthly fee, keys stay in Azure, signs with a Microsoft-trusted certificate; `signtool` picks it up. Works for MSIX and for the portable exe (no SmartScreen warning after reputation builds).
+3. **A code-signing certificate from a public CA** (DigiCert, Sectigo, SSL.com): OV or EV, yearly cost, hardware token for EV.
+
+With any of those, build with `-p:PackageCertificateThumbprint=<your cert>` and the certificate steps above disappear.
 
 ## Build and run
 
