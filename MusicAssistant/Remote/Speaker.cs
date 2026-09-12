@@ -91,6 +91,7 @@ public sealed class Speaker
             App.Settings.SpeakerClientId = state.ClientId;
             App.Settings.Save();
         }
+        Player.OwnPlayerId = App.Settings.SpeakerClientId;
         Notify();
     }
 

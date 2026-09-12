@@ -289,8 +289,15 @@ public sealed class Player
     public string?       Icon              { get; set; }
     public ActiveSourceAudio? ActiveSourceAudio { get; set; }
 
+    /// <summary>
+    /// Player id of this PC's own speaker. The server flags web players as
+    /// hide_in_ui so other clients do not list them; the client that owns one
+    /// still shows it, the same way the web app shows its own web player.
+    /// </summary>
+    public static string? OwnPlayerId { get; set; }
+
     [JsonIgnore] public bool IsPlaying => PlaybackState == "playing";
-    [JsonIgnore] public bool IsVisible => Enabled && Available && !HideInUi && Type != "source";
+    [JsonIgnore] public bool IsVisible => Enabled && Available && Type != "source" && (!HideInUi || PlayerId == OwnPlayerId);
 
     [JsonIgnore]
     public string NowPlayingText => CurrentMedia is { Title.Length: > 0 } m

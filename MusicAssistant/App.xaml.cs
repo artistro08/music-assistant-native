@@ -63,6 +63,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        Player.OwnPlayerId = Settings.SpeakerClientId;   // this PC's speaker stays listed even though the server hides web players
         Window = new MainWindow();
         Window.Activate();
         MediaControls.Attach(Window);

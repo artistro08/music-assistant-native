@@ -15,6 +15,7 @@ namespace MusicAssistant.Pages;
 public sealed partial class ItemPage : Page
 {
     private MediaItem item = new();
+    private int       loadVersion;   // bumped per navigation so a slow load for the previous item cannot land on this one
 
     public ItemPage()
     {
@@ -26,8 +27,20 @@ public sealed partial class ItemPage : Page
         if (e.Parameter is not MediaItem parameter) return;
         if (parameter.Uri == item.Uri && TrackList.ItemsSource is not null) return;   // back/forward to the same item
         item = parameter;
+        Clear();
         Render();
-        _ = LoadAsync();
+        _ = LoadAsync(++loadVersion);
+    }
+
+    /// <summary>The page instance is cached, so drop the previous item's lists before the new one loads.</summary>
+    private void Clear()
+    {
+        TrackList.ItemsSource  = null;
+        TracksTitle.Visibility = Visibility.Collapsed;
+        EmptyText.Visibility   = Visibility.Collapsed;
+        AlbumsRow.Visibility   = Visibility.Collapsed;
+        Busy.IsActive          = true;
+        Busy.Visibility        = Visibility.Visible;
     }
 
     private void Render()
@@ -45,50 +58,65 @@ public sealed partial class ItemPage : Page
         ArtImage.Source = Templates.Decode(item.LargeImageUrl, 200);
     }
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(int version)
     {
+        var target = item;   // local copy: the field changes as soon as the user opens another item
         try
         {
             // Item mappings from lists are thin; fetch the full item for metadata and favorite state
-            if (item.Metadata is null && item.MediaType != "genre")
+            if (target.Metadata is null && target.MediaType != "genre")
             {
-                item = await App.Client.GetItemAsync(item.MediaType, item.ItemId, item.Provider);
+                target = await App.Client.GetItemAsync(target.MediaType, target.ItemId, target.Provider);
+                if (version != loadVersion) return;
+                item = target;
                 Render();
             }
 
-            switch (item.MediaType)
+            List<MediaItem>? tracks = null;
+            List<MediaItem>? albums = null;
+            var title = "Tracks";
+            switch (target.MediaType)
             {
                 case "podcast":
-                    ShowTracks("Episodes", await App.Client.GetPodcastEpisodesAsync(item.ItemId, item.Provider));
+                    title  = "Episodes";
+                    tracks = await App.Client.GetPodcastEpisodesAsync(target.ItemId, target.Provider);
                     break;
                 case "genre":
-                    ShowTracks("Tracks", await App.Client.GetGenreTracksAsync(item.ItemId));
+                    tracks = await App.Client.GetGenreTracksAsync(target.ItemId);
                     break;
                 case "audiobook":
                     break;
                 case "album":
-                    ShowTracks("Tracks", await App.Client.GetAlbumTracksAsync(item.ItemId, item.Provider));
+                    tracks = await App.Client.GetAlbumTracksAsync(target.ItemId, target.Provider);
                     break;
                 case "playlist":
-                    ShowTracks("Tracks", await App.Client.GetPlaylistTracksAsync(item.ItemId, item.Provider));
+                    tracks = await App.Client.GetPlaylistTracksAsync(target.ItemId, target.Provider);
                     break;
                 case "artist":
-                    var tracksTask = App.Client.GetArtistTopTracksAsync(item.ItemId, item.Provider);
-                    var albumsTask = App.Client.GetArtistAlbumsAsync(item.ItemId, item.Provider);
+                    title = "Top tracks";
+                    var tracksTask = App.Client.GetArtistTopTracksAsync(target.ItemId, target.Provider);
+                    var albumsTask = App.Client.GetArtistAlbumsAsync(target.ItemId, target.Provider);
                     await Task.WhenAll(tracksTask, albumsTask);
-                    ShowTracks("Top tracks", tracksTask.Result);
-                    AlbumsRow.Items      = albumsTask.Result.OrderByDescending(a => a.Year ?? 0).ToList();
-                    AlbumsRow.Visibility = albumsTask.Result.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                    tracks = tracksTask.Result;
+                    albums = albumsTask.Result;
                     break;
+            }
+            if (version != loadVersion) return;   // user moved on while we were loading
+
+            if (tracks is not null) ShowTracks(title, tracks);
+            if (albums is not null)
+            {
+                AlbumsRow.Items      = albums.OrderByDescending(a => a.Year ?? 0).ToList();
+                AlbumsRow.Visibility = albums.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
         }
         catch (ApiException ex)
         {
-            App.Window.ShowMessage(ex.Message);
+            if (version == loadVersion) App.Window.ShowMessage(ex.Message);
         }
         finally
         {
-            Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
+            if (version == loadVersion) { Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed; }
         }
     }
 
