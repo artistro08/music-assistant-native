@@ -94,9 +94,9 @@
             Padding="12,0"
             ColumnSpacing="12"
             CornerRadius="{StaticResource ControlCornerRadius}"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            Background="{x:Bind local:Templates.PlayerBackground(PlayerId)}"
             BorderThickness="1"
-            BorderBrush="{x:Bind local:Templates.PlayerBorder(PlayerId)}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             AutomationProperties.Name="{x:Bind DisplayName}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -107,18 +107,18 @@
             <!-- Type icon, replaced by the artwork of whatever the player has on -->
             <Border Width="40" Height="40" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                 <Grid>
-                    <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="16" />
+                    <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="16" Foreground="{x:Bind local:Templates.PlayerForeground(PlayerId)}" />
                     <Image Source="{x:Bind local:Templates.ToThumb(ArtUrl)}" Stretch="UniformToFill" Visibility="{x:Bind local:Templates.Vis(HasMedia)}" />
                 </Grid>
             </Border>
 
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                <TextBlock Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                <TextBlock Text="{x:Bind NowPlayingText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{x:Bind local:Templates.PlayerForeground(PlayerId)}" />
+                <TextBlock Text="{x:Bind NowPlayingText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{x:Bind local:Templates.PlayerSecondary(PlayerId)}" />
             </StackPanel>
 
-            <!-- Live indicator: pulsing accent bars while the player plays -->
-            <controls:NowPlayingBars Grid.Column="2" Width="26" Height="22" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}" />
+            <!-- Live indicator: pulsing bars while the player plays (on-accent color on the selected card) -->
+            <controls:NowPlayingBars Grid.Column="2" Width="26" Height="22" Foreground="{x:Bind local:Templates.PlayerBars(PlayerId)}" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}" />
         </Grid>
     </DataTemplate>
     <!-- /Player Card -->

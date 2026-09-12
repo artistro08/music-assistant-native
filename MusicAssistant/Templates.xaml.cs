@@ -127,9 +127,14 @@ public sealed partial class Templates : ResourceDictionary
     /// <summary>Check mark visibility for the selected player in pickers.</summary>
     public static Visibility ActiveVis(string playerId) => Vis(playerId == App.Settings.ActivePlayerId);
 
-    /// <summary>Accent outline for the active player card, subtle stroke otherwise.</summary>
-    public static Brush PlayerBorder(string playerId)
-        => (Brush)Application.Current.Resources[playerId == App.Settings.ActivePlayerId ? "AccentFillColorDefaultBrush" : "CardStrokeColorDefaultBrush"];
+    /// <summary>The active player card is filled with the accent color; its text and bars switch to the on-accent brushes.</summary>
+    public static Brush PlayerBackground(string playerId) => PlayerBrush(playerId, "AccentFillColorDefaultBrush", "CardBackgroundFillColorDefaultBrush");
+    public static Brush PlayerForeground(string playerId) => PlayerBrush(playerId, "TextOnAccentFillColorPrimaryBrush", "TextFillColorPrimaryBrush");
+    public static Brush PlayerSecondary(string playerId)  => PlayerBrush(playerId, "TextOnAccentFillColorSecondaryBrush", "TextFillColorSecondaryBrush");
+    public static Brush PlayerBars(string playerId)       => PlayerBrush(playerId, "TextOnAccentFillColorPrimaryBrush", "AccentTextFillColorPrimaryBrush");
+
+    private static Brush PlayerBrush(string playerId, string activeKey, string idleKey)
+        => (Brush)Application.Current.Resources[playerId == App.Settings.ActivePlayerId ? activeKey : idleKey];
 
     private static MediaItem? ItemOf(object sender) => (sender as FrameworkElement)?.DataContext as MediaItem;
 
