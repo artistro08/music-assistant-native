@@ -51,8 +51,10 @@ public sealed class RemoteBridge
         var userData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "WebView2");
         var options  = new CoreWebView2EnvironmentOptions
         {
-            // Hidden pages get their timers throttled; keep signaling and reconnects responsive
-            AdditionalBrowserArguments = "--disable-background-timer-throttling --disable-renderer-backgrounding --autoplay-policy=no-user-gesture-required " + $"--unsafely-treat-insecure-origin-as-secure=http://{VirtualHost}",
+            // Hidden pages get their timers throttled; keep signaling and reconnects responsive.
+            // HardwareMediaKeyHandling off: otherwise Chromium registers its own media session for the
+            // speaker's audio element and grabs Play/Pause keys, pausing the PC locally while the server plays on.
+            AdditionalBrowserArguments = "--disable-background-timer-throttling --disable-renderer-backgrounding --autoplay-policy=no-user-gesture-required --disable-features=HardwareMediaKeyHandling " + $"--unsafely-treat-insecure-origin-as-secure=http://{VirtualHost}",
         };
         var environment = await CoreWebView2Environment.CreateWithOptionsAsync(null, userData, options);
         await view.EnsureCoreWebView2Async(environment);

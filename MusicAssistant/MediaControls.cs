@@ -62,11 +62,29 @@ public static class MediaControls
         StartMenuShortcut.Ensure(App.AppUserModelId, "Music Assistant", Environment.ProcessPath ?? "", iconPath);
     }
 
+    /// <summary>
+    /// The player the media keys and overlay stand for. Windows' controls are about the sound this PC
+    /// makes, so while this PC's own speaker is busy they follow it even if another player is selected
+    /// in the app; otherwise they follow the selected player. A web player cannot pause, the server
+    /// stops it instead, so "busy" also covers a stopped speaker that still has a queue to resume.
+    /// </summary>
+    private static Player? Target()
+    {
+        var selected = App.ActivePlayer;
+        var local    = Player.OwnPlayerId is { } id && App.Client.Players.GetValueOrDefault(id) is { IsVisible: true } p ? p : null;
+        if (local is null || local.PlayerId == selected?.PlayerId) return selected;
+        if (selected?.PlaybackState is "playing" or "paused") return selected;
+        if (local.IsPlaying) return local;
+
+        var localQueue = App.Client.Queues.GetValueOrDefault(App.Client.QueueIdFor(local));
+        return localQueue?.CurrentItem is not null ? local : selected;
+    }
+
     // Windows → Music Assistant
 
     private static void OnButtonPressed(SystemMediaTransportControls sender, SystemMediaTransportControlsButtonPressedEventArgs args)
     {
-        if (App.ActivePlayer is not { } player) return;
+        if (Target() is not { } player) return;
 
         var command = args.Button switch
         {
@@ -90,7 +108,7 @@ public static class MediaControls
     {
         if (controls is null) return;
 
-        var player = App.ActivePlayer;
+        var player = Target();
         var queue  = player is null ? null : App.Client.Queues.GetValueOrDefault(App.Client.QueueIdFor(player));
         var item   = queue?.CurrentItem;
         var media  = player?.CurrentMedia;

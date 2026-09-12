@@ -77,6 +77,13 @@ public sealed class TrayIcon : IDisposable
 
     private IntPtr WndProc(IntPtr h, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, IntPtr refData)
     {
+        // A second launch of the app asks the running copy to show itself
+        if (msg == SingleInstance.ActivateMessage)
+        {
+            open();
+            return IntPtr.Zero;
+        }
+
         if (msg == TrayMessage)
         {
             switch ((int)(lParam.ToInt64() & 0xFFFF))

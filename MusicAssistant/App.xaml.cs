@@ -63,6 +63,12 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        if (!SingleInstance.Claim())
+        {
+            Exit();   // the running copy was told to show itself
+            return;
+        }
+
         Player.OwnPlayerId = Settings.SpeakerClientId;   // this PC's speaker stays listed even though the server hides web players
         Window = new MainWindow();
         Window.Activate();
