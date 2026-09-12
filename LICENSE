@@ -20,6 +20,5 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Third-party: MusicAssistant/Assets/bridge/sendspin.js bundles @sendspin/sendspin-js
-and its dependencies, licensed under the Apache License 2.0 (see
-MusicAssistant/Assets/bridge/sendspin-LICENSE.txt).
+Third-party packages (NuGet, with their own licenses): SIPSorcery (BSD 3-Clause),
+BouncyCastle.Cryptography (MIT), Concentus (MIT).

@@ -4,6 +4,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using MusicAssistant.Api;
+using MusicAssistant.Sendspin;
 
 // Fake Music Assistant server on localhost. Exercises: ServerInfo handshake,
 // auth/login + auth, partial results, error results, live player events,
@@ -11,6 +12,77 @@ using MusicAssistant.Api;
 
 const string Prefix = "http://127.0.0.1:18095/";
 const string Token  = "test-token";
+
+// `dotnet run -- --peak` prints the output device's peak level over 3 seconds (live playback checks)
+if (args.Length > 0 && args[0] == "--peak")
+{
+    var peak = MusicAssistant.Check.PeakMeter.Sample(TimeSpan.FromSeconds(3));
+    Console.WriteLine($"peak={peak:0.000}");
+    return;
+}
+
+// Remote ID pinning (same vectors as the old bridge self-test)
+var sixteen = Enumerable.Range(0, 16).Select(i => (byte)i).ToArray();
+Check(RemoteId.Decode("AAAQEAYEAUDAOCAJBIFQYDIOB4").SequenceEqual(sixteen), "remote id decodes to 16 bytes");
+Check(RemoteId.Decode("AAAQEAYEAUDAOCAJBIFQYDIOB4".Replace('2', '9')).SequenceEqual(sixteen), "nines are read as twos");
+var goodFingerprint = string.Join(":", Enumerable.Range(0, 32).Select(i => i.ToString("X2")));
+var badFingerprint  = "FF:" + goodFingerprint[3..];
+var sdpGood   = $"v=0\r\na=fingerprint:sha-256 {goodFingerprint}\r\na=setup:active\r\n";
+var sdpBad    = $"v=0\r\na=fingerprint:sha-256 {badFingerprint}\r\n";
+var sdpMixed  = $"v=0\r\na=fingerprint:sha-256 {goodFingerprint}\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=fingerprint:sha-256 {badFingerprint}\r\n";
+var sdpWeak   = $"v=0\r\na=fingerprint:sha-1 AA:BB\r\na=fingerprint:sha-256 {goodFingerprint}\r\n";
+var sdpOnlyWeak = "v=0\r\na=fingerprint:sha-1 AA:BB\r\n";
+Check(RemoteId.VerifyAndSanitizeSdp(sdpGood, "AAAQEAYEAUDAOCAJBIFQYDIOB4") == sdpGood, "matching fingerprint accepted");
+Check(Fails(() => RemoteId.VerifyAndSanitizeSdp(sdpBad, "AAAQEAYEAUDAOCAJBIFQYDIOB4")), "wrong fingerprint rejected");
+Check(Fails(() => RemoteId.VerifyAndSanitizeSdp(sdpMixed, "AAAQEAYEAUDAOCAJBIFQYDIOB4")), "session good + media bad rejected");
+Check(!RemoteId.VerifyAndSanitizeSdp(sdpWeak, "AAAQEAYEAUDAOCAJBIFQYDIOB4").Contains("sha-1"), "weaker algorithms stripped");
+Check(Fails(() => RemoteId.VerifyAndSanitizeSdp(sdpOnlyWeak, "AAAQEAYEAUDAOCAJBIFQYDIOB4")), "only weaker algorithms rejected");
+Check(Fails(() => RemoteId.VerifyAndSanitizeSdp("", "AAAQEAYEAUDAOCAJBIFQYDIOB4")), "empty sdp rejected");
+Check(Fails(() => RemoteId.Decode("AAAQEAYEAUDAOCAJBIFQYDIOB!")), "bad remote id rejected");
+
+// Sendspin building blocks
+Check(Base64Url.Decode(Base64Url.Encode(sixteen)).SequenceEqual(sixteen) && !Base64Url.Encode(new byte[] { 0xFB, 0xFF }).Contains('+'), "base64url round trip");
+Check(Base64Url.Encode(NoiseCrypto.Hash("sendspin-psk-id-v1"u8, Identity.SentinelPsk)) == "GFsV9tLaSQm9HcFWpKsgYQOr7wFTvNUtkmFwuVz3zoo", "sentinel psk_id matches the specification");
+{
+    // KKpsk2 round trip: a fake server (initiator) and this client (responder) end up with matching transport keys
+    var (serverPrivate, serverPublic) = NoiseCrypto.GenerateKeyPair();
+    var (clientPrivate, clientPublic) = NoiseCrypto.GenerateKeyPair();
+    var psk      = NoiseCrypto.Hash("test psk"u8);
+    var prologue = "client-init+server-init"u8.ToArray();
+    var noiseServer = new HandshakeState(initiator: true,  prologue, serverPrivate, serverPublic, clientPublic, psk);
+    var noiseClient = new HandshakeState(initiator: false, prologue, clientPrivate, clientPublic, serverPublic);
+    var message1 = noiseServer.WriteMessage1("{\"psk_id\":\"x\",\"psk_category\":\"sn\"}"u8);
+    var payload1 = noiseClient.ReadMessage1(message1);
+    noiseClient.SetPsk(psk);
+    var message2 = noiseServer.ReadMessage2(noiseClient.WriteMessage2("{}"u8));
+    var serverSession = noiseServer.Split();
+    var clientSession = noiseClient.Split();
+    var roundTrip = clientSession.Decrypt(serverSession.Encrypt("hello from the server"u8));
+    var backTrip  = serverSession.Decrypt(clientSession.Encrypt("hello from the client"u8));
+    Check(Encoding.UTF8.GetString(payload1).Contains("psk_id") && Encoding.UTF8.GetString(message2) == "{}", "noise handshake payloads");
+    Check(Encoding.UTF8.GetString(roundTrip) == "hello from the server" && Encoding.UTF8.GetString(backTrip) == "hello from the client", "noise transport both directions");
+    Check(noiseServer.HandshakeHash.SequenceEqual(noiseClient.HandshakeHash), "handshake hash agrees on both sides");
+    var wrongPsk = new HandshakeState(initiator: false, prologue, clientPrivate, clientPublic, serverPublic);
+    var server2  = new HandshakeState(initiator: true, prologue, serverPrivate, serverPublic, clientPublic, psk);
+    wrongPsk.ReadMessage1(server2.WriteMessage1("{}"u8));
+    wrongPsk.SetPsk(NoiseCrypto.Hash("another psk"u8));
+    Check(Fails(() => server2.ReadMessage2(wrongPsk.WriteMessage2("{}"u8))), "wrong psk fails the handshake");
+}
+{
+    // Time filter: a constant 5 second offset with 40 ppm drift is recovered from noisy measurements
+    var filter = new TimeFilter(0, 1.1, 2.0);
+    var random = new Random(7);
+    for (var i = 0; i < 40; i++)
+    {
+        long t = 1_000_000L * (i + 1) * 10;
+        var trueOffset = 5_000_000.0 + 40e-6 * t;
+        filter.Update(trueOffset + random.Next(-400, 400), 1000, t);
+    }
+    var probe = 1_000_000L * 410;   // 10 s after the last update, the spacing of the real time-sync bursts
+    var filterError = Math.Abs(filter.ComputeServerTime(probe) - (probe + 5_000_000.0 + 40e-6 * probe));
+    Check(filter.IsSynchronized && filterError < 1000, $"time filter converges (error {filterError:0} us)");
+    Check(Math.Abs(filter.ComputeClientTime(filter.ComputeServerTime(probe)) - probe) <= 1, "time filter inverse");
+}
 
 var listener = new HttpListener();
 listener.Prefixes.Add(Prefix);
@@ -77,6 +149,12 @@ static void Check(bool condition, string what)
 {
     Console.WriteLine($"{(condition ? "PASS" : "FAIL")}  {what}");
     if (!condition) Environment.Exit(1);
+}
+
+static bool Fails(Action action)
+{
+    try { action(); return false; }
+    catch (Exception) { return true; }
 }
 
 static async Task<T?> Throws<T>(Func<Task> action, string what) where T : Exception

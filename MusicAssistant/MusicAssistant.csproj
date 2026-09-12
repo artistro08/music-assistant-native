@@ -41,8 +41,6 @@
   <ItemGroup>
     <!-- Window and tray icon, loaded from disk at runtime -->
     <Content Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Remote access bridge page, loaded into a hidden WebView2 -->
-    <Content Include="Assets\bridge\**" CopyToOutputDirectory="PreserveNewest" />
     <None Remove="Assets\app-1024.png" />
     <Content Include="Assets\Package\*.png" Condition="'$(WindowsPackageType)' == 'MSIX'" />
     <AppxManifest Include="Package.appxmanifest" Condition="'$(WindowsPackageType)' == 'MSIX'"><SubType>Designer</SubType></AppxManifest>
@@ -57,6 +55,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.6584" />
+    <!-- Remote access: WebRTC data channels (pure managed; brings BouncyCastle, used for X25519 too) -->
+    <PackageReference Include="SIPSorcery" Version="10.0.16" />
+    <!-- Speaker: Opus decoding (pure managed port of libopus) -->
+    <PackageReference Include="Concentus" Version="2.2.2" />
   </ItemGroup>
 
 </Project>

@@ -3,47 +3,42 @@ using MusicAssistant.Api;
 namespace MusicAssistant.Remote;
 
 /// <summary>
-/// Remote transport: the "ma-api" WebRTC data channel, driven by the bridge
-/// page. Images resolve through a loopback proxy that tunnels HTTP requests
-/// over the same connection.
+/// Remote transport: the "ma-api" data channel of a <see cref="RemotePeer"/>.
+/// Images resolve through a loopback proxy that tunnels HTTP requests over the
+/// same connection. The peer is exposed so the speaker can open its own
+/// "sendspin" channel on it.
 /// </summary>
 public sealed class WebRtcTransport : IMassTransport
 {
-    private readonly RemoteBridge bridge;
-    private readonly string       remoteId;
     private readonly LocalImageProxy proxy;
-    private TaskCompletionSource? opened;
     private bool connected;
 
-    public string HttpBaseUrl => proxy.BaseUrl;
-    public bool   IsRemote    => true;
+    public RemotePeer Peer        { get; }
+    public string     HttpBaseUrl => proxy.BaseUrl;
+    public bool       IsRemote    => true;
 
     public event Action<string>?     MessageReceived;
     public event Action<Exception?>? Closed;
 
-    public WebRtcTransport(RemoteBridge bridge, string remoteId)
+    public WebRtcTransport(string remoteId)
     {
-        this.bridge   = bridge;
-        this.remoteId = remoteId;
-        proxy = new LocalImageProxy(bridge);
-
-        bridge.MessageReceived  += OnMessage;
-        bridge.Opened           += OnOpened;
-        bridge.ClosedWithReason += OnClosed;
-        bridge.Errored          += OnError;
+        Peer  = new RemotePeer(remoteId);
+        proxy = new LocalImageProxy(Peer);
+        Peer.ApiMessage += message => MessageReceived?.Invoke(message);
+        Peer.Closed     += OnClosed;
     }
 
     public async Task ConnectAsync(CancellationToken ct)
     {
-        await bridge.InitializeAsync();
-        opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        bridge.Connect(remoteId);
-
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(45));
-        using (timeout.Token.Register(() => opened.TrySetException(new ApiException(0, "Remote connection timed out"))))
+        try
         {
-            await opened.Task;
+            await Peer.ConnectAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new ApiException(0, "Remote connection timed out");
         }
         connected = true;
         proxy.Start();
@@ -52,7 +47,7 @@ public sealed class WebRtcTransport : IMassTransport
     public Task SendAsync(string message)
     {
         if (!connected) throw new ApiException(0, "Not connected");
-        bridge.Send(message);
+        Peer.SendApi(message);
         return Task.CompletedTask;
     }
 
@@ -60,31 +55,21 @@ public sealed class WebRtcTransport : IMassTransport
     {
         connected = false;
         proxy.Stop();
-        bridge.Disconnect();
+        Peer.Close();
         return Task.CompletedTask;
+    }
+
+    private void OnClosed(string reason)
+    {
+        if (!connected) return;
+        connected = false;
+        proxy.Stop();
+        Closed?.Invoke(new ApiException(0, reason));
     }
 
     public void Dispose()
     {
-        bridge.MessageReceived  -= OnMessage;
-        bridge.Opened           -= OnOpened;
-        bridge.ClosedWithReason -= OnClosed;
-        bridge.Errored          -= OnError;
         proxy.Dispose();
+        Peer.Dispose();
     }
-
-    private void OnMessage(string data) => MessageReceived?.Invoke(data);
-    private void OnOpened()             => opened?.TrySetResult();
-
-    private void OnClosed(string reason)
-    {
-        var error = new ApiException(0, reason);
-        if (opened is { Task.IsCompleted: false } pending) { pending.TrySetException(error); return; }
-        if (!connected) return;
-        connected = false;
-        proxy.Stop();
-        Closed?.Invoke(error);
-    }
-
-    private void OnError(string message) => App.Log("Remote transport: " + message);
 }

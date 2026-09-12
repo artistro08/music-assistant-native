@@ -99,26 +99,25 @@ Music Assistant's remote access works like this: the server keeps a websocket op
 
 In this app:
 
-- The WebRTC side lives in `MusicAssistant/Assets/bridge/bridge.js`, a local page hosted in a hidden WebView2 (which ships with the Windows App SDK, so there is no extra dependency and it is the same Chromium WebRTC stack the web app uses). The page is locked down with a strict CSP, cannot navigate anywhere, and talks to the app only through JSON messages.
-- `Remote/WebRtcTransport.cs` plugs that channel into the same API client used for local websocket connections. `Remote/LocalImageProxy.cs` serves artwork on `127.0.0.1` under a per-session random path and fetches each image through the data channel, so every image control keeps working unchanged.
+- The WebRTC side is `Remote/RemotePeer.cs`, built on [SIPSorcery](https://github.com/sipsorcery-org/sipsorcery) (pure managed, no browser, no native binaries): signaling, ICE/TURN, DTLS and the data channels. `Api/RemoteId.cs` does the pinning: it decodes the Remote ID and rejects any answer whose SHA-256 fingerprints do not match, before the description is accepted; SIPSorcery then also checks the DTLS certificate against the SDP fingerprint.
+- `Remote/WebRtcTransport.cs` plugs the "ma-api" channel into the same API client used for local websocket connections. `Remote/LocalImageProxy.cs` serves artwork on `127.0.0.1` under a per-session random path and fetches each image through the connection, so every image control keeps working unchanged.
 - Connection order is always local address first (5 second timeout when a Remote ID is known), then remote. The title bar shows a REMOTE badge while the relay is in use.
 - Signing in as an admin over the local network stores the server's Remote ID automatically. Anyone else pastes it once from Settings, or on the login page.
 - Home Assistant sign-in is local-only because the browser must reach the server's callback URL. Username and password work over remote.
 
-Run the pinning self-test after touching `bridge.js`:
-
-```powershell
-.\tools\bridge-selftest.ps1
-```
+The pinning vectors are part of the `MusicAssistant.Check` self-check.
 
 ## Play on this PC (speaker)
 
-Music Assistant streams to players over its own Sendspin protocol: a Noise-encrypted session, device pairing, clock synchronization and timestamped audio chunks. Rather than reimplement that, the app runs the official `@sendspin/sendspin-js` library (Apache-2.0, the same one the web app uses) inside the hidden WebView2 bridge page and lets it play through Web Audio, which comes out of the default Windows output. It is vendored as `MusicAssistant/Assets/bridge/sendspin.js`; `tools/build-sendspin.ps1` rebuilds it with Node.js and esbuild.
+Music Assistant streams to players over its own [Sendspin](https://github.com/Sendspin/spec) protocol: a Noise-encrypted session, device pairing, clock synchronization and timestamped audio chunks. The app implements the player role natively in `MusicAssistant/Sendspin/`:
 
-- Turn it on under Settings › Play on this PC. The player appears in Music Assistant under the computer's name, pairs automatically, and can be grouped with other players in sync.
-- Locally the audio socket is the server's authenticated `/sendspin` proxy. Remotely it is a second data channel on the same WebRTC connection.
-- The bridge page runs on an `http://` origin that WebView2 is told to treat as secure, so it can open plain `ws://` sockets to a LAN server while still having WebCodecs for Opus and FLAC decoding.
-- `Remote/Speaker.cs` starts and stops the player, completes pairing through the API and mirrors its state for Settings.
+- `Noise.cs`: the `Noise_KKpsk2_25519_AESGCM_SHA256` handshake and transport (X25519 from BouncyCastle, AES-GCM and SHA-256 from .NET). `Identity.cs` keeps the key pair, the pairing PSK and the pairing records in the Windows Credential Manager.
+- `SendspinConnection.cs`: the init exchange, handshake, fragment reassembly and in-band re-handshakes over a socket. `ProxyWebSocket.cs` is the local socket (the server's authenticated `/sendspin` proxy); remotely the socket is a "sendspin" data channel on the WebRTC connection.
+- `SendspinPlayer.cs`: hello, state, time-sync bursts (`TimeFilter.cs`, the Kalman filter the specification names), stream messages and the Pairing PSK flow. It presents itself as the built-in "Web Player", so the server pairs it through the API without an operator step.
+- `WasapiOutput.cs` renders through shared-mode WASAPI and reads the device clock (`IAudioClock`, QPC-stamped), so `AudioScheduler.cs` can place every chunk on the server's timeline to within a millisecond, nudging by whole frames when needed. `Decoders.cs` handles PCM and Opus (Concentus).
+- `Speaker.cs` keeps the player connected with backoff and mirrors its state for Settings.
+
+Turn it on under Settings › Play on this PC. The player appears in Music Assistant under the computer's name, pairs automatically, and can be grouped with other players in sync. On the local network the server streams PCM at the device's own sample rate; over the internet Opus is preferred.
 
 ## Packaging
 
@@ -166,7 +165,7 @@ dotnet run
 - Tokens live in the Windows Credential Manager (`PasswordVault`), never in plain files or logs.
 - The app only connects to the address you enter; `http`, `https`, `ws` and `wss` are accepted. Use `https`/`wss` for anything outside your LAN.
 - Images are loaded from the server's image proxy or from `https` URLs the server marks as remotely accessible; plain `http` image URLs are routed through the server proxy.
-- No third-party NuGet packages beyond the Windows App SDK. The only embedded web content is the app's own local bridge page, loaded from disk under a strict CSP with navigation disabled; it carries one vendored library, `@sendspin/sendspin-js` (Apache-2.0), for the speaker feature.
+- No embedded web content and no WebView2. Third-party packages: SIPSorcery (BSD-3-Clause, WebRTC), BouncyCastle (MIT, X25519, pulled in by SIPSorcery) and Concentus (MIT, Opus decoding). Everything else is the Windows App SDK and .NET.
 - Failures in a UI action are logged to `%LOCALAPPDATA%\MusicAssistant\crash.log` and shown in the app instead of terminating it. Tokens and passwords are never logged.
 
 ## Memory

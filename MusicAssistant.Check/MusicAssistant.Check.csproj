@@ -15,6 +15,16 @@
     <Compile Include="..\MusicAssistant\Api\IMassTransport.cs" Link="Api\IMassTransport.cs" />
     <Compile Include="..\MusicAssistant\Api\WebSocketTransport.cs" Link="Api\WebSocketTransport.cs" />
     <Compile Include="..\MusicAssistant\Api\OAuthLoopback.cs" Link="Api\OAuthLoopback.cs" />
+    <Compile Include="..\MusicAssistant\Api\RemoteId.cs" Link="Api\RemoteId.cs" />
+    <Compile Include="..\MusicAssistant\Sendspin\Base64Url.cs" Link="Sendspin\Base64Url.cs" />
+    <Compile Include="..\MusicAssistant\Sendspin\Noise.cs" Link="Sendspin\Noise.cs" />
+    <Compile Include="..\MusicAssistant\Sendspin\TimeFilter.cs" Link="Sendspin\TimeFilter.cs" />
+    <Compile Include="..\MusicAssistant\Sendspin\Clock.cs" Link="Sendspin\Clock.cs" />
+    <Compile Include="..\MusicAssistant\Sendspin\Identity.cs" Link="Sendspin\Identity.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>
 
 </Project>

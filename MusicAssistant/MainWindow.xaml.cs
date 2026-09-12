@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using MusicAssistant.Api;
 using MusicAssistant.Pages;
 using MusicAssistant.Remote;
+using MusicAssistant.Sendspin;
 
 namespace MusicAssistant;
 
@@ -142,10 +143,8 @@ public sealed partial class MainWindow : Window
     // CONNECTION FLOW
     // =========================================================================
 
-    private RemoteBridge? bridge;
-    private RemoteBridge  Bridge  => bridge ??= new RemoteBridge(BridgeView);
-    private Speaker?      speaker;
-    public  Speaker       Speaker => speaker ??= new Speaker(Bridge);
+    private Speaker? speaker;
+    public  Speaker  Speaker => speaker ??= new Speaker();
 
     private async Task StartAsync()
     {
@@ -200,7 +199,7 @@ public sealed partial class MainWindow : Window
 
         if (!string.IsNullOrEmpty(remoteId))
         {
-            await App.Client.ConnectAsync(new WebRtcTransport(Bridge, remoteId), ct);
+            await App.Client.ConnectAsync(new WebRtcTransport(remoteId), ct);
             SetRemote(true);
             return;
         }

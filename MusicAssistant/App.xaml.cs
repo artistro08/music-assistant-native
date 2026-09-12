@@ -63,6 +63,10 @@ public partial class App : Application
         catch (Exception) { }   // unwritable profile folder: logging must not become the crash
     }
 
+    /// <summary>Verbose diagnostics (speaker sync, remote lifecycle); written only when MA_RTC_LOG is set, so the log stays for crashes.</summary>
+    public static readonly bool Verbose = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MA_RTC_LOG"));
+    public static void Debug(string message) { if (Verbose) Log(message); }
+
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         if (!SingleInstance.Claim())
@@ -72,6 +76,7 @@ public partial class App : Application
         }
 
         Player.OwnPlayerId = Settings.SpeakerClientId;   // this PC's speaker stays listed even though the server hides web players
+        Remote.DiagnosticLog.EnableIfRequested();
         Window = new MainWindow();
         Window.Activate();
         MediaControls.Attach(Window);

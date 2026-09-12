@@ -15,7 +15,7 @@ public sealed class LocalImageProxy : IDisposable
 {
     private static readonly string[] AllowedPrefixes = ["/imageproxy", "/preview"];
 
-    private readonly RemoteBridge bridge;
+    private readonly RemotePeer peer;
     private readonly HttpListener listener = new();
     private readonly string nonce = Guid.NewGuid().ToString("N");
     private CancellationTokenSource? cts;
@@ -23,9 +23,9 @@ public sealed class LocalImageProxy : IDisposable
     /// <summary>Base URL to substitute for the server's own base URL.</summary>
     public string BaseUrl { get; }
 
-    public LocalImageProxy(RemoteBridge bridge)
+    public LocalImageProxy(RemotePeer peer)
     {
-        this.bridge = bridge;
+        this.peer = peer;
 
         var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
         probe.Start();
@@ -85,7 +85,7 @@ public sealed class LocalImageProxy : IDisposable
                 return;
             }
 
-            var reply = await bridge.HttpAsync("GET", path, null, ct);
+            var reply = await peer.HttpAsync("GET", path, null, ct);
             response.StatusCode = reply.Status == 0 ? 502 : reply.Status;
             if (reply.Headers.TryGetValue("Content-Type", out var type)) response.ContentType = type;
             response.Headers["Cache-Control"] = "private, max-age=3600";

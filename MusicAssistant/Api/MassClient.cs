@@ -34,6 +34,8 @@ public sealed class MassClient : IDisposable
     public string      BaseUrl     { get; private set; } = "";
     public bool        IsConnected { get; private set; }
     public bool        IsRemote    => transport?.IsRemote == true;
+    /// <summary>The live transport, for features that ride the same connection (the speaker's remote channel).</summary>
+    public IMassTransport? Transport => transport;
 
     public ConcurrentDictionary<string, Player>      Players { get; } = new();
     public ConcurrentDictionary<string, PlayerQueue> Queues  { get; } = new();
