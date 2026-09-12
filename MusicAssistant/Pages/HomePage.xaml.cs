@@ -41,8 +41,9 @@ public sealed partial class HomePage : Page
     /// <summary>Rebuild the players row only when something visible changed; player events arrive every second while playing.</summary>
     private void RefreshPlayers()
     {
+        // Fixed order (this PC first, then by name) so a player does not jump to another page when it pauses
         var players = App.Client.Players.Values.Where(p => p.IsVisible)
-            .OrderByDescending(p => p.IsPlaying).ThenBy(p => p.Name).ToList();
+            .OrderByDescending(p => p.PlayerId == Player.OwnPlayerId).ThenBy(p => p.Name).ToList();
 
         var signature = string.Join("|", players.Select(p => $"{p.PlayerId}:{p.PlaybackState}:{p.NowPlayingText}")) + "#" + App.Settings.ActivePlayerId;
         if (signature == playersSignature) return;

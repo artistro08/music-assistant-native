@@ -151,7 +151,8 @@ public sealed partial class PlayerBar : UserControl
 
         ProgressSlider.Maximum   = Math.Max(1, duration);
         ProgressSlider.Value     = Math.Min(elapsed, ProgressSlider.Maximum);
-        ProgressSlider.IsEnabled = duration > 0 && Player?.Supports("seek") == true;
+        // Queue playback seeks on the server by restarting the stream, so it works even for players without a native seek (the PC speaker)
+        ProgressSlider.IsEnabled = duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
         ElapsedText.Text         = Format.Duration(elapsed);
         DurationText.Text        = duration > 0 ? Format.Duration(duration) : "--:--";
     }
@@ -248,7 +249,9 @@ public sealed partial class PlayerBar : UserControl
         isSeeking = false;
         if (Player is not { } player) return;
         var position = (int)ProgressSlider.Value;
-        _ = RunAsync(() => App.Client.PlayerCommandAsync(player.PlayerId, "seek", new { position }));
+        _ = Queue?.CurrentItem is not null
+            ? RunAsync(() => App.Client.QueueCommandAsync(App.Client.QueueIdFor(player), "seek", new { position }))
+            : RunAsync(() => App.Client.PlayerCommandAsync(player.PlayerId, "seek", new { position }));
     }
 
     /// <summary>Both sliders (inline and flyout) route here; the one the user moved becomes the value to send.</summary>
