@@ -299,8 +299,8 @@ public sealed class Player
     [JsonIgnore] public bool   IsThisDevice => PlayerId == OwnPlayerId;
     [JsonIgnore] public string DisplayName  => IsThisDevice ? $"{Name} (This Device)" : Name;
     [JsonIgnore] public bool   IsPlaying    => PlaybackState == "playing";
-    [JsonIgnore] public bool   HasMedia     => PlaybackState is "playing" or "paused" && CurrentMedia?.ImageUrl is { Length: > 0 };
-    [JsonIgnore] public string? ArtUrl      => HasMedia ? CurrentMedia!.ImageUrl : null;   // artwork replaces the type icon while something is on
+    [JsonIgnore] public bool   HasMedia     => CurrentMedia?.ImageUrl is { Length: > 0 };   // the server clears current_media when a player really stops
+    [JsonIgnore] public string? ArtUrl      => HasMedia ? CurrentMedia!.ImageUrl : null;   // artwork replaces the type icon while something is loaded, paused included
     [JsonIgnore] public bool   IsVisible    => Enabled && Available && Type != "source" && (!HideInUi || IsThisDevice);
 
     [JsonIgnore]
