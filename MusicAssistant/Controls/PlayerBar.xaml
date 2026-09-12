@@ -71,19 +71,19 @@
         <!-- Transport -->
         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
-                <Button x:Name="ShuffleButton" Style="{StaticResource SubtleButtonStyle}" Click="OnShuffle" ToolTipService.ToolTip="Shuffle">
+                <Button x:Name="ShuffleButton" Style="{StaticResource SubtleButtonStyle}" Click="OnShuffle" ToolTipService.ToolTip="Shuffle" AutomationProperties.Name="Shuffle">
                     <FontIcon Glyph="&#xE8B1;" FontSize="14" />
                 </Button>
-                <Button x:Name="PreviousButton" Style="{StaticResource SubtleButtonStyle}" Click="OnPrevious" ToolTipService.ToolTip="Previous">
+                <Button x:Name="PreviousButton" Style="{StaticResource SubtleButtonStyle}" Click="OnPrevious" ToolTipService.ToolTip="Previous" AutomationProperties.Name="Previous">
                     <FontIcon Glyph="&#xE892;" FontSize="16" />
                 </Button>
-                <Button x:Name="PlayPauseButton" Style="{StaticResource AccentButtonStyle}" Width="40" Height="40" CornerRadius="20" Padding="0" Click="OnPlayPause" ToolTipService.ToolTip="Play / Pause">
+                <Button x:Name="PlayPauseButton" Style="{StaticResource AccentButtonStyle}" Width="40" Height="40" CornerRadius="20" Padding="0" Click="OnPlayPause" ToolTipService.ToolTip="Play / Pause" AutomationProperties.Name="Play or pause">
                     <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE768;" FontSize="16" />
                 </Button>
-                <Button x:Name="NextButton" Style="{StaticResource SubtleButtonStyle}" Click="OnNext" ToolTipService.ToolTip="Next">
+                <Button x:Name="NextButton" Style="{StaticResource SubtleButtonStyle}" Click="OnNext" ToolTipService.ToolTip="Next" AutomationProperties.Name="Next">
                     <FontIcon Glyph="&#xE893;" FontSize="16" />
                 </Button>
-                <Button x:Name="RepeatButton" Style="{StaticResource SubtleButtonStyle}" Click="OnRepeat" ToolTipService.ToolTip="Repeat">
+                <Button x:Name="RepeatButton" Style="{StaticResource SubtleButtonStyle}" Click="OnRepeat" ToolTipService.ToolTip="Repeat" AutomationProperties.Name="Repeat">
                     <FontIcon x:Name="RepeatIcon" Glyph="&#xE8EE;" FontSize="14" />
                 </Button>
             </StackPanel>
@@ -103,7 +103,7 @@
 
         <!-- Volume + Player -->
         <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
-            <Button x:Name="MuteButton" Style="{StaticResource SubtleButtonStyle}" Click="OnMute" ToolTipService.ToolTip="Mute">
+            <Button x:Name="MuteButton" Style="{StaticResource SubtleButtonStyle}" Click="OnMute" ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute">
                 <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" FontSize="16" />
             </Button>
             <Slider x:Name="VolumeSlider" Width="100" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="OnVolumeChanged" />
@@ -123,7 +123,7 @@
                     </Flyout>
                 </Button.Flyout>
             </Button>
-            <Button x:Name="PowerButton" Style="{StaticResource SubtleButtonStyle}" Click="OnPower" ToolTipService.ToolTip="Power">
+            <Button x:Name="PowerButton" Style="{StaticResource SubtleButtonStyle}" Click="OnPower" ToolTipService.ToolTip="Power" AutomationProperties.Name="Power">
                 <FontIcon Glyph="&#xE7E8;" FontSize="16" />
             </Button>
             <!-- Plain icon like the heart: no hover chrome; accent-colored icon while the queue is open -->

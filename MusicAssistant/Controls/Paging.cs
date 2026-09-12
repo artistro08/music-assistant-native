@@ -18,7 +18,10 @@ public static class Paging
     private const int    Notch    = 120;
     private const double Cooldown = 250;   // milliseconds
 
-    private static readonly Dictionary<UIElement, (int accumulated, DateTime lastStep)> state = new();
+    private sealed class Progress { public int Accumulated; public DateTime LastStep; }
+
+    // Weak keys: rows come and go with navigation and must not be kept alive by their scroll bookkeeping
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<UIElement, Progress> state = new();
 
     /// <summary>+1 for next page, -1 for previous, 0 when the event is not a horizontal scroll or not yet a full step.</summary>
     public static int WheelStep(PointerRoutedEventArgs e, UIElement owner)
@@ -32,22 +35,20 @@ public static class Paging
         // Horizontal wheel: positive = right. Shift + vertical wheel: wheel down (negative) = next.
         var delta = props.IsHorizontalMouseWheel ? props.MouseWheelDelta : -props.MouseWheelDelta;
 
-        var (accumulated, lastStep) = state.GetValueOrDefault(owner);
-        if ((DateTime.UtcNow - lastStep).TotalMilliseconds < Cooldown)
+        var progress = state.GetOrCreateValue(owner);
+        if ((DateTime.UtcNow - progress.LastStep).TotalMilliseconds < Cooldown)
         {
-            state[owner] = (0, lastStep);
+            progress.Accumulated = 0;
             return 0;
         }
 
-        accumulated += delta;
-        if (Math.Abs(accumulated) < Notch)
-        {
-            state[owner] = (accumulated, lastStep);
-            return 0;
-        }
+        progress.Accumulated += delta;
+        if (Math.Abs(progress.Accumulated) < Notch) return 0;
 
-        state[owner] = (0, DateTime.UtcNow);
-        return Math.Sign(accumulated);
+        var step = Math.Sign(progress.Accumulated);
+        progress.Accumulated = 0;
+        progress.LastStep    = DateTime.UtcNow;
+        return step;
     }
 
     /// <summary>

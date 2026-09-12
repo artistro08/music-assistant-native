@@ -26,6 +26,9 @@ public sealed class MassClient : IDisposable
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> pending = new();
     private readonly ConcurrentDictionary<string, List<JsonElement>>                 partials = new();
 
+    /// <summary>Where the client reports non-fatal oddities (the app points this at its log file). The API layer has no UI dependency.</summary>
+    public static Action<string>? Logger { get; set; }
+
     public ServerInfo? ServerInfo { get; private set; }
     public User?       CurrentUser { get; private set; }
     public string      BaseUrl     { get; private set; } = "";
@@ -199,7 +202,8 @@ public sealed class MassClient : IDisposable
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         var id = new string(text.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
-        return id.Length == 26 && id.All(c => c is >= 'A' and <= 'Z' or >= '2' and <= '9') ? id : null;
+        // Base32 alphabet A-Z 2-7; the server prints 2 as 9. 8, 0 and 1 never occur, so a typo with them is caught here
+        return id.Length == 26 && id.All(c => c is >= 'A' and <= 'Z' or >= '2' and <= '7' or '9') ? id : null;
     }
 
     private async Task FetchStateAsync()
@@ -346,8 +350,16 @@ public sealed class MassClient : IDisposable
             var name     = evt.GetString() ?? "";
             var objectId = message.TryGetProperty("object_id", out var oid) && oid.ValueKind == JsonValueKind.String ? oid.GetString() : null;
             var data     = message.TryGetProperty("data", out var d) ? d : default;
-            ApplyEvent(name, objectId, data);
-            EventReceived?.Invoke(name, objectId, data);
+            try
+            {
+                ApplyEvent(name, objectId, data);
+                EventReceived?.Invoke(name, objectId, data);
+            }
+            catch (Exception ex)
+            {
+                // One event a newer server shapes differently must not take the connection down with it
+                Logger?.Invoke($"Ignoring '{name}' event: {ex.Message}");
+            }
             return;
         }
 

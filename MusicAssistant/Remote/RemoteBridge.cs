@@ -22,8 +22,8 @@ public sealed class RemoteBridge
     private const string PageUrl     = $"http://{VirtualHost}/bridge.html";   // http so ws:// to the LAN server is not mixed content; the origin is marked secure below
 
     private readonly WebView2 view;
-    private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<HttpReply>> httpWaiting = new();
+    private TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? initialization;
 
     public record HttpReply(int Status, Dictionary<string, string> Headers, byte[] Body);
@@ -48,40 +48,67 @@ public sealed class RemoteBridge
 
     private async Task InitializeCoreAsync()
     {
-        var userData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "WebView2");
-        var options  = new CoreWebView2EnvironmentOptions
+        // First time: create the environment and lock the control down. After a process failure the
+        // control still exists and only the page is reloaded.
+        if (view.CoreWebView2 is null)
         {
-            // Hidden pages get their timers throttled; keep signaling and reconnects responsive.
-            // HardwareMediaKeyHandling off: otherwise Chromium registers its own media session for the
-            // speaker's audio element and grabs Play/Pause keys, pausing the PC locally while the server plays on.
-            AdditionalBrowserArguments = "--disable-background-timer-throttling --disable-renderer-backgrounding --autoplay-policy=no-user-gesture-required --disable-features=HardwareMediaKeyHandling " + $"--unsafely-treat-insecure-origin-as-secure=http://{VirtualHost}",
-        };
-        var environment = await CoreWebView2Environment.CreateWithOptionsAsync(null, userData, options);
-        await view.EnsureCoreWebView2Async(environment);
+            var userData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "WebView2");
+            var options  = new CoreWebView2EnvironmentOptions
+            {
+                // Hidden pages get their timers throttled; keep signaling and reconnects responsive.
+                // HardwareMediaKeyHandling off: otherwise Chromium registers its own media session for the
+                // speaker's audio element and grabs Play/Pause keys, pausing the PC locally while the server plays on.
+                AdditionalBrowserArguments = "--disable-background-timer-throttling --disable-renderer-backgrounding --autoplay-policy=no-user-gesture-required --disable-features=HardwareMediaKeyHandling " + $"--unsafely-treat-insecure-origin-as-secure=http://{VirtualHost}",
+            };
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(null, userData, options);
+            await view.EnsureCoreWebView2Async(environment);
 
-        var core = view.CoreWebView2;
-        var settings = core.Settings;
-        settings.AreDevToolsEnabled             = false;
-        settings.AreDefaultContextMenusEnabled  = false;
-        settings.AreDefaultScriptDialogsEnabled = false;
-        settings.AreHostObjectsAllowed          = false;
-        settings.IsStatusBarEnabled             = false;
-        settings.IsZoomControlEnabled           = false;
-        settings.IsGeneralAutofillEnabled       = false;
-        settings.IsPasswordAutosaveEnabled      = false;
-        settings.IsWebMessageEnabled            = true;
+            var core = view.CoreWebView2;
+            var settings = core.Settings;
+            settings.AreDevToolsEnabled             = false;
+            settings.AreDefaultContextMenusEnabled  = false;
+            settings.AreDefaultScriptDialogsEnabled = false;
+            settings.AreHostObjectsAllowed          = false;
+            settings.IsStatusBarEnabled             = false;
+            settings.IsZoomControlEnabled           = false;
+            settings.IsGeneralAutofillEnabled       = false;
+            settings.IsPasswordAutosaveEnabled      = false;
+            settings.IsWebMessageEnabled            = true;
 
-        core.SetVirtualHostNameToFolderMapping(VirtualHost, Path.Combine(AppContext.BaseDirectory, "Assets", "bridge"), CoreWebView2HostResourceAccessKind.Deny);
-        core.NavigationStarting  += (_, e) => { if (!e.Uri.StartsWith(PageUrl, StringComparison.OrdinalIgnoreCase)) e.Cancel = true; };
-        core.NewWindowRequested  += (_, e) => e.Handled = true;
-        core.WebMessageReceived  += OnWebMessage;
+            core.SetVirtualHostNameToFolderMapping(VirtualHost, Path.Combine(AppContext.BaseDirectory, "Assets", "bridge"), CoreWebView2HostResourceAccessKind.Deny);
+            core.NavigationStarting  += (_, e) => { if (!e.Uri.StartsWith(PageUrl, StringComparison.OrdinalIgnoreCase)) e.Cancel = true; };
+            core.NewWindowRequested  += (_, e) => e.Handled = true;
+            core.WebMessageReceived  += OnWebMessage;
+            core.ProcessFailed       += OnProcessFailed;
+        }
 
-        core.Navigate(PageUrl);
+        view.CoreWebView2.Navigate(PageUrl);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using (timeout.Token.Register(() => ready.TrySetException(new TimeoutException("Remote bridge did not start"))))
         {
             await ready.Task;
         }
+    }
+
+    /// <summary>
+    /// The page is gone when its renderer or the browser process dies: report a close so the transport
+    /// tears down and the normal reconnect path reloads the page, instead of pending calls hanging until
+    /// their timeouts with the speaker still reported as playing.
+    /// </summary>
+    private void OnProcessFailed(CoreWebView2 sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        if (e.ProcessFailedKind is not (CoreWebView2ProcessFailedKind.BrowserProcessExited or CoreWebView2ProcessFailedKind.RenderProcessExited)) return;
+
+        App.Log($"Remote bridge process failed: {e.ProcessFailedKind} ({e.Reason})");
+        ready.TrySetException(new InvalidOperationException("Remote bridge process failed"));
+        ready          = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        initialization = null;   // next InitializeAsync reloads the page
+        foreach (var id in httpWaiting.Keys.ToArray())
+        {
+            if (httpWaiting.TryRemove(id, out var waiter)) waiter.TrySetCanceled();
+        }
+        PlayerState?.Invoke(new PlayerStatus(false, false, false, 1, false, null));
+        ClosedWithReason?.Invoke("Remote bridge process failed");
     }
 
     // Commands to the page

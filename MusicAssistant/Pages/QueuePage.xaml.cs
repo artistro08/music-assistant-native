@@ -31,15 +31,13 @@ public sealed partial class QueuePage : Page
             Header = (DataTemplate)Resources["QueueHeaderTemplate"],
         };
         List.ItemTemplateSelector = selector;
-    }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        App.StateChanged += OnStateChanged;
-        _ = LoadAsync(force: true);
+        // Subscribed for the page's time in the tree, not per navigation: the window closes the panel by clearing
+        // the frame's content, which raises Unloaded but never OnNavigatedFrom, and a leaked subscription would
+        // keep an invisible page refetching the queue once a second.
+        Loaded   += (_, _) => { App.StateChanged += OnStateChanged; _ = LoadAsync(force: true); };
+        Unloaded += (_, _) => App.StateChanged -= OnStateChanged;
     }
-
-    protected override void OnNavigatedFrom(NavigationEventArgs e) => App.StateChanged -= OnStateChanged;
 
     private static PlayerQueue? Queue
         => App.ActivePlayer is { } p && App.Client.Queues.TryGetValue(App.Client.QueueIdFor(p), out var q) ? q : null;

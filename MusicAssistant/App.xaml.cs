@@ -37,7 +37,8 @@ public partial class App : Application
     {
         if (!Packaging.IsPackaged) SetCurrentProcessExplicitAppUserModelID(AppUserModelId);   // MSIX builds carry identity already
         InitializeComponent();
-        Images.Resolver = Client.ImageUrl;
+        Images.Resolver   = Client.ImageUrl;
+        MassClient.Logger = Log;
         Client.EventReceived += (_, _, _) => Dispatcher.TryEnqueue(() => StateChanged?.Invoke());
         UnhandledException += OnUnhandledException;
     }
@@ -47,10 +48,11 @@ public partial class App : Application
     {
         Log($"{e.Message}{Environment.NewLine}{e.Exception}");
         e.Handled = true;   // a failed UI action must not take the whole app down
+        if (Window is null) return;   // failed while the main window was still being built: nothing to show it in
         Dispatcher.TryEnqueue(() => Window.ShowMessage("Something went wrong. Details were written to crash.log."));
     }
 
-    /// <summary>Append a line to the app log (same file as crashes). Never include tokens or passwords.</summary>
+    /// <summary>Append a line to the app log (same file as crashes). Never include tokens or passwords. Never throws.</summary>
     public static void Log(string message)
     {
         try
@@ -58,7 +60,7 @@ public partial class App : Application
             Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
             File.AppendAllText(LogPath, $"{DateTime.Now:O} {message}{Environment.NewLine}{Environment.NewLine}");
         }
-        catch (IOException) { }
+        catch (Exception) { }   // unwritable profile folder: logging must not become the crash
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
