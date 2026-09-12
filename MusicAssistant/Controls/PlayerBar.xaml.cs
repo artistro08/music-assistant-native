@@ -60,7 +60,7 @@ public sealed partial class PlayerBar : UserControl
         var player = Player;
         var queue  = Queue;
 
-        PlayerNameText.Text = player?.Name ?? "No player";
+        PlayerNameText.Text = player?.DisplayName ?? "No player";
         PlayPauseButton.IsEnabled = player is not null;
         PreviousButton.IsEnabled  = player?.Supports("next_previous") == true;
         NextButton.IsEnabled      = player?.Supports("next_previous") == true;
@@ -290,7 +290,7 @@ public sealed partial class PlayerBar : UserControl
         {
             var item = new ToggleMenuFlyoutItem
             {
-                Text      = player.IsPlaying ? $"{player.Name}  ▶" : player.Name,
+                Text      = player.IsPlaying ? $"{player.DisplayName}  ▶" : player.DisplayName,
                 IsChecked = player.PlayerId == App.Settings.ActivePlayerId,
                 Tag       = player.PlayerId,
             };

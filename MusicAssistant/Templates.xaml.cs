@@ -76,17 +76,6 @@ public sealed partial class Templates : ResourceDictionary
         if (((Button)sender).Content is MediaItem item) _ = App.OpenAsync(item);
     }
 
-    /// <summary>
-    /// Keeps a card's artwork area square, with or without an image: the first
-    /// child of the card is the art box and its height follows the card width.
-    /// Driven by the card's width, so the art box's own height change cannot loop.
-    /// </summary>
-    private void OnCardSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) < 0.5) return;
-        if (((Panel)sender).Children[0] is FrameworkElement art) art.Height = e.NewSize.Width;
-    }
-
     /// <summary>Accent outline for the active player card, subtle stroke otherwise.</summary>
     public static Brush PlayerBorder(string playerId)
         => (Brush)Application.Current.Resources[playerId == App.Settings.ActivePlayerId ? "AccentFillColorDefaultBrush" : "CardStrokeColorDefaultBrush"];

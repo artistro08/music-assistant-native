@@ -14,7 +14,7 @@
 
     <!-- Media Card (library, search, rows) -->
     <DataTemplate x:Key="MediaCardTemplate" x:DataType="api:MediaItem">
-        <StackPanel Spacing="8" AutomationProperties.Name="{x:Bind Name}" SizeChanged="OnCardSizeChanged">
+        <StackPanel Spacing="8" AutomationProperties.Name="{x:Bind Name}">
             <StackPanel.ContextFlyout>
                 <MenuFlyout>
                     <MenuFlyoutItem Text="Play now" Icon="Play" Click="OnPlayNow" />
@@ -25,13 +25,16 @@
                 </MenuFlyout>
             </StackPanel.ContextFlyout>
 
-            <Grid Height="184" CornerRadius="{StaticResource ControlCornerRadius}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                <Image Source="{x:Bind local:Templates.ToImage(ThumbUrl)}" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
-                <Grid Background="#80000000" Visibility="{x:Bind IsLoading, Mode=OneWay}">
-                    <ProgressRing IsActive="{x:Bind IsLoading, Mode=OneWay}" Foreground="White" Width="40" Height="40" />
+            <!-- Square art box: a Viewbox scales a fixed square to the card width in one layout pass, so resizing never re-layouts twice -->
+            <Viewbox Stretch="Uniform">
+                <Grid Width="184" Height="184" CornerRadius="{StaticResource ControlCornerRadius}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    <Image Source="{x:Bind local:Templates.ToImage(ThumbUrl)}" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
+                    <Grid Background="#80000000" Visibility="{x:Bind IsLoading, Mode=OneWay}">
+                        <ProgressRing IsActive="{x:Bind IsLoading, Mode=OneWay}" Foreground="White" Width="40" Height="40" />
+                    </Grid>
                 </Grid>
-            </Grid>
+            </Viewbox>
 
             <StackPanel Spacing="2">
                 <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" />
@@ -91,23 +94,30 @@
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderThickness="1"
             BorderBrush="{x:Bind local:Templates.PlayerBorder(PlayerId)}"
-            AutomationProperties.Name="{x:Bind Name}">
+            AutomationProperties.Name="{x:Bind DisplayName}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
+            <!-- Type icon, replaced by the artwork of whatever the player has on -->
             <Border Width="40" Height="40" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="16" />
+                <Grid>
+                    <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="16" />
+                    <Image Source="{x:Bind local:Templates.ToThumb(ArtUrl)}" Stretch="UniformToFill" Visibility="{x:Bind local:Templates.Vis(HasMedia)}" />
+                </Grid>
             </Border>
 
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" />
                 <TextBlock Text="{x:Bind NowPlayingText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
 
-            <FontIcon Grid.Column="2" Glyph="&#xE769;" FontSize="14" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}" />
+            <!-- Playing badge: accent disc with a play mark -->
+            <Border Grid.Column="2" Width="26" Height="26" CornerRadius="13" Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind local:Templates.Vis(IsPlaying)}">
+                <FontIcon Glyph="&#xE768;" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Margin="1,0,0,0" />
+            </Border>
         </Grid>
     </DataTemplate>
     <!-- /Player Card -->

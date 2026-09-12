@@ -102,7 +102,7 @@ public sealed partial class MediaRow : UserControl
             slots[i].Content    = item;
             slots[i].Visibility = item is null ? Visibility.Collapsed : Visibility.Visible;
             slots[i].IsTabStop  = item is not null;
-            AutomationProperties.SetName(slots[i], item switch { MediaItem m => m.Name, Player p => p.Name, _ => "" });
+            AutomationProperties.SetName(slots[i], item switch { MediaItem m => m.Name, Player p => p.DisplayName, _ => "" });
         }
 
         Pager.Visibility     = PageCount > 1 ? Visibility.Visible : Visibility.Collapsed;

@@ -162,13 +162,13 @@ public sealed class TrayMenu
         ((FontIcon)playItem.Icon).Glyph = player?.IsPlaying == true ? "" : "";
         playItem.IsEnabled = nextItem.IsEnabled = previousItem.IsEnabled = enabled;
 
-        speakerItem.Text = player is null ? "Speaker" : $"Speaker: {player.Name}";
+        speakerItem.Text = player is null ? "Speaker" : $"Speaker: {player.DisplayName}";
         speakerItem.Items.Clear();
         foreach (var candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name))
         {
             var entry = new ToggleMenuFlyoutItem
             {
-                Text      = candidate.IsPlaying ? $"{candidate.Name}  ▶" : candidate.Name,
+                Text      = candidate.IsPlaying ? $"{candidate.DisplayName}  ▶" : candidate.DisplayName,
                 IsChecked = candidate.PlayerId == player?.PlayerId,
             };
             entry.Click += (_, _) => App.SetActivePlayer(candidate.PlayerId);

@@ -296,8 +296,12 @@ public sealed class Player
     /// </summary>
     public static string? OwnPlayerId { get; set; }
 
-    [JsonIgnore] public bool IsPlaying => PlaybackState == "playing";
-    [JsonIgnore] public bool IsVisible => Enabled && Available && Type != "source" && (!HideInUi || PlayerId == OwnPlayerId);
+    [JsonIgnore] public bool   IsThisDevice => PlayerId == OwnPlayerId;
+    [JsonIgnore] public string DisplayName  => IsThisDevice ? $"{Name} (This Device)" : Name;
+    [JsonIgnore] public bool   IsPlaying    => PlaybackState == "playing";
+    [JsonIgnore] public bool   HasMedia     => PlaybackState is "playing" or "paused" && CurrentMedia?.ImageUrl is { Length: > 0 };
+    [JsonIgnore] public string? ArtUrl      => HasMedia ? CurrentMedia!.ImageUrl : null;   // artwork replaces the type icon while something is on
+    [JsonIgnore] public bool   IsVisible    => Enabled && Available && Type != "source" && (!HideInUi || IsThisDevice);
 
     [JsonIgnore]
     public string NowPlayingText => CurrentMedia is { Title.Length: > 0 } m
@@ -305,7 +309,7 @@ public sealed class Player
         : PlaybackState == "paused" ? "Paused" : "Idle";
 
     [JsonIgnore]
-    public string TypeGlyph => Type switch
+    public string TypeGlyph => IsThisDevice ? "\uE7F4" : Type switch
     {
         "group"       => "",
         "stereo_pair" => "",
