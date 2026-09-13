@@ -94,8 +94,9 @@ public sealed class TimeFilter
             var newOffsetDriftCovariance = offsetDriftCovariance + driftCovariance * dt;
             var newOffsetCovariance      = offsetCovariance + 2 * offsetDriftCovariance * dt + driftCovariance * dtSquared + dt * processVariance;
 
-            // Innovation, with adaptive forgetting once there is history
             var residual = measurement - predictedOffset;
+
+            // Adaptive forgetting once there is history
             if (count < 100)
             {
                 count++;
@@ -131,24 +132,33 @@ public sealed class TimeFilter
         elementUseDrift   = useDrift;
     }
 
+    // Real clocks drift far under this; a larger fitted value is relay-jitter noise. Both transforms use the
+    // capped value AND anchor the drift term at the last update (drift * elapsed, never drift * absolute clock),
+    // so offset and drift stay a consistent inverse pair regardless of the cap.
+    private const double MaxDrift = 150e-6;
+
+    private double EffectiveDrift => elementUseDrift ? Math.Clamp(elementDrift, -MaxDrift, MaxDrift) : 0.0;
+
     /// <summary>T_server = T_client + offset + drift * (T_client - T_last_update).</summary>
     public long ComputeServerTime(long clientTime)
     {
         lock (gate)
         {
-            var effectiveDrift = elementUseDrift ? elementDrift : 0.0;
             var dt = (double)(clientTime - elementLastUpdate);
-            return clientTime + (long)Math.Round(elementOffset + effectiveDrift * dt);
+            return clientTime + (long)Math.Round(elementOffset + EffectiveDrift * dt);
         }
     }
 
-    /// <summary>Inverse of ComputeServerTime.</summary>
+    /// <summary>Inverse of ComputeServerTime, with the drift term anchored at the last update.</summary>
     public long ComputeClientTime(long serverTime)
     {
         lock (gate)
         {
-            var effectiveDrift = elementUseDrift ? elementDrift : 0.0;
-            return (long)Math.Round((serverTime - elementOffset + effectiveDrift * elementLastUpdate) / (1.0 + effectiveDrift));
+            var drift = EffectiveDrift;
+            // Solve server = client + offset + drift*(client - lastUpdate) for client, expressed so the drift
+            // term is drift*(elapsed) rather than drift*(absolute clock), which stays exact under the cap.
+            var elapsed = serverTime - elementOffset - elementLastUpdate;
+            return serverTime - (long)Math.Round(elementOffset + drift * elapsed);
         }
     }
 

@@ -30,7 +30,7 @@ public sealed class SendspinPlayer : IDisposable
     private readonly SendspinConnection connection;
     private readonly string             name;
     private readonly bool               remote;
-    private readonly TimeFilter         timeFilter = new(0, 1.1, 2.0);
+    private readonly TimeFilter         timeFilter;
     private readonly object             gate = new();
 
     private WasapiOutput?   output;
@@ -75,6 +75,7 @@ public sealed class SendspinPlayer : IDisposable
         this.identity = identity;
         this.name     = name;
         this.remote   = remote;
+        timeFilter = new TimeFilter(0, 1.1, 2.0);
         connection = new SendspinConnection(socket, identity);
         connection.HandshakeCompleted += OnHandshake;
         connection.ControlReceived    += OnControl;
@@ -152,7 +153,7 @@ public sealed class SendspinPlayer : IDisposable
         var pcm  = new { codec = "pcm",  channels = 2, sample_rate = rate,  bit_depth = 16 };
         var opus = new { codec = "opus", channels = 2, sample_rate = 48000, bit_depth = 16 };
         var pcm48 = new { codec = "pcm", channels = 2, sample_rate = 48000, bit_depth = 16 };
-        return remote ? [opus, pcm, pcm48] : rate == 48000 ? [pcm, opus] : [pcm, opus, pcm48];
+        return remote ? [pcm, opus, pcm48] : rate == 48000 ? [pcm, opus] : [pcm, opus, pcm48];
     }
 
     // =========================================================================
@@ -299,7 +300,8 @@ public sealed class SendspinPlayer : IDisposable
                 volume,
                 muted,
                 static_delay_ms       = staticDelayMs,
-                required_lead_time_ms = remote ? 1000 : 250,
+                // Buffer over the relay so jittery, head-of-line-blocked chunks arrive before their play time
+                required_lead_time_ms = remote ? 1500 : 250,
                 min_buffer_ms         = remote ? 1500 : 500,
                 supported_commands    = new[] { "set_static_delay" },
             },
@@ -425,8 +427,11 @@ public sealed class SendspinPlayer : IDisposable
         probeInFlight = 0;
         if (burstSamples.Count > 0)
         {
-            var best = burstSamples.OrderBy(s => s.Rtt).Take(3).OrderBy(s => s.Measurement).ToList();
-            var pick = best[best.Count / 2];
+            // Keep only samples whose round trip is near the burst minimum: a higher RTT means the probe or its
+            // reply queued behind audio on the ordered channel, which also skews its one-way offset estimate.
+            var minRtt = burstSamples.Min(s => s.Rtt);
+            var clean  = burstSamples.Where(s => s.Rtt <= minRtt * 1.5 + 2000).OrderBy(s => s.Measurement).ToList();
+            var pick   = clean[clean.Count / 2];
             var wasSynced = timeFilter.IsSynchronized;
             timeFilter.Update(pick.Measurement, pick.MaxError, pick.T4);
             if (!wasSynced && timeFilter.IsSynchronized) ThreadPool.QueueUserWorkItem(_ => { SendState(); Notify(); });   // now available

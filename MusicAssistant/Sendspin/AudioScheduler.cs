@@ -19,12 +19,12 @@ public sealed class AudioScheduler
 {
     public sealed record Chunk(float[] Samples, int Frames, long ServerTimeUs, int Generation);
 
-    private const long  SoftDeadbandUs   = 100;     // below this, leave the audio alone
     private const int   CorrectionSpacing = 200;    // frames between one-frame corrections: 0.5% max speed change
     private const float GainTimeConstantMs = 15f;
 
-    // Beyond this the scheduler resyncs in one shot. Small on the LAN where timing is exact; wide over the
-    // relay, where a tighter bound would hard-snap on ordinary network jitter and glitch continuously.
+    // Below the deadband the audio is left untouched (LAN: sub-ms for lock-step; relay: wide, so a solo speaker
+    // free-runs without chasing offset wobble). Beyond the snap threshold the scheduler resyncs in one shot.
+    private readonly long softDeadbandUs;
     private readonly long snapThresholdUs;
 
     private readonly TimeFilter timeFilter;
@@ -49,7 +49,11 @@ public sealed class AudioScheduler
         this.timeFilter = timeFilter;
         SampleRate = sampleRate;
         Channels   = channels;
-        snapThresholdUs = remote ? 60_000 : 1_500;
+        // LAN: tight, for multi-room lock-step. Relay: a solo speaker has nothing to sync against, so play the
+        // stream contiguously and only resync on a real gap (track change / underrun). The threshold is set above
+        // the buffer lookahead so the drifting offset estimate never reads as a false gap and inserts silence.
+        snapThresholdUs = remote ? 3_000_000 : 1_500;
+        softDeadbandUs  = remote ? 500_000   : 100;
     }
 
     /// <summary>Extra local delay applied to every chunk (output_delay / static delay), microseconds.</summary>
@@ -129,7 +133,7 @@ public sealed class AudioScheduler
                 }
 
                 // Steady state: whole-frame nudges, spaced so the speed change stays under 0.5%
-                if (Math.Abs(error) > SoftDeadbandUs && framesSinceCorrection >= CorrectionSpacing)
+                if (Math.Abs(error) > softDeadbandUs && framesSinceCorrection >= CorrectionSpacing)
                 {
                     framesSinceCorrection = 0;
                     if (error > 0)
@@ -183,4 +187,5 @@ public sealed class AudioScheduler
         if (max > peak) peak = max;
     }
 }
+
 
