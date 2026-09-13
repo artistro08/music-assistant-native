@@ -39,7 +39,14 @@ public partial class App : Application
         InitializeComponent();
         Images.Resolver   = Client.ImageUrl;
         MassClient.Logger = Log;
-        Client.EventReceived += (_, _, _) => Dispatcher.TryEnqueue(() => StateChanged?.Invoke());
+        Client.EventReceived += (_, _, _) => Dispatcher.TryEnqueue(() =>
+        {
+            // Recover the selection if the active player was removed mid-session (deleted server-side, or the speaker
+            // feature turned off while the PC was active). No-op while the current selection is still valid, and it
+            // keeps a player that is merely powered off, since that one stays in the list.
+            EnsureActivePlayer();
+            StateChanged?.Invoke();
+        });
         UnhandledException += OnUnhandledException;
     }
 
@@ -97,10 +104,19 @@ public partial class App : Application
     public static void EnsureActivePlayer()
     {
         if (ActivePlayer is { IsVisible: true }) return;
+
+        // Keep a remembered selection that simply has not appeared yet, rather than clobbering it with a fallback:
+        // this PC's own speaker is added to the list only once it connects (a few seconds after launch), and another
+        // speaker can be briefly absent or unavailable at connect. Overwriting here is what dropped the last speaker.
+        var remembered = Settings.ActivePlayerId;
+        var ownPending = remembered == Player.OwnPlayerId && Settings.SpeakerEnabled;   // own speaker joins the list only once it connects
+        if (!string.IsNullOrEmpty(remembered) && (Client.Players.ContainsKey(remembered) || ownPending)) return;
+
         var visible = Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name).ToList();
 
-        // This PC's own web player can be left "playing" on the server after a crash; trust that only when the local
-        // speaker is really streaming, so the app does not open selecting a stale now-playing for itself.
+        // No usable remembered selection: pick the first playing player, else the first visible one. The own web
+        // player counts as playing only when the local speaker is really streaming, so a stale server flag after a
+        // crash does not make the app open selecting itself.
         var ownStreaming = Window.SpeakerPlaying;
         SetActivePlayer((visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId);
     }
