@@ -48,6 +48,10 @@ public sealed class WasapiOutput : IDisposable
     {
         if (running) return;
 
+        // A prior Stop() only joins for 3s, so its render thread may still be tearing down the COM objects.
+        // Never reuse the COM fields until that thread has fully exited, or its finally would release the new session's objects.
+        thread?.Join();
+
         var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
         IMMDevice? device = null;
         try
@@ -64,30 +68,39 @@ public sealed class WasapiOutput : IDisposable
             Marshal.ReleaseComObject(enumerator);
         }
 
-        client.GetMixFormat(out var formatPtr);
+        // No render thread runs yet, so any failure here must release the COM objects itself; Stop() would no-op with running still false
         try
         {
-            ReadFormat(formatPtr);
-            // 100ms of buffer: room for a late wake-up; the device clock, not the buffer size, drives timing
-            client.Initialize(ShareModeShared, StreamFlagsEventCallback, 100 * 10_000, 0, formatPtr, IntPtr.Zero);
+            client.GetMixFormat(out var formatPtr);
+            try
+            {
+                ReadFormat(formatPtr);
+                // 100ms of buffer: room for a late wake-up; the device clock, not the buffer size, drives timing
+                client.Initialize(ShareModeShared, StreamFlagsEventCallback, 100 * 10_000, 0, formatPtr, IntPtr.Zero);
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(formatPtr);
+            }
+
+            client.GetBufferSize(out bufferFrames);
+            wake = new AutoResetEvent(false);
+            client.SetEventHandle(wake.SafeWaitHandle.DangerousGetHandle());
+
+            var renderIid = typeof(IAudioRenderClient).GUID;
+            client.GetService(ref renderIid, out var renderObject);
+            render = (IAudioRenderClient)renderObject;
+
+            var clockIid = typeof(IAudioClock).GUID;
+            client.GetService(ref clockIid, out var clockObject);
+            clock = (IAudioClock)clockObject;
+            clock.GetFrequency(out clockFrequency);
         }
-        finally
+        catch
         {
-            Marshal.FreeCoTaskMem(formatPtr);
+            Release();
+            throw;
         }
-
-        client.GetBufferSize(out bufferFrames);
-        wake = new AutoResetEvent(false);
-        client.SetEventHandle(wake.SafeWaitHandle.DangerousGetHandle());
-
-        var renderIid = typeof(IAudioRenderClient).GUID;
-        client.GetService(ref renderIid, out var renderObject);
-        render = (IAudioRenderClient)renderObject;
-
-        var clockIid = typeof(IAudioClock).GUID;
-        client.GetService(ref clockIid, out var clockObject);
-        clock = (IAudioClock)clockObject;
-        clock.GetFrequency(out clockFrequency);
 
         scratch = new float[bufferFrames * Channels];
         framesWritten = 0;

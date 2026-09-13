@@ -44,8 +44,10 @@ public sealed class RemotePeer : IDisposable
     private TaskCompletionSource? apiOpen;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<HttpReply>> httpWaiting = new();
     private const int MaxChunkGroups = 32;   // a stalled or hostile peer must not accumulate reassembly buffers without bound
+    private const int MaxSignalingMessage = 1 * 1024 * 1024;   // signaling frames (SDP, ICE) are a few KB; cap the untrusted relay well above that
+    private const int MaxChunkGroupBytes  = 16 * 1024 * 1024;  // one reassembled API/image payload; a peer must not grow a group without bound
     private static readonly TimeSpan ChunkGroupMaxAge = TimeSpan.FromSeconds(30);
-    private readonly ConcurrentDictionary<long, (int Count, string?[] Parts, int Received, DateTime Started)> chunkGroups = new();
+    private readonly ConcurrentDictionary<long, (int Count, string?[] Parts, int Received, DateTime Started, long Bytes)> chunkGroups = new();
     private readonly SemaphoreSlim signalingSend = new(1, 1);
     private readonly object gate = new();
     private bool closed;
@@ -167,6 +169,8 @@ public sealed class RemotePeer : IDisposable
                 {
                     result = await signaling.ReceiveAsync(buffer, ct);
                     if (result.MessageType == WebSocketMessageType.Close) { OnSignalingClosed(); return; }
+                    // The relay is untrusted (that is why the server is cert-pinned); a huge message must not drive unbounded allocation
+                    if (message.Length + result.Count > MaxSignalingMessage) { Fail("Signaling message too large"); return; }
                     message.Write(buffer, 0, result.Count);
                 }
                 while (!result.EndOfMessage);
@@ -202,10 +206,10 @@ public sealed class RemotePeer : IDisposable
                     connectedSignal?.TrySetResult(root.TryGetProperty("iceServers", out var ice) ? ice.Clone() : default);
                     break;
                 case "answer":
-                    await HandleAnswerAsync(root.GetProperty("data"));
+                    if (root.TryGetProperty("data", out var answerData)) await HandleAnswerAsync(answerData);
                     break;
                 case "ice-candidate":
-                    HandleCandidate(root.GetProperty("data"));
+                    if (root.TryGetProperty("data", out var candidateData)) HandleCandidate(candidateData);
                     break;
                 case "peer-disconnected":
                     Fail("Server disconnected");
@@ -319,10 +323,19 @@ public sealed class RemotePeer : IDisposable
         // Each frame is base64-encoded on its own, so decode per frame and join the bytes; joining the base64
         // strings first would put '=' padding mid-string and throw, killing the SCTP transport.
         byte[][] parts;
-        var group = chunkGroups.GetOrAdd(id, _ => (count, new string?[count], 0, DateTime.UtcNow));
-        lock (group.Parts)
+        // The Parts array reference is stable for the group's life, so it is a safe lock target; the tuple's counters
+        // are re-read from the dictionary inside the lock so concurrent frames for one id cannot lose an update.
+        var slot = chunkGroups.GetOrAdd(id, _ => (count, new string?[count], 0, DateTime.UtcNow, 0L));
+        lock (slot.Parts)
         {
-            if (group.Parts[seq] is null) group.Received++;
+            var group = chunkGroups.TryGetValue(id, out var current) ? current : slot;
+            if (group.Parts[seq] is null)
+            {
+                group.Received++;
+                group.Bytes += piece.Length;
+            }
+            // A peer must not grow one group past a sane payload size, even within the frame-count cap
+            if (group.Bytes > MaxChunkGroupBytes) { chunkGroups.TryRemove(id, out _); return; }
             group.Parts[seq] = piece;
             chunkGroups[id] = group;
             if (group.Received < group.Count) return;

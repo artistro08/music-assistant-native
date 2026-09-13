@@ -19,6 +19,7 @@ public sealed class ProxyWebSocket : ISendspinSocket
     private readonly ClientWebSocket socket = new();
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim sendLock = new(1, 1);
+    private const int MaxMessage = 128 * 1024;   // hard cap on one inbound WebSocket message from the proxy
     private bool closedRaised;
 
     public event Action<string>? TextReceived;
@@ -89,6 +90,8 @@ public sealed class ProxyWebSocket : ISendspinSocket
                 {
                     result = await socket.ReceiveAsync(buffer, ct);
                     if (result.MessageType == WebSocketMessageType.Close) { RaiseClosed("Speaker connection closed by server"); return; }
+                    // A Noise transport frame is at most 65535 bytes and control messages are small; cap well above that so no single message drives unbounded allocation
+                    if (message.Length + result.Count > MaxMessage) { RaiseClosed("Speaker message too large"); return; }
                     message.Write(buffer, 0, result.Count);
                 }
                 while (!result.EndOfMessage);
@@ -98,9 +101,16 @@ public sealed class ProxyWebSocket : ISendspinSocket
                 else BinaryReceived?.Invoke(bytes);
             }
         }
-        catch (Exception ex) when (ex is WebSocketException or OperationCanceledException or ObjectDisposedException)
+        catch (OperationCanceledException)
         {
-            RaiseClosed(ct.IsCancellationRequested ? "Closed" : "Speaker connection lost");
+            RaiseClosed("Closed");
+        }
+        catch (Exception ex)
+        {
+            // Any other escape (socket fault, or an unexpected error from a receive callback) must fail the connection
+            // so Speaker's reconnect loop notices, rather than the read loop dying silently and hanging the session.
+            App.Log("Speaker read loop stopped: " + ex.Message);
+            RaiseClosed("Speaker connection lost");
         }
     }
 

@@ -43,8 +43,6 @@ public sealed class SendspinPlayer : IDisposable
     // Protocol state
     private bool     activated;
     private bool     playerRoleActive;
-    private bool     availableReported;
-    private bool     pairingInFlight;
     private byte[]?  pendingLongTermPsk;
     private int      volume = 100;
     private bool     muted;
@@ -113,8 +111,6 @@ public sealed class SendspinPlayer : IDisposable
         {
             // A (re)handshake restarts the activation sequence; pairing state that belonged to the old keys is void
             activated = false;
-            availableReported = false;
-            pairingInFlight = false;
             pendingLongTermPsk = null;
             StopTimers();
         }
@@ -306,7 +302,6 @@ public sealed class SendspinPlayer : IDisposable
                 supported_commands    = new[] { "set_static_delay" },
             },
         });
-        if (synced) availableReported = true;
     }
 
     /// <summary>The app asks the server to pair this player; the server then re-handshakes with the pairing PSK and activates pairing.</summary>
@@ -322,7 +317,6 @@ public sealed class SendspinPlayer : IDisposable
         {
             StopTimers();
             activated = false;
-            pairingInFlight = true;
             pendingLongTermPsk = RandomNumberGenerator.GetBytes(NoiseCrypto.KeySize);
         }
         connection.SendControl("client/pair-finalize", new { long_term_psk = Base64Url.Encode(pendingLongTermPsk!) });
@@ -335,7 +329,6 @@ public sealed class SendspinPlayer : IDisposable
         {
             psk = pendingLongTermPsk;
             pendingLongTermPsk = null;
-            pairingInFlight = false;
         }
         if (psk is null) return;
         identity.AddPairingRecord(connection.ServerId, psk);   // the server now re-handshakes to this key
@@ -344,7 +337,7 @@ public sealed class SendspinPlayer : IDisposable
 
     private void OnPairAbort(JsonElement payload)
     {
-        lock (gate) { pairingInFlight = false; pendingLongTermPsk = null; }
+        lock (gate) { pendingLongTermPsk = null; }
         LastError = "Pairing aborted: " + (payload.TryGetProperty("reason", out var r) ? r.GetString() : "unknown");
         App.Debug("Speaker: " + LastError);
     }

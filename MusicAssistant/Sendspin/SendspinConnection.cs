@@ -20,6 +20,7 @@ namespace MusicAssistant.Sendspin;
 public sealed class SendspinConnection : IDisposable
 {
     private const int  MaxTransportPlaintext = 65535 - 16;
+    private const int  MaxTransportFrame     = 65535;   // a Noise transport message is at most 65535 bytes; reject larger before allocating
     private const int  MaxReassembly         = 4 * 1024 * 1024;
     private const byte TypeJson = 0, TypeFragmentMore = 2, TypeFragmentEnd = 3;
     private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
@@ -218,27 +219,34 @@ public sealed class SendspinConnection : IDisposable
 
     private void OnBinary(byte[] frame)
     {
-        byte[] plaintext;
+        // A transport frame cannot exceed 65535 bytes; reject a larger one before Decrypt allocates for it (the socket is not fully trusted)
+        if (frame.Length > MaxTransportFrame) { Fail("Transport frame too large"); return; }
+
+        // Decrypt and reassembly both touch shared state (session counter, fragment buffer), so they run under the
+        // gate; dispatch runs outside it, because it fires callbacks that may be slow or re-enter the connection.
+        byte[] toDispatch;
         lock (gate)
         {
             if (state != State.Transport || session is null) { Fail("Binary frame before the handshake finished"); return; }
+            byte[] plaintext;
             try { plaintext = session.Decrypt(frame); }
             catch (System.Security.Cryptography.CryptographicException) { Fail("Encrypted frame failed authentication"); return; }
-        }
-        if (plaintext.Length == 0) { Fail("Empty frame"); return; }
+            if (plaintext.Length == 0) { Fail("Empty frame"); return; }
 
-        switch (plaintext[0])
-        {
-            case TypeFragmentMore:
-            case TypeFragmentEnd:
-                if (!Reassemble(plaintext, out var whole)) return;
-                Dispatch(whole);
-                break;
-            default:
-                if (fragment is not null) { Fail("Frame received inside a fragmented message"); return; }
-                Dispatch(plaintext);
-                break;
+            switch (plaintext[0])
+            {
+                case TypeFragmentMore:
+                case TypeFragmentEnd:
+                    if (!Reassemble(plaintext, out var whole)) return;
+                    toDispatch = whole;
+                    break;
+                default:
+                    if (fragment is not null) { Fail("Frame received inside a fragmented message"); return; }
+                    toDispatch = plaintext;
+                    break;
+            }
         }
+        Dispatch(toDispatch);
     }
 
     private bool Reassemble(byte[] plaintext, out byte[] whole)
@@ -265,7 +273,9 @@ public sealed class SendspinConnection : IDisposable
     {
         if (plaintext[0] != TypeJson)
         {
-            BinaryReceived?.Invoke(plaintext);
+            // Audio decode runs on peer-supplied bytes; a bad frame is dropped, never allowed to escape the receive thread
+            try { BinaryReceived?.Invoke(plaintext); }
+            catch (Exception ex) { App.Log("Sendspin: dropped audio frame: " + ex.Message); }
             return;
         }
 
