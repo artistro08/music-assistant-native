@@ -86,11 +86,26 @@ public sealed partial class MainWindow : Window
         Activate();
     }
 
-    private void ExitApp()
+    private async void ExitApp()
     {
         exiting = true;
-        Close();                      // Closed handler stops the speaker, removes the tray icon and its menu window, disconnects
-        Application.Current.Exit();   // nothing else may keep the process alive
+        await StopOwnSpeakerAsync();   // the PC speaker goes away with the app, so end its playback, not leave a zombie queue
+        Close();                       // Closed handler stops the speaker, removes the tray icon and its menu window, disconnects
+        Application.Current.Exit();    // nothing else may keep the process alive
+    }
+
+    /// <summary>
+    /// Stop playback on this PC's own speaker queue when quitting, if it is the one playing. Otherwise the server
+    /// keeps that queue in a "playing" state with no speaker behind it, and the next launch opens looking like it
+    /// is already playing. Bounded so a slow or dropped server never blocks the exit.
+    /// </summary>
+    private static async Task StopOwnSpeakerAsync()
+    {
+        var id = App.Settings.SpeakerClientId;
+        if (!App.Settings.SpeakerEnabled || string.IsNullOrEmpty(id)) return;
+        if (!App.Client.Players.TryGetValue(id, out var pc) || !pc.IsPlaying) return;
+        try { await App.Client.PlayerCommandAsync(id, "stop").WaitAsync(TimeSpan.FromSeconds(2)); }
+        catch (Exception ex) { App.Log("Exit stop: " + ex.Message); }
     }
 
     private void UpdateTrayTip()
@@ -145,6 +160,9 @@ public sealed partial class MainWindow : Window
 
     private Speaker? speaker;
     public  Speaker  Speaker => speaker ??= new Speaker();
+
+    /// <summary>True only when the local speaker is actually streaming; never instantiates the speaker just to ask.</summary>
+    public bool SpeakerPlaying => speaker?.Playing == true;
 
     private async Task StartAsync()
     {
@@ -442,9 +460,17 @@ public sealed partial class MainWindow : Window
     {
         if (QueueOpen) { CloseQueue(); return; }
         QueueFrame.Navigate(typeof(QueuePage), null);
+
+        // Start offscreen and transparent so there is no flash before the slide, then animate in on the next tick.
+        // The first open has never been laid out, so beginning the storyboard in this same tick would snap; the
+        // enqueue lets the frame realize its visual and measure its height first.
+        var transform = QueueFrame.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform ?? new Microsoft.UI.Xaml.Media.TranslateTransform();
+        QueueFrame.RenderTransform = transform;
+        transform.Y           = QueueDistance;
+        QueueFrame.Opacity    = 0;
         QueueFrame.Visibility = Visibility.Visible;
         Player.SetQueueOpen(true);
-        SlideQueue(open: true);
+        DispatcherQueue.TryEnqueue(() => SlideQueue(open: true));
     }
 
     private void CloseQueue()
@@ -464,12 +490,15 @@ public sealed partial class MainWindow : Window
     private bool queueClosing;
 
     /// <summary>Now Playing slides up from the player bar on open and back down on close, with a fade.</summary>
+    /// <summary>How far the panel travels: the content row's height, which is valid even on the first open (the frame itself has ActualHeight 0 until laid out).</summary>
+    private double QueueDistance => Math.Max(120, Nav.ActualHeight);
+
     private void SlideQueue(bool open, Action? completed = null)
     {
         var transform = QueueFrame.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform ?? new Microsoft.UI.Xaml.Media.TranslateTransform();
         QueueFrame.RenderTransform = transform;
 
-        var distance = Math.Max(120, QueueFrame.ActualHeight);
+        var distance = QueueDistance;
         var duration = new Duration(TimeSpan.FromMilliseconds(open ? 320 : 240));
         var ease     = new CubicEase { EasingMode = open ? EasingMode.EaseOut : EasingMode.EaseIn };
 

@@ -98,7 +98,11 @@ public partial class App : Application
     {
         if (ActivePlayer is { IsVisible: true }) return;
         var visible = Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name).ToList();
-        SetActivePlayer((visible.FirstOrDefault(p => p.IsPlaying) ?? visible.FirstOrDefault())?.PlayerId);
+
+        // This PC's own web player can be left "playing" on the server after a crash; trust that only when the local
+        // speaker is really streaming, so the app does not open selecting a stale now-playing for itself.
+        var ownStreaming = Window.SpeakerPlaying;
+        SetActivePlayer((visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId);
     }
 
     public static void NotifyStateChanged() => StateChanged?.Invoke();
