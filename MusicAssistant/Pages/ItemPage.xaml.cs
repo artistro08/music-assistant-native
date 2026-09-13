@@ -163,10 +163,11 @@ public sealed partial class ItemPage : Page
         if (e.ClickedItem is not MediaItem track) return;
 
         // Albums, playlists and podcasts play in context starting at the clicked item (the server's default option,
-        // which replaces the queue, so the previous song cannot linger); artist and genre tracks play alone
+        // which replaces the queue, so the previous song cannot linger); artist and genre tracks play alone.
+        // loadingItem is the clicked track so its row art shows the spinner while playback starts.
         _ = item.MediaType is "artist" or "genre"
             ? App.PlayAsync(track)
-            : App.PlayAsync(item, startItem: track.ItemId);
+            : App.PlayAsync(item, startItem: track.ItemId, loadingItem: track);
     }
 
     private void OnImageOpened(object sender, RoutedEventArgs e) => Templates.FadeIn((UIElement)sender);

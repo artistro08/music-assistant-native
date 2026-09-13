@@ -115,7 +115,8 @@ public partial class App : Application
     /// to let the server apply its configured default for the media type (what the web app's play button
     /// does: replace the queue for albums and playlists, insert and play for single tracks).
     /// </summary>
-    public static async Task PlayAsync(MediaItem item, string? option = null, string? startItem = null)
+    /// <param name="loadingItem">The item whose loading spinner to show while playback starts; defaults to <paramref name="item"/>. For a track clicked inside an album or playlist, pass the clicked track so its row shows the spinner, not the container.</param>
+    public static async Task PlayAsync(MediaItem item, string? option = null, string? startItem = null, MediaItem? loadingItem = null)
     {
         if (ActivePlayer is not { } player)
         {
@@ -125,7 +126,8 @@ public partial class App : Application
 
         // Only immediate playback shows a loading state; queueing for later is instant
         var startsNow = option is null or "play" or "replace";
-        if (startsNow) BeginLoading(item);
+        var loading   = loadingItem ?? item;
+        if (startsNow) BeginLoading(loading);
 
         try
         {
@@ -142,7 +144,7 @@ public partial class App : Application
         }
         finally
         {
-            if (startsNow) EndLoading(item);
+            if (startsNow) EndLoading(loading);
         }
     }
 
