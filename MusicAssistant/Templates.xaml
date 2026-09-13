@@ -180,7 +180,8 @@
                 <TextBlock Text="{x:Bind SubtitleText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
 
-            <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <controls:NowPlayingBars Grid.Column="2" Width="18" Height="14" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.Vis(IsNowPlaying), Mode=OneWay}" />
+            <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
         </Grid>
     </DataTemplate>
     <!-- /Track Row -->
@@ -218,7 +219,8 @@
                 <TextBlock Text="{x:Bind SubtitleText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
 
-            <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <controls:NowPlayingBars Grid.Column="2" Width="18" Height="14" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.Vis(IsNowPlaying), Mode=OneWay}" />
+            <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
 
             <!-- Drag handle: the row itself is draggable; this just signals it -->
             <Grid Grid.Column="3" VerticalAlignment="Center" Padding="6,0" RowSpacing="3" ColumnSpacing="3" ToolTipService.ToolTip="Drag to reorder">

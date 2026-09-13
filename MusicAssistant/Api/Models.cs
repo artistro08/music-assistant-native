@@ -114,6 +114,7 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
     private bool isLoading;
+    private bool isNowPlaying;
 
     /// <summary>True while this item was asked to play and the player has not started it yet (drives the card overlay).</summary>
     [JsonIgnore]
@@ -125,6 +126,19 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
             if (isLoading == value) return;
             isLoading = value;
             PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsLoading)));
+        }
+    }
+
+    /// <summary>True when this track is the one currently playing (drives the live level bars on its row).</summary>
+    [JsonIgnore]
+    public bool IsNowPlaying
+    {
+        get => isNowPlaying;
+        set
+        {
+            if (isNowPlaying == value) return;
+            isNowPlaying = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsNowPlaying)));
         }
     }
 
@@ -373,8 +387,10 @@ public sealed class ActiveSourceAudio
     public AudioFidelity? InputFidelity { get; set; }
 }
 
-public sealed class QueueItem
+public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
 {
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
     public string         QueueId       { get; set; } = "";
     public string         QueueItemId   { get; set; } = "";
     public string         Name          { get; set; } = "";
@@ -384,6 +400,21 @@ public sealed class QueueItem
     public MediaItem?     MediaItem     { get; set; }
     public MediaImage?    Image         { get; set; }
     public StreamDetails? Streamdetails { get; set; }
+
+    private bool isNowPlaying;
+
+    /// <summary>True when this is the current queue item and it is playing (drives the live level bars).</summary>
+    [JsonIgnore]
+    public bool IsNowPlaying
+    {
+        get => isNowPlaying;
+        set
+        {
+            if (isNowPlaying == value) return;
+            isNowPlaying = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsNowPlaying)));
+        }
+    }
 
     [JsonIgnore] public string SubtitleText => MediaItem?.SubtitleText ?? "";
     [JsonIgnore] public string DurationText => Duration is > 0 ? Format.Duration(Duration.Value) : "";

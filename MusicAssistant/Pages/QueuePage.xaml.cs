@@ -79,6 +79,9 @@ public sealed partial class QueuePage : Page
         // Refetch items only when the queue identity, length or position changed, or something else reordered it
         var changed = force || queue.QueueId != loadedQueueId || queue.Items != loadedCount || (queue.CurrentIndex ?? -1) != currentIndex
             || queue.NextItem?.QueueItemId != rows.OfType<QueueItem>().ElementAtOrDefault(currentIndex + 1)?.QueueItemId;
+
+        // Pause/play toggles the level bars without changing the queue, so refresh them every state change
+        UpdateNowPlaying();
         if (!changed) return;
 
         try
@@ -90,6 +93,7 @@ public sealed partial class QueuePage : Page
 
             rows = new ObservableCollection<object>(BuildRows(items, currentIndex));
             List.ItemsSource = rows;
+            UpdateNowPlaying();
             EmptyText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
             if (currentIndex >= 0 && currentIndex < items.Count)
@@ -106,6 +110,16 @@ public sealed partial class QueuePage : Page
         finally
         {
             Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>Light the level bars on the row playing right now; clear them everywhere else.</summary>
+    private void UpdateNowPlaying()
+    {
+        var playing = App.ActivePlayer?.IsPlaying == true;
+        foreach (var item in rows.OfType<QueueItem>())
+        {
+            item.IsNowPlaying = playing && item.SortIndex == currentIndex;
         }
     }
 

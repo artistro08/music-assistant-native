@@ -14,7 +14,15 @@ public sealed partial class NowPlayingBars : UserControl
     public NowPlayingBars()
     {
         InitializeComponent();
-        Loaded   += (_, _) => Pulse.Begin();
+        Loaded   += (_, _) => Sync();
         Unloaded += (_, _) => Pulse.Stop();
+        // A collapsed instance (a row that is not the current track) must not keep animating in the background
+        RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => Sync());
+    }
+
+    private void Sync()
+    {
+        if (IsLoaded && Visibility == Microsoft.UI.Xaml.Visibility.Visible) Pulse.Begin();
+        else Pulse.Stop();
     }
 }

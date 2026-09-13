@@ -20,6 +20,22 @@ public sealed partial class ItemPage : Page
     public ItemPage()
     {
         InitializeComponent();
+
+        // Live level bars follow whatever the active player is playing; subscribe for the page's time in the tree
+        Loaded   += (_, _) => { App.StateChanged += UpdateNowPlaying; UpdateNowPlaying(); };
+        Unloaded += (_, _) => App.StateChanged -= UpdateNowPlaying;
+    }
+
+    /// <summary>Light the level bars on the track playing right now; clear them on every other row.</summary>
+    private void UpdateNowPlaying()
+    {
+        if (TrackList.ItemsSource is not IEnumerable<MediaItem> tracks) return;
+
+        var playing = App.ActivePlayer?.IsPlaying == true ? App.ActivePlayer!.CurrentMedia?.Uri : null;
+        foreach (var track in tracks)
+        {
+            track.IsNowPlaying = playing is not null && track.Uri == playing;
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -137,6 +153,7 @@ public sealed partial class ItemPage : Page
         TracksTitle.Visibility = tracks.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         EmptyText.Text         = $"No {title.ToLowerInvariant()} found for this {item.MediaType}.";
         EmptyText.Visibility   = tracks.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateNowPlaying();
     }
 
     // Actions

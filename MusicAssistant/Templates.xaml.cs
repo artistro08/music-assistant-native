@@ -97,6 +97,7 @@ public sealed partial class Templates : ResourceDictionary
     }
 
     public static Visibility Vis(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+    public static Visibility VisNot(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
 
     /// <summary>
     /// Artwork that still had to load starts transparent and fades in once decoded, so cards never pop.
