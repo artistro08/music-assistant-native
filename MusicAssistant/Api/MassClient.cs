@@ -332,10 +332,17 @@ public sealed class MassClient : IDisposable
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         pending[messageId] = tcs;
 
-        await transport.SendAsync(JsonSerializer.Serialize(new { message_id = messageId, command, args }, Json.Options));
+        // A failed send would otherwise orphan the pending entry until the next disconnect
+        try { await transport.SendAsync(JsonSerializer.Serialize(new { message_id = messageId, command, args }, Json.Options)); }
+        catch { pending.TryRemove(messageId, out _); throw; }
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        using (timeout.Token.Register(() => tcs.TrySetException(new ApiException(0, $"Timeout waiting for {command}"))))
+        // On timeout, drop the pending and any accumulated partial chunks too, or a reply that never comes leaks both
+        using (timeout.Token.Register(() =>
+        {
+            if (pending.TryRemove(messageId, out var timedOut)) timedOut.TrySetException(new ApiException(0, $"Timeout waiting for {command}"));
+            partials.TryRemove(messageId, out _);
+        }))
         {
             var element = await tcs.Task;
             return element.ValueKind == JsonValueKind.Undefined || element.ValueKind == JsonValueKind.Null
@@ -408,7 +415,9 @@ public sealed class MassClient : IDisposable
                 if (data.Deserialize<Player>(Json.Options) is { } player) Players[player.PlayerId] = player;
                 break;
             case "player_removed":
-                if (objectId is not null) Players.TryRemove(objectId, out _);
+                // A queue's lifecycle is tied to its player (no queue_removed event, and the fallback queue id is the
+                // player id), so drop the matching queue too or it lingers as a ghost with no backing player
+                if (objectId is not null) { Players.TryRemove(objectId, out _); Queues.TryRemove(objectId, out _); }
                 break;
             case "queue_added":
             case "queue_updated":
