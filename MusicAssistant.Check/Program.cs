@@ -100,10 +100,12 @@ Check(client.BaseUrl == "http://127.0.0.1:18095", "base url derived");
 
 // Wrong password is rejected, right password yields token and authenticates
 await Throws<ApiException>(() => client.LoginAsync("admin", "wrong"), "bad login rejected");
+Check(!client.StateLoaded, "state not loaded before auth");
 var token = await client.LoginAsync("admin", "secret");
 Check(token == Token, "token returned");
 Check(client.CurrentUser?.Username == "admin", "user set after auth");
 Check(client.Players.ContainsKey("p1") && client.Queues.ContainsKey("p1"), "initial state fetched");
+Check(client.StateLoaded, "state loaded after auth");
 
 // Partial results are concatenated in order
 var tracks = await client.GetLibraryItemsAsync("tracks", null, false, 10, 0);
@@ -137,6 +139,7 @@ using (var loopback = new OAuthLoopback())
 }
 
 await client.DisconnectAsync();
+Check(!client.StateLoaded, "state flag cleared on disconnect");
 listener.Stop();
 Console.WriteLine("All checks passed.");
 return;

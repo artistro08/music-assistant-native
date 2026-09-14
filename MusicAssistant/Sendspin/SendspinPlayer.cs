@@ -85,6 +85,7 @@ public sealed class SendspinPlayer : IDisposable
     public async Task ConnectAsync(CancellationToken ct)
     {
         output = new WasapiOutput((buffer, frames, time) => scheduler?.Render(buffer, frames, time));
+        output.Failed += OnOutputFailed;
         output.Start();
         scheduler = new AudioScheduler(timeFilter, output.SampleRate, output.Channels, remote);
         decoder   = new ChunkDecoder(output.SampleRate, output.Channels);
@@ -254,7 +255,7 @@ public sealed class SendspinPlayer : IDisposable
             default: return;
         }
         ApplyGain();
-        stateTimer?.Change(StateInterval, StateInterval);
+        lock (gate) stateTimer?.Change(StateInterval, StateInterval);   // StopTimers disposes it under the same lock on a close
         SendState();
         Notify();
     }
@@ -435,6 +436,19 @@ public sealed class SendspinPlayer : IDisposable
     // =========================================================================
     // LIFECYCLE
     // =========================================================================
+
+    /// <summary>
+    /// The render device died mid-session (device invalidated, default output switched, driver reset). The socket is
+    /// still up, so without this the server would keep this player marked playing with no audio coming out. Drop the
+    /// session and let Speaker's reconnect loop rebuild the whole pipeline on the current default device.
+    /// </summary>
+    private void OnOutputFailed()
+    {
+        if (!Connected) return;
+        App.Debug("Speaker: output device lost, dropping session to rebuild");
+        // Fired on the render thread as it tears down; closing here would Stop()/join that very thread. Hand it off.
+        ThreadPool.QueueUserWorkItem(_ => { try { connection.Close("Audio device lost", "player_error"); } catch (Exception ex) { App.Debug("Speaker output-failed close: " + ex.Message); } });
+    }
 
     private void OnClosed(string reason)
     {

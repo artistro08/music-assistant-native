@@ -1,178 +1,64 @@
-# Music Assistant for Windows
+<p align="center">
+    <img src="docs/icon.png" width="120" alt="Music Assistant for Windows icon">
+</p>
 
-A native Windows client for [Music Assistant](https://www.music-assistant.io/), built with the Windows App SDK (WinUI 3).
+<h1 align="center">
+    Music Assistant for Windows
+</h1>
 
-## Introduction
+<p align="center">
+    A native Windows app for <a href="https://www.music-assistant.io/">Music Assistant</a>.
+</p>
 
-The app talks to your Music Assistant server over its websocket API, the same one the web interface uses. You sign in with your Music Assistant username and password, the server issues a session token, and the app keeps that token in the Windows Credential Manager. Nothing else is stored on disk besides the server address and your last selected player.
+<p align="center">
+    <img src="docs/screenshot.png" width="900" alt="Music Assistant for Windows">
+</p>
 
-What you get:
+## What it is
 
-- Discover page: players row, Top Picks collage and the server's recommendation rows as paged card rows
-- Library: artists, albums, tracks, playlists, audiobooks, podcasts, radio and genres, with filter, favorites and paging
-- Album, artist, playlist, podcast, audiobook and genre detail pages
-- Search across the library and all providers
-- Provider browser
-- Full-window Now Playing view with the queue (played / now playing / up next), autoplay and crossfade toggles, clear, jump and remove
-- Player bar: play/pause, next/previous, seek, shuffle, repeat, favorite, sound-quality chip, volume, mute, power, queue and a player picker
-- Windows media controls: the media overlay, volume flyout and keyboard/headset media keys show and control the active player
-- Remote access: away from home the app connects through Music Assistant's relay using the server's Remote ID, end-to-end encrypted and pinned to the server certificate. Local network first, remote fallback, automatically
-- Play on this PC: one switch in Settings makes the computer a Music Assistant player (Sendspin), named after the machine, groupable and in sync with your other speakers
-- Runs in the notification area: closing the window hides it, the tray icon's right-click menu has Open, Play/Pause, Next, Previous and Exit
-- Remembers window size, position and maximized state
-- Mouse back/forward buttons navigate
-- Live updates from the server (state changes made from any other client show up immediately)
-- Automatic reconnect with re-authentication
+Music Assistant is a music server. It pulls your music together from services like Spotify, YouTube Music and your own files, and plays it on your speakers.
 
-### Prerequisites
-
-- Windows 10 version 1809 (build 17763) or newer, Windows 11 recommended
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- Windows 10 SDK 10.0.26100 (installed with Visual Studio 2022, or via the Windows SDK installer)
-- A Music Assistant server (2.7 or newer, with a user account created)
+This app is a desktop client for it: a real Windows program, not a web page in a window. You point it at your Music Assistant server, sign in, and browse and play your music. You can also turn this PC into one of the speakers, control playback from the Windows media keys and the tray, and reach your server from anywhere when you set up remote access.
 
 ## Install
 
-Download `MusicAssistant_x.y.z.0_x64.msix` from the [Releases](../../releases) page. The package is self-contained (no .NET or Windows App SDK runtime needed) and later versions install over the top.
+You need a Music Assistant server already running on your network. If you don't have one, set it up first: https://www.music-assistant.io/
 
-Windows only installs MSIX packages whose signature it trusts, and this package is not signed with a publicly trusted certificate yet. For now you sign it yourself with a certificate you create and trust. You'll need `signtool.exe`, which comes with the [Windows SDK](https://developer.microsoft.com/windows/downloads/windows-sdk/) or Visual Studio.
+1. Go to the [Releases](../../releases) page and download two files: `MusicAssistant_1.0.0.0_x64.msix` and `MusicAssistant-TestSigning.cer`.
 
-1. Create a signing certificate (once) and export its public part:
-
-   ```powershell
-   $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=Devin Green" -KeyUsage DigitalSignature -FriendlyName "Music Assistant signing" -CertStoreLocation Cert:\CurrentUser\My -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
-   Export-Certificate -Cert $cert -FilePath .\MusicAssistant.cer
-   ```
-
-   The subject must stay `CN=Devin Green` because it has to match the publisher in the package manifest.
-
-2. Sign the package:
+2. Windows only installs apps it trusts, and this one is signed with a test certificate, so you tell Windows to trust it once. Open PowerShell **as Administrator** and run:
 
    ```powershell
-   $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1).FullName
-   & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint .\MusicAssistant_1.0.0.0_x64.msix
+   Import-Certificate -FilePath .\MusicAssistant-TestSigning.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
    ```
 
-3. Trust the certificate and install, from an **administrator** PowerShell:
+3. Double-click `MusicAssistant_1.0.0.0_x64.msix` and click **Install**.
 
-   ```powershell
-   Import-Certificate -FilePath .\MusicAssistant.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
-   Add-AppxPackage .\MusicAssistant_1.0.0.0_x64.msix
-   ```
+4. Open the app, enter your server address (for example `http://192.168.1.10:8095`), and sign in.
 
-> The certificate has to land in the *Local Machine* Trusted People store. The current user's store, or double-clicking the `.cer` without picking Local Machine, is not enough: the installer reports error `0x800B0109` (root certificate not trusted).
+That's it. Later versions install over the top; you only do the certificate step once.
 
-### Getting rid of the certificate step
+> Nothing extra to install. The app is self-contained, so you don't need .NET or any other runtime.
 
-Windows trusts MSIX signatures from certificates that chain to a public root. Options, cheapest first:
+## Build
 
-1. **Microsoft Store**: free developer account (one-time fee), the Store signs the package and handles updates. Best for a wide audience.
-2. **Azure Trusted Signing**: a low monthly fee, keys stay in Azure, signs with a Microsoft-trusted certificate; `signtool` picks it up. Works for MSIX and for the portable exe (no SmartScreen warning after reputation builds).
-3. **A code-signing certificate from a public CA** (DigiCert, Sectigo, SSL.com): OV or EV, yearly cost, hardware token for EV.
+For anyone who wants to build it themselves.
 
-With any of those, build with `-p:PackageCertificateThumbprint=<your cert>` and the `.msix` installs by double-click, no signing step for anyone.
+You need [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **.NET desktop development** and **Windows App SDK** workloads (or the [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) plus the Windows 10 SDK on their own).
 
-## Build and run
+Run and test:
 
-1. Restore and build:
+```powershell
+cd MusicAssistant
+dotnet build -c Release -p:Platform=x64 -r win-x64
+.\bin\x64\Release\net9.0-windows10.0.26100.0\win-x64\MusicAssistant.exe
+```
 
-   ```powershell
-   cd MusicAssistant
-   dotnet build -c Release -p:Platform=x64 -r win-x64
-   ```
-
-2. Run the app:
-
-   ```powershell
-   .\bin\x64\Release\net9.0-windows10.0.26100.0\win-x64\MusicAssistant.exe
-   ```
-
-3. Enter your server address (for example `http://192.168.1.10:8095`), then either sign in with a Music Assistant username and password or click **Sign in with Home Assistant**. That's it!
-
-> Home Assistant sign-in opens your browser at the Home Assistant address your Music Assistant server is configured with (a local URL or a Nabu Casa remote URL both work). After you approve, the browser lands on a `127.0.0.1` page from this app and the session token is handed back without ever passing through a third party.
-
-> The build is unpackaged and self-contained, so the folder above runs on any machine without installing the Windows App SDK runtime. For Store or MSIX distribution, add a packaging project or flip `WindowsPackageType` in the csproj.
-
-## Remote access
-
-Music Assistant's remote access works like this: the server keeps a websocket open to `signaling.music-assistant.io` and publishes a **Remote ID**, which is a base32 encoding of the first 16 bytes of its own DTLS certificate fingerprint. A client asks the signaling server for that ID, the two exchange a WebRTC offer and answer plus ICE candidates, and a data channel comes up directly between them (through Home Assistant Cloud's TURN servers when the server has a Nabu Casa subscription, otherwise over public STUN). The signaling server only relays the handshake and never sees the session: before the client accepts the answer it strips every non-SHA-256 fingerprint from the SDP and requires every remaining fingerprint to match the Remote ID, so a relay or anyone in between cannot substitute their own certificate.
-
-In this app:
-
-- The WebRTC side is `Remote/RemotePeer.cs`, built on [SIPSorcery](https://github.com/sipsorcery-org/sipsorcery) (pure managed, no browser, no native binaries): signaling, ICE/TURN, DTLS and the data channels. `Api/RemoteId.cs` does the pinning: it decodes the Remote ID and rejects any answer whose SHA-256 fingerprints do not match, before the description is accepted; SIPSorcery then also checks the DTLS certificate against the SDP fingerprint.
-- `Remote/WebRtcTransport.cs` plugs the "ma-api" channel into the same API client used for local websocket connections. `Remote/LocalImageProxy.cs` serves artwork on `127.0.0.1` under a per-session random path and fetches each image through the connection, so every image control keeps working unchanged.
-- Connection order is always local address first (5 second timeout when a Remote ID is known), then remote. The title bar shows a REMOTE badge while the relay is in use.
-- Signing in as an admin over the local network stores the server's Remote ID automatically. Anyone else pastes it once from Settings, or on the login page.
-- Home Assistant sign-in is local-only because the browser must reach the server's callback URL. Username and password work over remote.
-
-The pinning vectors are part of the `MusicAssistant.Check` self-check.
-
-## Play on this PC (speaker)
-
-Music Assistant streams to players over its own [Sendspin](https://github.com/Sendspin/spec) protocol: a Noise-encrypted session, device pairing, clock synchronization and timestamped audio chunks. The app implements the player role natively in `MusicAssistant/Sendspin/`:
-
-- `Noise.cs`: the `Noise_KKpsk2_25519_AESGCM_SHA256` handshake and transport (X25519 from BouncyCastle, AES-GCM and SHA-256 from .NET). `Identity.cs` keeps the key pair, the pairing PSK and the pairing records in the Windows Credential Manager.
-- `SendspinConnection.cs`: the init exchange, handshake, fragment reassembly and in-band re-handshakes over a socket. `ProxyWebSocket.cs` is the local socket (the server's authenticated `/sendspin` proxy); remotely the socket is a "sendspin" data channel on the WebRTC connection.
-- `SendspinPlayer.cs`: hello, state, time-sync bursts (`TimeFilter.cs`, the Kalman filter the specification names), stream messages and the Pairing PSK flow. It presents itself as the built-in "Web Player", so the server pairs it through the API without an operator step.
-- `WasapiOutput.cs` renders through shared-mode WASAPI and reads the device clock (`IAudioClock`, QPC-stamped), so `AudioScheduler.cs` can place every chunk on the server's timeline to within a millisecond, nudging by whole frames when needed. `Decoders.cs` handles PCM and Opus (Concentus).
-- `Speaker.cs` keeps the player connected with backoff and mirrors its state for Settings.
-
-Turn it on under Settings › Play on this PC. The player appears in Music Assistant under the computer's name, pairs automatically, and can be grouped with other players in sync. On the local network the server streams PCM at the device's own sample rate; over the internet Opus is preferred.
-
-## Packaging
-
-`dotnet build` with `-p:WindowsPackageType=MSIX` produces a signed, self-contained MSIX in `dist\`:
+Build the installable package:
 
 ```powershell
 cd MusicAssistant
 dotnet build -c Release -p:Platform=x64 -r win-x64 -p:WindowsPackageType=MSIX -p:AppxPackageSigningEnabled=true -p:PackageCertificateThumbprint=<thumbprint>
 ```
 
-`Package.appxmanifest` carries the identity (`DevinGreen.MusicAssistant`, publisher `CN=Devin Green`, which must match the certificate subject) and the capabilities: `internetClient`, `privateNetworkClientServer` for the LAN server and loopback listeners, and `runFullTrust`. `tools/make-msix-assets.ps1` regenerates the tile logos from the app icon. For public distribution, sign with a certificate from a public CA or publish through the Microsoft Store; the self-signed certificate is for testing only.
-
-## App icon
-
-The icon source is `MusicAssistant/Assets/music-assistant-fluent.svg`. After editing it, rasterize to a 1024 px transparent PNG and rebuild the `.ico`:
-
-```powershell
-.\tools\make-ico.ps1 -Source .\MusicAssistant\Assets\app-1024.png -Out .\MusicAssistant\Assets\app.ico
-```
-
-The `.ico` is compiled into the exe and copied next to it for the window and tray icon.
-
-## Protocol self-check
-
-`MusicAssistant.Check` runs the API client against a fake local server and verifies the handshake, login, token auth, partial results, error results, events and image URL building:
-
-```powershell
-cd MusicAssistant.Check
-dotnet run
-```
-
-## Project layout
-
-- `MusicAssistant/Api/MassClient.cs` — websocket client, commands, events, auth, image URLs
-- `MusicAssistant/Api/Models.cs` — server data models
-- `MusicAssistant/Api/Session.cs` — settings file and Credential Manager token storage
-- `MusicAssistant/Api/OAuthLoopback.cs` — one-shot 127.0.0.1 listener that receives the token after Home Assistant sign-in
-- `MusicAssistant/MainWindow.xaml` — shell: navigation, content frame, player bar, connection life cycle
-- `MusicAssistant/Controls/` — `PlayerBar` (transport) and `MediaRow` (card strip)
-- `MusicAssistant/Pages/` — Login, Home, Library, Item, Search, Browse, Queue, Settings
-- `MusicAssistant/Templates.xaml` — shared card and row templates with their context menus
-
-## Security notes
-
-- Tokens live in the Windows Credential Manager (`PasswordVault`), never in plain files or logs.
-- The app only connects to the address you enter; `http`, `https`, `ws` and `wss` are accepted. Use `https`/`wss` for anything outside your LAN.
-- Images are loaded from the server's image proxy or from `https` URLs the server marks as remotely accessible; plain `http` image URLs are routed through the server proxy.
-- No embedded web content and no WebView2. Third-party packages: SIPSorcery (BSD-3-Clause, WebRTC), BouncyCastle (MIT, X25519, pulled in by SIPSorcery) and Concentus (MIT, Opus decoding). Everything else is the Windows App SDK and .NET.
-- Failures in a UI action are logged to `%LOCALAPPDATA%\MusicAssistant\crash.log` and shown in the app instead of terminating it. Tokens and passwords are never logged.
-
-## Memory
-
-Images are decoded at the size they are drawn, long lists virtualize (only visible rows exist), and the runtime uses the workstation non-concurrent garbage collector with `System.GC.ConserveMemory` set. Measured 130 to 160 MB private memory on the Discover page (Release, x64, artwork loaded); roughly 100 MB of that is the WinUI framework itself.
-
-## Not included yet
-
-- Provider and player configuration (use the web interface; Settings links to it)
-- Lyrics, Party mode and casting dashboards
+The `.msix` lands in `dist\`.

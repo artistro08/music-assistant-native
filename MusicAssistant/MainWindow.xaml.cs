@@ -53,16 +53,24 @@ public sealed partial class MainWindow : Window
         // App icon in the title bar / taskbar, and the tray icon with its menu
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
         AppWindow.SetIcon(iconPath);
-        tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), iconPath, ShowFromTray, ExitApp);
+        tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), iconPath, ShowFromTray, ExitApp, App.Settings.ShowTrayIcon);
         App.StateChanged += UpdateTrayTip;
+        UpdateQuitItem();
 
-        // Closing the window hides to the tray; Exit in the tray menu really quits
+        // Closing the window keeps the app running in the background (hidden) when that setting is on; otherwise it quits.
         AppWindow.Closing += (_, args) =>
         {
             if (exiting) return;
-            args.Cancel = true;
-            SavePlacement();
-            AppWindow.Hide();
+            args.Cancel = true;   // in both cases the app decides what to do, not the default close
+            if (App.Settings.RunInBackground)
+            {
+                SavePlacement();
+                AppWindow.Hide();
+            }
+            else
+            {
+                ExitApp();   // ordered teardown, then a real close (exiting=true lets the next Closing through)
+            }
         };
 
         App.Client.Disconnected += error => DispatcherQueue.TryEnqueue(() => OnDisconnected(error));
@@ -79,11 +87,60 @@ public sealed partial class MainWindow : Window
     // TRAY
     // =========================================================================
 
+    /// <summary>Apply the tray-icon and background settings live after they change in Settings.</summary>
+    public void ApplyWindowSettings()
+    {
+        tray.SetVisible(App.Settings.ShowTrayIcon);
+        UpdateQuitItem();
+    }
+
+    /// <summary>The sidebar Quit item is the only in-app way out when the tray icon (with its Exit) is hidden, so show it exactly then.</summary>
+    private void UpdateQuitItem() => QuitItem.Visibility = App.Settings.ShowTrayIcon ? Visibility.Collapsed : Visibility.Visible;
+
     private void ShowFromTray()
     {
+        // If the window is open on another virtual desktop, plain Activate would switch the user to that desktop.
+        // Hiding then showing re-places it on the desktop the user is on now, so launching from the Start menu (or the
+        // tray) brings the app to them instead of yanking them away.
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        if (AppWindow.IsVisible && !IsOnCurrentDesktop(hwnd)) AppWindow.Hide();
+
         AppWindow.Show();
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } p) p.Restore();
         Activate();
+    }
+
+    /// <summary>Whether the window currently lives on the virtual desktop the user is viewing. True (do nothing) if the desktop manager is unavailable or the state can't be read.</summary>
+    private static bool IsOnCurrentDesktop(IntPtr hwnd)
+    {
+        try
+        {
+            var manager = (IVirtualDesktopManager)new VirtualDesktopManagerClass();
+            try
+            {
+                return manager.IsWindowOnCurrentVirtualDesktop(hwnd, out var onCurrent) == 0 && onCurrent != 0;
+            }
+            finally
+            {
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(manager);
+            }
+        }
+        catch (Exception)
+        {
+            return true;   // no shell virtual-desktop support: leave the window where it is and just activate
+        }
+    }
+
+    [System.Runtime.InteropServices.ComImport, System.Runtime.InteropServices.Guid("aa509086-5ca9-4c25-8f95-589d3c07b48a")]
+    private class VirtualDesktopManagerClass { }
+
+    [System.Runtime.InteropServices.ComImport, System.Runtime.InteropServices.Guid("a5cd92ff-29be-454c-8d04-d82879fb3f1b"),
+     System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IVirtualDesktopManager
+    {
+        [System.Runtime.InteropServices.PreserveSig] int IsWindowOnCurrentVirtualDesktop(IntPtr topLevelWindow, out int onCurrentDesktop);
+        [System.Runtime.InteropServices.PreserveSig] int GetWindowDesktopId(IntPtr topLevelWindow, out Guid desktopId);
+        [System.Runtime.InteropServices.PreserveSig] int MoveWindowToDesktop(IntPtr topLevelWindow, ref Guid desktopId);
     }
 
     private async void ExitApp()
@@ -225,10 +282,21 @@ public sealed partial class MainWindow : Window
         throw localError ?? new ApiException(0, "No server address or Remote ID configured.");
     }
 
+    private bool? wasRemote;
+
     private void SetRemote(bool remote)
     {
         RemoteBadge.Visibility = remote ? Visibility.Visible : Visibility.Collapsed;
         Images.Resolver = App.Client.ImageUrl;   // base URL changed with the transport
+
+        // Remote art comes from a per-session loopback proxy; on a switch to or from remote the cached bitmaps and any
+        // already-resolved card URLs point at a proxy that no longer exists, so drop them and re-resolve. Only on an
+        // actual change of mode, to avoid re-fetching every visible image on an ordinary same-transport reconnect.
+        if (wasRemote != remote)
+        {
+            wasRemote = remote;
+            Templates.InvalidateImages();
+        }
     }
 
     /// <summary>
@@ -297,6 +365,7 @@ public sealed partial class MainWindow : Window
     private void OnDisconnected(Exception? error)
     {
         if (LoginFrame.Visibility == Visibility.Visible || reconnectCts is not null) return;
+        App.Log("Connection lost: " + (error?.Message ?? "closed by server"));
         ShowMessage("Connection lost. Reconnecting…", InfoBarSeverity.Warning, autoClose: false);
         reconnectCts = new CancellationTokenSource();
         _ = ReconnectAsync(reconnectCts.Token);
@@ -582,7 +651,13 @@ public sealed partial class MainWindow : Window
 
     private void OnNavItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
-        if (args.IsSettingsInvoked)
+        if (args.InvokedItemContainer?.Tag is "quit")
+        {
+            ExitApp();
+            return;
+        }
+
+        if (args.InvokedItemContainer?.Tag is "settings" or "account")
         {
             Navigate(typeof(SettingsPage), null);
             return;
@@ -591,10 +666,6 @@ public sealed partial class MainWindow : Window
         if (args.InvokedItemContainer?.Tag is string tag && NavPages.TryGetValue(tag, out var page))
         {
             Navigate(page, tag);
-        }
-        else if (args.InvokedItemContainer?.Tag is "account")
-        {
-            Navigate(typeof(SettingsPage), null);
         }
     }
 

@@ -24,6 +24,9 @@ public sealed class WasapiOutput : IDisposable
     public int SampleRate { get; private set; }
     public int Channels   { get; private set; }
 
+    /// <summary>Raised when the render thread dies unexpectedly (device invalidated, format change, driver reset), never on a normal Stop(). Handlers must not block or call Stop()/Dispose() inline, since this fires on the render thread mid-teardown.</summary>
+    public event Action? Failed;
+
     private IAudioClient?       client;
     private IAudioRenderClient? render;
     private IAudioClock?        clock;
@@ -139,6 +142,7 @@ public sealed class WasapiOutput : IDisposable
         {
             App.Log("Speaker output stopped: " + ex.Message);
             running = false;
+            Failed?.Invoke();   // fire before the finally releases COM; the handler must only signal, not join this thread
         }
         finally
         {

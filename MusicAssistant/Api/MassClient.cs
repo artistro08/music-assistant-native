@@ -40,6 +40,9 @@ public sealed class MassClient : IDisposable
     public ConcurrentDictionary<string, Player>      Players { get; } = new();
     public ConcurrentDictionary<string, PlayerQueue> Queues  { get; } = new();
 
+    /// <summary>True once the full player and queue lists were fetched after authentication. Events arrive before that, applied to a partial list.</summary>
+    public bool StateLoaded { get; private set; }
+
     /// <summary>Raised for every server event (event name, object id, raw data). Runs on a background thread.</summary>
     public event Action<string, string?, JsonElement>? EventReceived;
 
@@ -107,6 +110,7 @@ public sealed class MassClient : IDisposable
             old.Dispose();
         }
         FailPending(new ApiException(0, "Disconnected"));
+        StateLoaded = false;
         Players.Clear();
         Queues.Clear();
         CurrentUser = null;
@@ -212,6 +216,7 @@ public sealed class MassClient : IDisposable
     {
         foreach (var player in await SendAsync<List<Player>>("players/all"))       Players[player.PlayerId] = player;
         foreach (var queue  in await SendAsync<List<PlayerQueue>>("player_queues/all")) Queues[queue.QueueId] = queue;
+        StateLoaded = true;
     }
 
     // =========================================================================
@@ -291,11 +296,20 @@ public sealed class MassClient : IDisposable
     // PLAYERS / QUEUES
     // =========================================================================
 
+    /// <summary>Transport verbs whose every send is logged, so a spurious pause/resume can be traced to the app (and which path) versus the server.</summary>
+    private static readonly HashSet<string> LoggedCommands = ["play", "pause", "play_pause", "stop", "next", "previous", "play_index", "seek"];
+
     public Task PlayerCommandAsync(string playerId, string command, object? args = null)
-        => SendAsync<JsonElement>($"players/cmd/{command}", Merge(new { player_id = playerId }, args));
+    {
+        if (LoggedCommands.Contains(command)) Logger?.Invoke($"player cmd '{command}' -> {playerId}");
+        return SendAsync<JsonElement>($"players/cmd/{command}", Merge(new { player_id = playerId }, args));
+    }
 
     public Task QueueCommandAsync(string queueId, string command, object? args = null)
-        => SendAsync<JsonElement>($"player_queues/{command}", Merge(new { queue_id = queueId }, args));
+    {
+        if (LoggedCommands.Contains(command)) Logger?.Invoke($"queue cmd '{command}' -> {queueId}");
+        return SendAsync<JsonElement>($"player_queues/{command}", Merge(new { queue_id = queueId }, args));
+    }
 
     public Task<List<QueueItem>> GetQueueItemsAsync(string queueId, int limit = 500, int offset = 0)
         => SendAsync<List<QueueItem>>("player_queues/items", new { queue_id = queueId, limit, offset });
@@ -412,7 +426,14 @@ public sealed class MassClient : IDisposable
         {
             case "player_added":
             case "player_updated":
-                if (data.Deserialize<Player>(Json.Options) is { } player) Players[player.PlayerId] = player;
+                if (data.Deserialize<Player>(Json.Options) is { } player)
+                {
+                    // Log real playback_state transitions so a pause that flips back to playing with no matching app
+                    // command in the log points at the server (buffering resume, group sync), not the client.
+                    if (Players.TryGetValue(player.PlayerId, out var old) && old.PlaybackState != player.PlaybackState)
+                        Logger?.Invoke($"player '{player.Name}' {old.PlaybackState} -> {player.PlaybackState}");
+                    Players[player.PlayerId] = player;
+                }
                 break;
             case "player_removed":
                 // A queue's lifecycle is tied to its player (no queue_removed event, and the fallback queue id is the

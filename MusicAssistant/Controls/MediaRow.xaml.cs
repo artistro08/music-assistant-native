@@ -25,7 +25,11 @@ public sealed partial class MediaRow : UserControl
     {
         InitializeComponent();
         ItemTemplate = (DataTemplate)Application.Current.Resources["MediaCardTemplate"];
-        Loaded += (_, _) => BuildSlots();
+
+        // Re-render the visible page when the image cache is dropped (transport switch) so the cards re-resolve their
+        // art against the new base URL. Subscribed only while in the tree, so a paged-away row does not leak.
+        Loaded   += (_, _) => { BuildSlots(); Templates.ImagesInvalidated -= Render; Templates.ImagesInvalidated += Render; };
+        Unloaded += (_, _) => Templates.ImagesInvalidated -= Render;
     }
 
     public string Title

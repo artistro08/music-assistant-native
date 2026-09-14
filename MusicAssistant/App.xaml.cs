@@ -105,6 +105,11 @@ public partial class App : Application
     {
         if (ActivePlayer is { IsVisible: true }) return;
 
+        // The server streams events as soon as the connection is authenticated, before the full player list has been
+        // fetched. Judging the selection against that partial list would replace it with whichever player happened
+        // to send the first event (or with nothing), so wait for the complete state.
+        if (!Client.StateLoaded) return;
+
         // Keep a remembered selection that simply has not appeared yet, rather than clobbering it with a fallback:
         // this PC's own speaker is added to the list only once it connects (a few seconds after launch), and another
         // speaker can be briefly absent or unavailable at connect. Overwriting here is what dropped the last speaker.
@@ -118,7 +123,9 @@ public partial class App : Application
         // player counts as playing only when the local speaker is really streaming, so a stale server flag after a
         // crash does not make the app open selecting itself.
         var ownStreaming = Window.SpeakerPlaying;
-        SetActivePlayer((visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId);
+        var fallback     = (visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId;
+        Log($"Active player fallback: '{remembered}' is gone, selecting '{fallback}'");
+        SetActivePlayer(fallback);
     }
 
     public static void NotifyStateChanged() => StateChanged?.Invoke();
@@ -155,8 +162,15 @@ public partial class App : Application
             var queueId = Client.QueueIdFor(player);
             var before  = Client.Queues.GetValueOrDefault(queueId)?.CurrentItem?.QueueItemId;
 
+            var watch = System.Diagnostics.Stopwatch.StartNew();
             await Client.PlayMediaAsync(queueId, item.Uri, option, startItem);
-            if (startsNow) await WaitForPlaybackAsync(player.PlayerId, queueId, before, TimeSpan.FromSeconds(15));
+            if (watch.Elapsed > TimeSpan.FromSeconds(5)) Log($"play_media on {player.Name} took {watch.Elapsed.TotalSeconds:0}s to be accepted");
+            if (startsNow && !await WaitForPlaybackAsync(player.PlayerId, queueId, before, TimeSpan.FromSeconds(15)))
+            {
+                var current = Client.Players.GetValueOrDefault(player.PlayerId);
+                var queue   = Client.Queues.GetValueOrDefault(queueId);
+                Log($"{player.Name} did not report playback within 15s: player {current?.PlaybackState}, queue {queue?.State} at {queue?.ElapsedTime:0}s of '{queue?.CurrentItem?.Name}'");
+            }
         }
         catch (Exception ex)
         {
@@ -183,8 +197,8 @@ public partial class App : Application
         StateChanged?.Invoke();
     }
 
-    /// <summary>Resolve once the player is playing a different item than before (or the same one from the start), or after the timeout.</summary>
-    private static async Task WaitForPlaybackAsync(string playerId, string queueId, string? before, TimeSpan timeout)
+    /// <summary>Resolve once the player is playing a different item than before (or the same one from the start), or after the timeout. False on timeout.</summary>
+    private static async Task<bool> WaitForPlaybackAsync(string playerId, string queueId, string? before, TimeSpan timeout)
     {
         var started = new TaskCompletionSource();
 
@@ -200,7 +214,7 @@ public partial class App : Application
         try
         {
             Check();
-            await Task.WhenAny(started.Task, Task.Delay(timeout));
+            return await Task.WhenAny(started.Task, Task.Delay(timeout)) == started.Task;
         }
         finally
         {

@@ -97,6 +97,7 @@ public static class MediaControls
         };
         if (command is null) return;
 
+        App.Log($"SMTC button {args.Button} -> {player.Name}");   // an external media key, headset or app press shows up here as the source
         _ = App.Client.PlayerCommandAsync(player.PlayerId, command).ContinueWith(
             t => App.Dispatcher.TryEnqueue(() => App.Window.ShowMessage(t.Exception!.InnerException?.Message ?? "Command failed")),
             TaskContinuationOptions.OnlyOnFaulted);

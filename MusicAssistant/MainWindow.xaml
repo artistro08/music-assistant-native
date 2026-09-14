@@ -51,7 +51,7 @@
             Grid.Row="1"
             IsBackButtonVisible="Collapsed"
             IsTitleBarAutoPaddingEnabled="False"
-            IsSettingsVisible="True"
+            IsSettingsVisible="False"
             PaneDisplayMode="Auto"
             OpenPaneLength="220"
             ItemInvoked="OnNavItemInvoked">
@@ -111,6 +111,14 @@
                         <BitmapIcon x:Name="UserIcon" ShowAsMonochrome="False" />
                     </NavigationViewItem.Icon>
                     <TextBlock x:Name="UserNameText" TextTrimming="CharacterEllipsis" />
+                </NavigationViewItem>
+                <!-- Own Settings item (not the built-in one) so Quit can sit directly under it -->
+                <NavigationViewItem Content="Settings" Tag="settings" Icon="Setting" />
+                <!-- Only way to quit from inside the app when the tray icon (and its Exit) is hidden -->
+                <NavigationViewItem x:Name="QuitItem" Content="Quit Music Assistant" Tag="quit" SelectsOnInvoked="False" Visibility="Collapsed">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE7E8;" />
+                    </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 

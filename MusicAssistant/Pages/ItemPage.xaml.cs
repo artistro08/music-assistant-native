@@ -22,8 +22,19 @@ public sealed partial class ItemPage : Page
         InitializeComponent();
 
         // Live level bars follow whatever the active player is playing; subscribe for the page's time in the tree
-        Loaded   += (_, _) => { App.StateChanged += UpdateNowPlaying; UpdateNowPlaying(); };
-        Unloaded += (_, _) => App.StateChanged -= UpdateNowPlaying;
+        Loaded   += (_, _) => { App.StateChanged += UpdateNowPlaying; UpdateNowPlaying(); Templates.ImagesInvalidated -= OnImagesInvalidated; Templates.ImagesInvalidated += OnImagesInvalidated; };
+        Unloaded += (_, _) => { App.StateChanged -= UpdateNowPlaying; Templates.ImagesInvalidated -= OnImagesInvalidated; };
+    }
+
+    /// <summary>Transport switched and the image cache was dropped: re-resolve the hero art and force the track rows to re-bind their thumbnails against the new base URL.</summary>
+    private void OnImagesInvalidated()
+    {
+        Templates.Show(ArtImage, item.LargeImageUrl, 200);
+        if (TrackList.ItemsSource is { } source)
+        {
+            TrackList.ItemsSource = null;
+            TrackList.ItemsSource = source;
+        }
     }
 
     /// <summary>Light the level bars on the track playing right now; clear them on every other row.</summary>

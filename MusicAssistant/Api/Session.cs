@@ -28,6 +28,12 @@ public sealed class Session
     public bool    SpeakerEnabled  { get; set; }
     public string? SpeakerClientId { get; set; }
 
+    /// <summary>Closing the window hides the app and keeps it running, instead of quitting. Default on.</summary>
+    public bool    RunInBackground { get; set; } = true;
+
+    /// <summary>Show the notification-area (tray) icon and its menu. Default on. When off, the Quit item appears in the sidebar.</summary>
+    public bool    ShowTrayIcon    { get; set; } = true;
+
     // Window placement (physical pixels)
     public int  WindowX         { get; set; }
     public int  WindowY         { get; set; }

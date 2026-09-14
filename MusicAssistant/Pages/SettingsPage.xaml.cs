@@ -32,6 +32,28 @@ public sealed partial class SettingsPage : Page
         App.Window.Speaker.Changed += RefreshSpeaker;
         Unloaded += (_, _) => App.Window.Speaker.Changed -= RefreshSpeaker;
         RefreshSpeaker();
+
+        BackgroundSwitch.IsOn = App.Settings.RunInBackground;
+        TraySwitch.IsOn       = App.Settings.ShowTrayIcon;
+    }
+
+    // =========================================================================
+    // GENERAL
+    // =========================================================================
+
+    private void OnRunBackgroundToggled(object sender, RoutedEventArgs e)
+    {
+        if (BackgroundSwitch.IsOn == App.Settings.RunInBackground) return;
+        App.Settings.RunInBackground = BackgroundSwitch.IsOn;
+        App.Settings.Save();
+    }
+
+    private void OnTrayToggled(object sender, RoutedEventArgs e)
+    {
+        if (TraySwitch.IsOn == App.Settings.ShowTrayIcon) return;
+        App.Settings.ShowTrayIcon = TraySwitch.IsOn;
+        App.Settings.Save();
+        App.Window.ApplyWindowSettings();
     }
 
     // =========================================================================

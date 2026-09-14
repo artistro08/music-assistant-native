@@ -103,19 +103,19 @@
 
         <!-- Volume + Player -->
         <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
-            <Button x:Name="MuteButton" Style="{StaticResource SubtleButtonStyle}" Click="OnMute" ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute">
+            <Button x:Name="MuteButton" Style="{StaticResource SubtleButtonStyle}" Click="OnMute" PointerWheelChanged="OnVolumeWheel" ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute">
                 <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" FontSize="16" />
             </Button>
-            <Slider x:Name="VolumeSlider" Width="100" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="OnVolumeChanged" />
+            <Slider x:Name="VolumeSlider" Width="100" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="OnVolumeChanged" PointerWheelChanged="OnVolumeWheel" />
 
             <!-- Compact volume: shown instead of the inline slider on narrow windows -->
-            <Button x:Name="VolumeFlyoutButton" Style="{StaticResource SubtleButtonStyle}" Visibility="Collapsed" ToolTipService.ToolTip="Volume" AutomationProperties.Name="Volume">
+            <Button x:Name="VolumeFlyoutButton" Style="{StaticResource SubtleButtonStyle}" Visibility="Collapsed" PointerWheelChanged="OnVolumeWheel" ToolTipService.ToolTip="Volume" AutomationProperties.Name="Volume">
                 <FontIcon x:Name="VolumeFlyoutIcon" Glyph="&#xE767;" FontSize="16" />
                 <Button.Flyout>
                     <Flyout Placement="Top" Opening="OnVolumeFlyoutOpening">
                         <StackPanel Spacing="8" HorizontalAlignment="Center">
                             <TextBlock x:Name="VolumePercentText" Style="{StaticResource CaptionTextBlockStyle}" HorizontalAlignment="Center" />
-                            <Slider x:Name="VolumeFlyoutSlider" Orientation="Vertical" Height="140" Minimum="0" Maximum="100" HorizontalAlignment="Center" ValueChanged="OnVolumeChanged" />
+                            <Slider x:Name="VolumeFlyoutSlider" Orientation="Vertical" Height="140" Minimum="0" Maximum="100" HorizontalAlignment="Center" ValueChanged="OnVolumeChanged" PointerWheelChanged="OnVolumeWheel" />
                             <Button Style="{StaticResource SubtleButtonStyle}" HorizontalAlignment="Center" Click="OnMute" ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute">
                                 <FontIcon x:Name="VolumeFlyoutMuteIcon" Glyph="&#xE767;" FontSize="16" />
                             </Button>

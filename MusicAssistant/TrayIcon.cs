@@ -28,16 +28,26 @@ public sealed class TrayIcon : IDisposable
     private readonly TrayMenu menu;
     private bool added;
 
-    public TrayIcon(IntPtr hwnd, string iconPath, Action open, Action exit)
+    public TrayIcon(IntPtr hwnd, string iconPath, Action open, Action exit, bool visible)
     {
         this.hwnd = hwnd;
         this.open = open;
         menu = new TrayMenu(hwnd, open, exit);
 
         icon = LoadImage(IntPtr.Zero, iconPath, 1 /* IMAGE_ICON */, 16, 16, 0x10 /* LR_LOADFROMFILE */);
+
+        // The window subclass carries the notification-area messages AND the single-instance "show yourself" signal, so
+        // it is installed even when the icon is hidden: a second launch must still reopen the window with no tray icon.
         subclass = WndProc;
         SetWindowSubclass(hwnd, subclass, 1, IntPtr.Zero);
 
+        if (visible) Show();
+    }
+
+    /// <summary>Add the icon to the notification area (idempotent).</summary>
+    public void Show()
+    {
+        if (added) return;
         var data = NewData();
         data.uFlags           = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         data.uCallbackMessage = TrayMessage;
@@ -46,6 +56,21 @@ public sealed class TrayIcon : IDisposable
         added = Shell_NotifyIcon(NIM_ADD, ref data);
         data.uVersion = 4;   // NOTIFYICON_VERSION_4: WM_CONTEXTMENU / NIN_SELECT with coordinates
         Shell_NotifyIcon(NIM_SETVERSION, ref data);
+    }
+
+    /// <summary>Remove the icon from the notification area, keeping the subclass alive (idempotent).</summary>
+    public void Hide()
+    {
+        if (!added) return;
+        var data = NewData();
+        Shell_NotifyIcon(NIM_DELETE, ref data);
+        added = false;
+    }
+
+    public void SetVisible(bool visible)
+    {
+        if (visible) Show();
+        else Hide();
     }
 
     /// <summary>Tooltip shows what is playing.</summary>
@@ -61,12 +86,7 @@ public sealed class TrayIcon : IDisposable
     public void Dispose()
     {
         menu.Dispose();
-        if (added)
-        {
-            var data = NewData();
-            Shell_NotifyIcon(NIM_DELETE, ref data);
-            added = false;
-        }
+        Hide();
         RemoveWindowSubclass(hwnd, subclass, 1);
         if (icon != IntPtr.Zero) DestroyIcon(icon);
     }

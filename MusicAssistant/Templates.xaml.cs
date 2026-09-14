@@ -47,6 +47,21 @@ public sealed partial class Templates : ResourceDictionary
     private static readonly Dictionary<string, LinkedListNode<(string Key, BitmapImage Bitmap)>> cache = [];
     private static readonly LinkedList<(string Key, BitmapImage Bitmap)> recent = [];
 
+    /// <summary>Raised when the cache is dropped so live controls re-resolve their art (e.g. the transport switched between local and remote, changing every image URL). UI thread.</summary>
+    public static event Action? ImagesInvalidated;
+
+    /// <summary>
+    /// Drop every decoded bitmap and tell controls to re-bind. Call when the image base URL changes underneath us:
+    /// remote-mode art is served by a per-session loopback proxy, so on a switch to (or from) remote the cached
+    /// bitmaps point at an address that no longer answers and would stay blank until each card happened to re-bind.
+    /// </summary>
+    public static void InvalidateImages()
+    {
+        cache.Clear();
+        recent.Clear();
+        ImagesInvalidated?.Invoke();
+    }
+
     public static BitmapImage? Decode(string? url, int logicalWidth)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https" or "data")) return null;
@@ -60,6 +75,16 @@ public sealed partial class Templates : ResourceDictionary
         }
 
         var bitmap = new BitmapImage(uri) { DecodePixelType = DecodePixelType.Logical, DecodePixelWidth = logicalWidth };
+        // A failed load (proxy hiccup, transport dropping) must not stick in the cache, or the art stays blank forever;
+        // evict it so the next bind retries. Only if this exact bitmap is still the cached one for the key.
+        bitmap.ImageFailed += (_, _) =>
+        {
+            if (cache.TryGetValue(key, out var current) && ReferenceEquals(current.Value.Bitmap, bitmap))
+            {
+                recent.Remove(current);
+                cache.Remove(key);
+            }
+        };
         cache[key] = recent.AddFirst((key, bitmap));
         if (recent.Count > CacheSize)
         {

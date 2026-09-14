@@ -19,11 +19,17 @@ public sealed partial class PlayerBar : UserControl
 {
     private readonly DispatcherQueueTimer tickTimer;
     private readonly DispatcherQueueTimer volumeTimer;
+    private readonly DispatcherQueueTimer volumeTipTimer;
 
     private bool    isSeeking;
     private bool    suppressVolume;
     private int     pendingVolume;
     private string? lastImageUrl;
+
+    // Value tooltip shown while scrolling the volume; the Slider's own thumb tooltip only appears on a pointer drag
+    private ToolTip?          volumeTip;
+    private FrameworkElement? volumeTipOwner;
+    private object?           volumeTipSaved;
 
     public PlayerBar()
     {
@@ -38,6 +44,11 @@ public sealed partial class PlayerBar : UserControl
         volumeTimer.Interval = TimeSpan.FromMilliseconds(200);
         volumeTimer.IsRepeating = false;
         volumeTimer.Tick += (_, _) => _ = SendVolumeAsync();
+
+        volumeTipTimer = DispatcherQueue.CreateTimer();
+        volumeTipTimer.Interval = TimeSpan.FromMilliseconds(900);
+        volumeTipTimer.IsRepeating = false;
+        volumeTipTimer.Tick += (_, _) => HideVolumeTip();
 
         ProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => isSeeking = true), true);
 
@@ -252,6 +263,53 @@ public sealed partial class PlayerBar : UserControl
         _ = Queue?.CurrentItem is not null
             ? RunAsync(() => App.Client.QueueCommandAsync(App.Client.QueueIdFor(player), "seek", new { position }))
             : RunAsync(() => App.Client.PlayerCommandAsync(player.PlayerId, "seek", new { position }));
+    }
+
+    /// <summary>Mouse wheel over the volume slider, mute button or compact volume button nudges the volume in 2% steps.</summary>
+    private void OnVolumeWheel(object sender, PointerRoutedEventArgs e)
+    {
+        if (Player is not { } player || !player.Supports("volume_set")) return;
+        var delta = e.GetCurrentPoint((UIElement)sender).Properties.MouseWheelDelta;
+        if (delta == 0) return;
+        e.Handled = true;
+
+        // Drive the inline slider; its ValueChanged runs the same debounced send as a drag. Works even while it is
+        // collapsed on narrow windows (the wheel came from the mute or compact volume button instead).
+        var next = Math.Clamp((int)Math.Round(VolumeSlider.Value) + (delta > 0 ? 2 : -2), 0, 100);
+        VolumeSlider.Value = next;
+        ShowVolumeTip((FrameworkElement)sender, next);
+    }
+
+    /// <summary>Pop a small tooltip with the percentage over whatever the wheel is on, and keep it up briefly after the last scroll.</summary>
+    private void ShowVolumeTip(FrameworkElement owner, int value)
+    {
+        volumeTip ??= new ToolTip { Placement = PlacementMode.Top };
+
+        // Move the tooltip to the element being scrolled, restoring the previous owner's own tooltip ("Mute", "Volume") first
+        if (!ReferenceEquals(volumeTipOwner, owner))
+        {
+            HideVolumeTip();
+            volumeTipSaved = ToolTipService.GetToolTip(owner);
+            volumeTipOwner = owner;
+            ToolTipService.SetToolTip(owner, volumeTip);
+        }
+
+        volumeTip.Content = $"{value}%";
+        volumeTip.IsOpen  = true;
+        volumeTipTimer.Stop();
+        volumeTipTimer.Start();
+    }
+
+    private void HideVolumeTip()
+    {
+        volumeTipTimer.Stop();
+        if (volumeTip is not null) volumeTip.IsOpen = false;
+        if (volumeTipOwner is not null)
+        {
+            ToolTipService.SetToolTip(volumeTipOwner, volumeTipSaved);   // put the element's label tooltip back
+            volumeTipOwner = null;
+            volumeTipSaved = null;
+        }
     }
 
     /// <summary>Both sliders (inline and flyout) route here; the one the user moved becomes the value to send.</summary>

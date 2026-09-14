@@ -25,6 +25,16 @@
             </StackPanel>
             <!-- /This PC as a Speaker -->
 
+            <!-- General -->
+            <StackPanel Spacing="8" Padding="16" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <TextBlock Text="General" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <ToggleSwitch x:Name="BackgroundSwitch" Header="Keep running in the background when I close the window" OnContent="On" OffContent="Off" Toggled="OnRunBackgroundToggled" />
+                <TextBlock Text="When on, closing the window hides it and playback keeps going. When off, closing quits the app." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                <ToggleSwitch x:Name="TraySwitch" Header="Show an icon in the notification area" OnContent="On" OffContent="Off" Toggled="OnTrayToggled" />
+                <TextBlock Text="The tray icon's menu can open the app or quit it. When it is hidden, a Quit Music Assistant item appears at the bottom of the sidebar instead." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+            <!-- /General -->
+
             <!-- Remote Access -->
             <StackPanel Spacing="8" Padding="16" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                 <TextBlock Text="Remote access" Style="{StaticResource BodyStrongTextBlockStyle}" />
