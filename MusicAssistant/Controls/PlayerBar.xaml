@@ -35,8 +35,9 @@
                 </Grid>
             </Grid>
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                <TextBlock x:Name="TitleText" Text="Nothing playing" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                <TextBlock x:Name="SubtitleText" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <!-- Trimmed text gets its full value as a tooltip (see TrimTip) -->
+                <TextBlock x:Name="TitleText" Text="Nothing playing" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" IsTextTrimmedChanged="OnTextTrimmedChanged" />
+                <TextBlock x:Name="SubtitleText" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextTrimmedChanged="OnTextTrimmedChanged" />
                 <!-- Quality Chip: its own line under the artist so it never competes with the title for width -->
                 <Border x:Name="QualityChip" Padding="6,1" Margin="0,2,0,0" CornerRadius="8" Background="{ThemeResource ControlFillColorSecondaryBrush}" HorizontalAlignment="Left" Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal" Spacing="5">

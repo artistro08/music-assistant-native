@@ -59,6 +59,7 @@ public sealed class SendspinPlayer : IDisposable
     public string ClientId     => identity.ClientId;
     public string PairingToken => identity.PairingToken;
     public bool   Connected    { get; private set; }
+    private volatile bool outputFailed;   // render thread died; set from the render thread, read on connect
     public bool   Playing      { get; private set; }
     public bool   Paired       => connection.Matched?.Category == Identity.PskCategory.LongTerm;
     public bool   TimeSynced   => timeFilter.IsSynchronized;
@@ -92,6 +93,11 @@ public sealed class SendspinPlayer : IDisposable
         ApplyGain();
 
         await connection.StartAsync(ct);
+        if (outputFailed)   // the render thread died during the handshake; a "connected" session with no audio is worse than a retry
+        {
+            connection.Close("Audio device lost", "player_error");
+            throw new IOException("Audio output failed while connecting");
+        }
         Connected = true;
         Notify();
     }
@@ -200,11 +206,14 @@ public sealed class SendspinPlayer : IDisposable
         {
             if (activated) { SendState(); return; }
             activated = true;
+            // Timers are created under the same lock StopTimers runs under, so a close landing right after activation
+            // cannot be overtaken by a timer that outlives the session
+            timeSyncTimer = new Timer(_ => StartBurst(), null, TimeSyncBurstInterval, TimeSyncBurstInterval);
+            stateTimer    = new Timer(_ => { SendState(); LogStatus(); }, null, StateInterval, StateInterval);
         }
         App.Debug($"Speaker: activated ({string.Join(",", activities)}) roles player={playerRoleActive} key={connection.Matched?.Category}");
         SendState();
-        StartTimeSync();
-        stateTimer = new Timer(_ => { SendState(); LogStatus(); }, null, StateInterval, StateInterval);
+        StartBurst();
         Notify();
     }
 
@@ -347,17 +356,11 @@ public sealed class SendspinPlayer : IDisposable
     // TIME SYNC
     // =========================================================================
 
-    private void StartTimeSync()
-    {
-        StartBurst();
-        timeSyncTimer = new Timer(_ => StartBurst(), null, TimeSyncBurstInterval, TimeSyncBurstInterval);
-    }
-
     private void StartBurst()
     {
         lock (gate)
         {
-            if (burstActive) return;
+            if (burstActive || !activated) return;   // not activated: the session closed (or restarted) under a timer
             burstActive = true;
             burstSent = 0;
             burstSamples.Clear();
@@ -376,12 +379,12 @@ public sealed class SendspinPlayer : IDisposable
             t1 = Clock.NowUs();
             probeInFlight = t1;
             burstSent++;
+            // A single slow probe (over the relay, control messages queue behind audio on the ordered channel) is
+            // skipped, not fatal: move on to the next one and still use the samples the burst did collect.
+            probeTimer?.Dispose();
+            probeTimer = new Timer(_ => OnProbeTimeout(t1), null, TimeSyncProbeTimeout, Timeout.Infinite);
         }
         connection.SendControl("client/time", new { client_transmitted = t1 });
-        probeTimer?.Dispose();
-        // A single slow probe (over the relay, control messages queue behind audio on the ordered channel) is
-        // skipped, not fatal: move on to the next one and still use the samples the burst did collect.
-        probeTimer = new Timer(_ => OnProbeTimeout(t1), null, TimeSyncProbeTimeout, Timeout.Infinite);
     }
 
     private void OnProbeTimeout(long t1)
@@ -444,7 +447,7 @@ public sealed class SendspinPlayer : IDisposable
     /// </summary>
     private void OnOutputFailed()
     {
-        if (!Connected) return;
+        outputFailed = true;   // also covers a failure before Connected, which ConnectAsync checks after the handshake
         App.Debug("Speaker: output device lost, dropping session to rebuild");
         // Fired on the render thread as it tears down; closing here would Stop()/join that very thread. Hand it off.
         ThreadPool.QueueUserWorkItem(_ => { try { connection.Close("Audio device lost", "player_error"); } catch (Exception ex) { App.Debug("Speaker output-failed close: " + ex.Message); } });
@@ -452,7 +455,7 @@ public sealed class SendspinPlayer : IDisposable
 
     private void OnClosed(string reason)
     {
-        lock (gate) StopTimers();
+        lock (gate) { StopTimers(); activated = false; }   // a burst that already left its lock sees !activated and stops
         Connected = false;
         Playing   = false;
         LastError = reason;

@@ -50,7 +50,7 @@ public sealed partial class HomePage : Page
         playersSignature = signature;
 
         var playing = players.Count(p => p.IsPlaying);
-        PlayersRow.Subtitle   = playing == 0 ? null : $"{playing} playing";
+        PlayersRow.BadgeText  = playing == 0 ? null : $"{playing} playing";
         PlayersRow.Items      = players;
         PlayersRow.Visibility = players.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }

@@ -30,6 +30,7 @@ public sealed partial class PlayerBar : UserControl
     private ToolTip?          volumeTip;
     private FrameworkElement? volumeTipOwner;
     private object?           volumeTipSaved;
+    private DateTime          volumeSentAt;   // last volume_set send; the server echo is expected shortly after
 
     public PlayerBar()
     {
@@ -84,6 +85,8 @@ public sealed partial class PlayerBar : UserControl
 
         TitleText.Text    = item?.Name ?? media?.Title ?? "Nothing playing";
         SubtitleText.Text = item?.SubtitleText ?? JoinNonEmpty(media?.Artist, media?.Album);
+        TrimTip(TitleText);
+        TrimTip(SubtitleText);
 
         var imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 160) : media?.ImageUrl;
         if (imageUrl != lastImageUrl)
@@ -126,9 +129,15 @@ public sealed partial class PlayerBar : UserControl
         RepeatIcon.Glyph         = queue?.RepeatMode == "one" ? "\uE8ED" : "\uE8EE";
 
         suppressVolume = true;
-        VolumeSlider.Value      = player?.VolumeLevel ?? 0;
-        VolumeFlyoutSlider.Value = VolumeSlider.Value;
-        VolumePercentText.Text  = $"{(int)VolumeSlider.Value}%";
+        // Server volume wins, except while the user's own change is still on its way (debounce running, or the send
+        // went out under a second ago and its echo has not come back): resetting then would snap the slider back
+        // under the pointer and lose wheel notches.
+        if (!volumeTimer.IsRunning && DateTime.UtcNow - volumeSentAt > TimeSpan.FromSeconds(1))
+        {
+            VolumeSlider.Value       = player?.VolumeLevel ?? 0;
+            VolumeFlyoutSlider.Value = VolumeSlider.Value;
+            VolumePercentText.Text   = $"{(int)VolumeSlider.Value}%";
+        }
         VolumeSlider.IsEnabled  = VolumeFlyoutSlider.IsEnabled = player?.Supports("volume_set") == true;
         MuteButton.IsEnabled    = player?.Supports("volume_mute") == true;
         VolumeFlyoutButton.IsEnabled = player?.Supports("volume_set") == true || player?.Supports("volume_mute") == true;
@@ -142,6 +151,12 @@ public sealed partial class PlayerBar : UserControl
 
         UpdateProgress();
     }
+
+    /// <summary>Full text as a tooltip, only while the ellipsis is actually cutting it off. Also wired to IsTextTrimmedChanged for resizes.</summary>
+    private static void TrimTip(TextBlock text)
+        => ToolTipService.SetToolTip(text, text.IsTextTrimmed ? text.Text : null);
+
+    private void OnTextTrimmedChanged(TextBlock sender, IsTextTrimmedChangedEventArgs args) => TrimTip(sender);
 
     private void UpdateProgress()
     {
@@ -263,6 +278,10 @@ public sealed partial class PlayerBar : UserControl
 
     private void OnSeekCommitted(object sender, PointerRoutedEventArgs e)
     {
+        // PointerCaptureLost also fires on layout changes (a window resize re-templates the slider), not only at the
+        // end of a drag. Without a real press first this is not a seek: sending one restarted the stream on the WiiM
+        // every time the window was resized.
+        if (!isSeeking) return;
         isSeeking = false;
         if (Player is not { } player) return;
         var position = (int)ProgressSlider.Value;
@@ -324,6 +343,13 @@ public sealed partial class PlayerBar : UserControl
         if (suppressVolume) return;
         pendingVolume = (int)e.NewValue;
         VolumePercentText.Text = $"{pendingVolume}%";
+
+        // Keep the other slider in step, so the flyout thumb follows the wheel and a flyout drag leaves the inline
+        // slider (the wheel's base value) current
+        suppressVolume = true;
+        if (ReferenceEquals(sender, VolumeSlider)) VolumeFlyoutSlider.Value = e.NewValue; else VolumeSlider.Value = e.NewValue;
+        suppressVolume = false;
+
         volumeTimer.Stop();
         volumeTimer.Start();
     }
@@ -339,6 +365,7 @@ public sealed partial class PlayerBar : UserControl
     private Task SendVolumeAsync()
     {
         if (Player is not { } player) return Task.CompletedTask;
+        volumeSentAt = DateTime.UtcNow;
         var volume_level = pendingVolume;
         return RunAsync(() => App.Client.PlayerCommandAsync(player.PlayerId, "volume_set", new { volume_level }));
     }

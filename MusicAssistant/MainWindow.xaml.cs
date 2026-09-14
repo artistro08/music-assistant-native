@@ -35,7 +35,8 @@ public sealed partial class MainWindow : Window
 
     private readonly TrayIcon tray;
     private int  reconnectAttempt;
-    private bool exiting;
+    private bool exiting;        // ordered teardown started (ExitApp)
+    private bool closeAllowed;   // teardown done; the next Closing may pass
     private CancellationTokenSource? reconnectCts;   // one reconnect loop at a time; canceled by sign-out and manual sign-in
 
     public MainWindow()
@@ -60,8 +61,9 @@ public sealed partial class MainWindow : Window
         // Closing the window keeps the app running in the background (hidden) when that setting is on; otherwise it quits.
         AppWindow.Closing += (_, args) =>
         {
-            if (exiting) return;
-            args.Cancel = true;   // in both cases the app decides what to do, not the default close
+            if (closeAllowed) return;   // ExitApp's own Close() after the ordered teardown
+            args.Cancel = true;         // every other close request is decided here, never by the default close
+            if (exiting) return;        // teardown already running; extra clicks on X must not close a window it still uses
             if (App.Settings.RunInBackground)
             {
                 SavePlacement();
@@ -69,7 +71,7 @@ public sealed partial class MainWindow : Window
             }
             else
             {
-                ExitApp();   // ordered teardown, then a real close (exiting=true lets the next Closing through)
+                DispatcherQueue.TryEnqueue(ExitApp);   // off the Closing callback, so Close() is not re-entered from inside it
             }
         };
 
@@ -91,6 +93,7 @@ public sealed partial class MainWindow : Window
     public void ApplyWindowSettings()
     {
         tray.SetVisible(App.Settings.ShowTrayIcon);
+        UpdateTrayTip();   // a re-added icon starts with the plain app name; give it the now-playing tip straight away
         UpdateQuitItem();
     }
 
@@ -145,8 +148,10 @@ public sealed partial class MainWindow : Window
 
     private async void ExitApp()
     {
+        if (exiting) return;           // tray Exit, sidebar Quit and X can all land while the teardown below is awaiting
         exiting = true;
         await StopOwnSpeakerAsync();   // the PC speaker goes away with the app, so end its playback, not leave a zombie queue
+        closeAllowed = true;
         Close();                       // Closed handler stops the speaker, removes the tray icon and its menu window, disconnects
         Application.Current.Exit();    // nothing else may keep the process alive
     }
@@ -191,8 +196,19 @@ public sealed partial class MainWindow : Window
         if (onScreen) AppWindow.MoveAndResize(rect);
         else AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 820));
 
-        if (s.WindowMaximized && AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Maximize();
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+        {
+            // Below this the player bar's Narrow state and the Home rows stop fitting; the limit is in physical pixels
+            var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+            presenter.PreferredMinimumWidth  = (int)(720 * scale);
+            presenter.PreferredMinimumHeight = (int)(520 * scale);
+
+            if (s.WindowMaximized) presenter.Maximize();
+        }
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     private void SavePlacement()
     {
@@ -282,19 +298,19 @@ public sealed partial class MainWindow : Window
         throw localError ?? new ApiException(0, "No server address or Remote ID configured.");
     }
 
-    private bool? wasRemote;
+    private string? imageBaseUrl;   // base URL the cached images and resolved card URLs were built against
 
     private void SetRemote(bool remote)
     {
         RemoteBadge.Visibility = remote ? Visibility.Visible : Visibility.Collapsed;
         Images.Resolver = App.Client.ImageUrl;   // base URL changed with the transport
 
-        // Remote art comes from a per-session loopback proxy; on a switch to or from remote the cached bitmaps and any
-        // already-resolved card URLs point at a proxy that no longer exists, so drop them and re-resolve. Only on an
-        // actual change of mode, to avoid re-fetching every visible image on an ordinary same-transport reconnect.
-        if (wasRemote != remote)
+        // Every remote connect builds a fresh loopback image proxy on a new port and nonce, so the cached bitmaps and
+        // any already-resolved card URLs go stale on a remote-to-remote reconnect too, not only on a mode switch.
+        // Key on the base URL itself; a plain local reconnect keeps the same address and skips the refetch.
+        if (imageBaseUrl != App.Client.BaseUrl)
         {
-            wasRemote = remote;
+            imageBaseUrl = App.Client.BaseUrl;
             Templates.InvalidateImages();
         }
     }

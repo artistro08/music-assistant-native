@@ -65,6 +65,9 @@ public partial class App : Application
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+            // The app runs for days and logs every player state change, so cap the file: past 1 MB the current log
+            // becomes crash.log.1 (replacing the previous one) and a fresh file starts
+            if (new FileInfo(LogPath) is { Exists: true, Length: > 1_000_000 }) File.Move(LogPath, LogPath + ".1", overwrite: true);
             File.AppendAllText(LogPath, $"{DateTime.Now:O} {message}{Environment.NewLine}{Environment.NewLine}");
         }
         catch (Exception) { }   // unwritable profile folder: logging must not become the crash

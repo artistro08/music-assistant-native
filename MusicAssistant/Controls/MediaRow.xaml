@@ -10,12 +10,20 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock x:Name="TitleText" Style="{StaticResource SubtitleTextBlockStyle}" />
                 <TextBlock x:Name="SubtitleText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
             </StackPanel>
-            <StackPanel x:Name="Pager" Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Visibility="Collapsed">
+            <!-- Badge: short status on the right of the header, like the "2 playing" count on the players row -->
+            <Border x:Name="Badge" Grid.Column="1" Height="22" Padding="8,0" CornerRadius="11" Background="{ThemeResource ControlFillColorSecondaryBrush}" VerticalAlignment="Center" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE768;" FontSize="9" VerticalAlignment="Center" />
+                    <TextBlock x:Name="BadgeLabel" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" LineHeight="11" LineStackingStrategy="BlockLineHeight" />
+                </StackPanel>
+            </Border>
+            <StackPanel x:Name="Pager" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Visibility="Collapsed">
                 <TextBlock x:Name="PageText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
                 <Button x:Name="PrevButton" Click="OnPrev" Padding="6" AutomationProperties.Name="Previous page">
                     <FontIcon Glyph="&#xE76B;" FontSize="12" />

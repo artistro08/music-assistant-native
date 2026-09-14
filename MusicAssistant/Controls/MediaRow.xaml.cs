@@ -29,8 +29,23 @@ public sealed partial class MediaRow : UserControl
 
         // Re-render the visible page when the image cache is dropped (transport switch) so the cards re-resolve their
         // art against the new base URL. Subscribed only while in the tree, so a paged-away row does not leak.
-        Loaded   += (_, _) => { BuildSlots(); Templates.ImagesInvalidated -= Render; Templates.ImagesInvalidated += Render; };
-        Unloaded += (_, _) => Templates.ImagesInvalidated -= Render;
+        Loaded   += (_, _) => { BuildSlots(); Templates.ImagesInvalidated -= Rebind; Templates.ImagesInvalidated += Rebind; };
+        Unloaded += (_, _) => Templates.ImagesInvalidated -= Rebind;
+    }
+
+    /// <summary>
+    /// Force every visible card to re-run its template. Re-assigning the same item reference is a no-op for the
+    /// content presenter, and the card's image binding is OneTime, so the content has to go through null.
+    /// </summary>
+    private void Rebind()
+    {
+        foreach (var slot in slots)
+        {
+            var item = slot.Content;
+            if (item is null) continue;
+            slot.Content = null;
+            slot.Content = item;
+        }
     }
 
     public string Title
@@ -46,6 +61,17 @@ public sealed partial class MediaRow : UserControl
         {
             SubtitleText.Text       = value ?? "";
             SubtitleText.Visibility = string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    /// <summary>Short status shown as an accent pill on the right of the header row; null hides it.</summary>
+    public string? BadgeText
+    {
+        get => BadgeLabel.Text;
+        set
+        {
+            BadgeLabel.Text  = value ?? "";
+            Badge.Visibility = string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
         }
     }
 
