@@ -13,7 +13,7 @@
         <GradientStop Color="#D9000000" Offset="1" />
     </LinearGradientBrush>
 
-    <!-- Plain Card Button: no chrome behind the card; a translucent tint over the card itself marks hover and press -->
+    <!-- Plain Card Button: no hover or press chrome, the card content draws itself (MediaRow adds a tint overlay in code) -->
     <Style x:Key="PlainCardButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
@@ -25,34 +25,11 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Grid>
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup x:Name="CommonStates">
-                                <VisualState x:Name="Normal" />
-                                <VisualState x:Name="PointerOver">
-                                    <VisualState.Setters>
-                                        <Setter Target="HoverTint.Opacity" Value="1" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState x:Name="Pressed">
-                                    <VisualState.Setters>
-                                        <Setter Target="HoverTint.Opacity" Value="1" />
-                                        <Setter Target="HoverTint.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
-                        <ContentPresenter
-                            Content="{TemplateBinding Content}"
-                            ContentTemplate="{TemplateBinding ContentTemplate}"
-                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
-                        <Border x:Name="HoverTint" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Opacity="0" IsHitTestVisible="False">
-                            <Border.OpacityTransition>
-                                <ScalarTransition Duration="0:0:0.15" />
-                            </Border.OpacityTransition>
-                        </Border>
-                    </Grid>
+                    <ContentPresenter
+                        Content="{TemplateBinding Content}"
+                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                        HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                        VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

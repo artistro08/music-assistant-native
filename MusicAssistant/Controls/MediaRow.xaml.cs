@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using MusicAssistant.Api;
 
 namespace MusicAssistant.Controls;
@@ -100,16 +101,34 @@ public sealed partial class MediaRow : UserControl
             };
             slot.Click += OnSlotClick;
 
-            // Self-drawn cards: no hover surface behind them, the card itself tints under the pointer
+            // Self-drawn cards: no hover surface behind them; a translucent overlay on top of the card tints it under
+            // the pointer. Done in code rather than template visual states, which crash Microsoft.UI.Xaml on hover.
+            UIElement cell = slot;
             if (ShowAll)
             {
                 slot.Style   = (Style)Application.Current.Resources["PlainCardButtonStyle"];
                 slot.Padding = new Thickness(0);
                 slot.Margin  = new Thickness(0);
+
+                var tint = new Border
+                {
+                    Background        = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"],
+                    CornerRadius      = (CornerRadius)Application.Current.Resources["ControlCornerRadius"],
+                    Opacity           = 0,
+                    IsHitTestVisible  = false,
+                    OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(150) },
+                };
+                slot.PointerEntered += (_, _) => tint.Opacity = 1;
+                slot.PointerExited  += (_, _) => tint.Opacity = 0;
+
+                var wrapper = new Grid();
+                wrapper.Children.Add(slot);
+                wrapper.Children.Add(tint);
+                cell = wrapper;
             }
-            Grid.SetRow(slot, row);
-            Grid.SetColumn(slot, i % SlotCount);
-            Slots.Children.Add(slot);
+            Grid.SetRow((FrameworkElement)cell, row);
+            Grid.SetColumn((FrameworkElement)cell, i % SlotCount);
+            Slots.Children.Add(cell);
             slots.Add(slot);
         }
         Render();
