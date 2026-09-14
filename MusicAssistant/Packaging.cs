@@ -7,7 +7,7 @@ namespace MusicAssistant;
 ///
 /// Packaged (MSIX) builds have package identity: Windows already knows the
 /// app's name, icon and AppUserModelID, so the unpackaged-only registration
-/// steps (explicit app id, registry entry, Start Menu shortcut) must be skipped.
+/// steps (explicit app id, registry entry) must be skipped.
 /// </summary>
 public static class Packaging
 {

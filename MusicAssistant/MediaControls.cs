@@ -57,9 +57,6 @@ public static class MediaControls
         {
             // Registry not writable: the overlay just shows a generic name
         }
-
-        // The media overlay resolves name and icon through a Start Menu shortcut tagged with the same id
-        StartMenuShortcut.Ensure(App.AppUserModelId, "Music Assistant", Environment.ProcessPath ?? "", iconPath);
     }
 
     /// <summary>

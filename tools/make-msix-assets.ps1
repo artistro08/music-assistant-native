@@ -1,13 +1,17 @@
 # make-msix-assets.ps1
 #
 # Generates the PNG logos the MSIX manifest needs (Square44x44, Square150x150,
-# Wide310x150, StoreLogo, SplashScreen) from the 1024 px app icon render.
+# Wide310x150, StoreLogo, SplashScreen) from the 512 px frame of the app icon.
 # Uses System.Drawing only.
+#
+# The icon itself is music-assistant-fluent.ico in the repo root; copy it to
+# MusicAssistant\Assets\app.ico and pull its PNG frame into Assets\app-512.png
+# before running this.
 #
 # Usage: .\tools\make-msix-assets.ps1
 
 Add-Type -AssemblyName System.Drawing
-$src  = Join-Path $PSScriptRoot "..\MusicAssistant\Assets\app-1024.png"
+$src  = Join-Path $PSScriptRoot "..\MusicAssistant\Assets\app-512.png"
 $dest = Join-Path $PSScriptRoot "..\MusicAssistant\Assets\Package"
 New-Item -ItemType Directory -Force $dest | Out-Null
 $image = [System.Drawing.Image]::FromFile((Resolve-Path $src))

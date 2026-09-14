@@ -41,10 +41,10 @@
   <ItemGroup>
     <!-- Window and tray icon, loaded from disk at runtime -->
     <Content Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
-    <None Remove="Assets\app-1024.png" />
+    <!-- Source render for the MSIX logos only (tools\make-msix-assets.ps1); not shipped -->
+    <None Remove="Assets\app-512.png" />
     <Content Include="Assets\Package\*.png" Condition="'$(WindowsPackageType)' == 'MSIX'" />
     <AppxManifest Include="Package.appxmanifest" Condition="'$(WindowsPackageType)' == 'MSIX'"><SubType>Designer</SubType></AppxManifest>
-    <None Remove="Assets\music-assistant-fluent.svg" />
   </ItemGroup>
 
   <ItemGroup>
