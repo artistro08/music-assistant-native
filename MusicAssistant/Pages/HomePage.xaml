@@ -10,7 +10,7 @@
             <TextBlock x:Name="GreetingText" Style="{StaticResource PageHeaderTextStyle}" />
 
             <!-- Players -->
-            <controls:MediaRow x:Name="PlayersRow" Title="Players" Visibility="Collapsed" />
+            <controls:MediaRow x:Name="PlayersRow" Title="Players" ShowAll="True" Visibility="Collapsed" />
 
             <!-- Top Picks -->
             <controls:TopPicks x:Name="Picks" Visibility="Collapsed" />

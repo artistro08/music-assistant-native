@@ -1,3 +1,4 @@
+using System.Numerics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -50,6 +51,9 @@ public sealed partial class MediaRow : UserControl
 
     public DataTemplate ItemTemplate { get; set; }
 
+    /// <summary>Show every item at once, wrapping into rows of five, instead of paging. No pager is shown.</summary>
+    public bool ShowAll { get; set; }
+
     public IEnumerable<object> Items
     {
         get => items;
@@ -57,19 +61,31 @@ public sealed partial class MediaRow : UserControl
         {
             items = value.ToList();
             page  = 0;
+            BuildSlots();
             Render();
         }
     }
 
     // Slots
 
+    /// <summary>Slots to keep: one page, or enough full rows for every item when showing all.</summary>
+    private int SlotsNeeded => ShowAll ? Math.Max(SlotCount, (int)Math.Ceiling(items.Count / (double)SlotCount) * SlotCount) : SlotCount;
+
     private void BuildSlots()
     {
-        if (slots.Count > 0) return;
+        var needed = SlotsNeeded;
+        if (slots.Count >= needed) return;   // ponytail: slots only grow; a shrinking list leaves collapsed slots behind
 
-        for (var i = 0; i < SlotCount; i++)
-        {
+        while (Slots.ColumnDefinitions.Count < SlotCount)
             Slots.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        // Card grids (players) have no hover bleed, so the gap is the real gap
+        if (ShowAll) Slots.ColumnSpacing = Slots.RowSpacing = 12;
+
+        for (var i = slots.Count; i < needed; i++)
+        {
+            var row = i / SlotCount;
+            if (Slots.RowDefinitions.Count <= row) Slots.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // A subtle button gives the hover/press surface around image and text, plus keyboard and narrator support for free
             var slot = new Button
@@ -84,7 +100,19 @@ public sealed partial class MediaRow : UserControl
                 CornerRadius               = (CornerRadius)Application.Current.Resources["OverlayCornerRadius"],
             };
             slot.Click += OnSlotClick;
-            Grid.SetColumn(slot, i);
+
+            // Self-drawn cards: no hover surface behind them, the card itself sinks in slightly under the pointer
+            if (ShowAll)
+            {
+                slot.Style           = (Style)Application.Current.Resources["PlainCardButtonStyle"];
+                slot.Padding         = new Thickness(0);
+                slot.Margin          = new Thickness(0);
+                slot.ScaleTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(150) };
+                slot.PointerEntered += (s, _) => SetHover((Button)s, true);
+                slot.PointerExited  += (s, _) => SetHover((Button)s, false);
+            }
+            Grid.SetRow(slot, row);
+            Grid.SetColumn(slot, i % SlotCount);
             Slots.Children.Add(slot);
             slots.Add(slot);
         }
@@ -134,6 +162,15 @@ public sealed partial class MediaRow : UserControl
         if (step == 0) return;
         e.Handled = true;
         TurnPage(step);
+    }
+
+    // Hover
+
+    /// <summary>Sink the card in a touch (97%) while the pointer is over it, scaling around its own center.</summary>
+    private static void SetHover(Button slot, bool over)
+    {
+        slot.CenterPoint = new Vector3((float)slot.ActualWidth / 2, (float)slot.ActualHeight / 2, 0);
+        slot.Scale       = over ? new Vector3(0.97f, 0.97f, 1) : Vector3.One;
     }
 
     // Activation

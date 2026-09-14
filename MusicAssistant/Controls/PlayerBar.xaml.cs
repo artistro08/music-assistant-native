@@ -73,8 +73,10 @@ public sealed partial class PlayerBar : UserControl
 
         PlayerNameText.Text = player?.DisplayName ?? "No player";
         PlayPauseButton.IsEnabled = player is not null;
-        PreviousButton.IsEnabled  = player?.Supports("next_previous") == true;
-        NextButton.IsEnabled      = player?.Supports("next_previous") == true;
+        // Skipping is a queue operation when MA is driving the player; the player feature only matters for
+        // external sources (a WiiM playing from its own app reports no next_previous at all)
+        PreviousButton.IsEnabled  = queue is not null || player?.Supports("next_previous") == true;
+        NextButton.IsEnabled      = PreviousButton.IsEnabled;
 
         // Now playing: prefer the MA queue item, fall back to whatever the player reports
         var item  = queue?.CurrentItem;
@@ -190,11 +192,15 @@ public sealed partial class PlayerBar : UserControl
     private void OnPlayPause(object sender, RoutedEventArgs e)
         => _ = RunAsync(() => App.Client.PlayerCommandAsync(Player!.PlayerId, "play_pause"));
 
-    private void OnNext(object sender, RoutedEventArgs e)
-        => _ = RunAsync(() => App.Client.PlayerCommandAsync(Player!.PlayerId, "next"));
+    private void OnNext(object sender, RoutedEventArgs e) => Skip("next");
 
-    private void OnPrevious(object sender, RoutedEventArgs e)
-        => _ = RunAsync(() => App.Client.PlayerCommandAsync(Player!.PlayerId, "previous"));
+    private void OnPrevious(object sender, RoutedEventArgs e) => Skip("previous");
+
+    /// <summary>Skip through the MA queue when there is one, else ask the player itself (external source).</summary>
+    private void Skip(string command)
+        => _ = RunAsync(() => Queue is { } queue
+            ? App.Client.QueueCommandAsync(queue.QueueId, command)
+            : App.Client.PlayerCommandAsync(Player!.PlayerId, command));
 
     private void OnShuffle(object sender, RoutedEventArgs e)
     {
