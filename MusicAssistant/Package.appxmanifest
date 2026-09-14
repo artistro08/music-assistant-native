@@ -10,7 +10,7 @@
   <Identity Name="artistro08.MusicAssistantNative" Publisher="CN=BF59F607-536B-4252-888F-7B3ED9D56F96" Version="1.0.0.0" />
 
   <Properties>
-    <DisplayName>Music Assistant</DisplayName>
+    <DisplayName>Music Assistant Native</DisplayName>
     <PublisherDisplayName>artistro08</PublisherDisplayName>
     <Logo>Assets\Package\StoreLogo.png</Logo>
   </Properties>
@@ -26,7 +26,7 @@
   <Applications>
     <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Music Assistant"
+        DisplayName="Music Assistant Native"
         Description="Native Windows client for Music Assistant"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Package\Square150x150Logo.png"
