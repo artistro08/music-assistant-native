@@ -24,7 +24,8 @@
         <Grid ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
+                <!-- Star column so the text shrinks on narrow windows instead of pushing the chip and heart off the edge -->
+                <ColumnDefinition Width="*" MaxWidth="280" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Grid Width="64" Height="64" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
@@ -34,7 +35,7 @@
                     <ProgressRing x:Name="LoadingRing" IsActive="False" Foreground="White" Width="28" Height="28" />
                 </Grid>
             </Grid>
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2" MaxWidth="280">
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                 <!-- Star column so the title trims with an ellipsis; the chip keeps its own width -->
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>

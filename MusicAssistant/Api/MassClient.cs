@@ -40,6 +40,13 @@ public sealed class MassClient : IDisposable
     public ConcurrentDictionary<string, Player>      Players { get; } = new();
     public ConcurrentDictionary<string, PlayerQueue> Queues  { get; } = new();
 
+    /// <summary>
+    /// Player ids the server explicitly removed this connection (player_removed). A player merely missing from the
+    /// list is not the same thing: after a server restart, players/all answers before the providers have rediscovered
+    /// their devices, and the missing ones trickle in as player_added over the next minute.
+    /// </summary>
+    public ConcurrentDictionary<string, byte> RemovedPlayers { get; } = new();
+
     /// <summary>True once the full player and queue lists were fetched after authentication. Events arrive before that, applied to a partial list.</summary>
     public bool StateLoaded { get; private set; }
 
@@ -113,6 +120,7 @@ public sealed class MassClient : IDisposable
         StateLoaded = false;
         Players.Clear();
         Queues.Clear();
+        RemovedPlayers.Clear();
         CurrentUser = null;
         ServerInfo  = null;
     }
@@ -433,12 +441,13 @@ public sealed class MassClient : IDisposable
                     if (Players.TryGetValue(player.PlayerId, out var old) && old.PlaybackState != player.PlaybackState)
                         Logger?.Invoke($"player '{player.Name}' {old.PlaybackState} -> {player.PlaybackState}");
                     Players[player.PlayerId] = player;
+                    RemovedPlayers.TryRemove(player.PlayerId, out _);
                 }
                 break;
             case "player_removed":
                 // A queue's lifecycle is tied to its player (no queue_removed event, and the fallback queue id is the
                 // player id), so drop the matching queue too or it lingers as a ghost with no backing player
-                if (objectId is not null) { Players.TryRemove(objectId, out _); Queues.TryRemove(objectId, out _); }
+                if (objectId is not null) { Players.TryRemove(objectId, out _); Queues.TryRemove(objectId, out _); RemovedPlayers[objectId] = 0; }
                 break;
             case "queue_added":
             case "queue_updated":

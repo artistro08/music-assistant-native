@@ -111,11 +111,19 @@ public partial class App : Application
         if (!Client.StateLoaded) return;
 
         // Keep a remembered selection that simply has not appeared yet, rather than clobbering it with a fallback:
-        // this PC's own speaker is added to the list only once it connects (a few seconds after launch), and another
-        // speaker can be briefly absent or unavailable at connect. Overwriting here is what dropped the last speaker.
+        // this PC's own speaker is added to the list only once it connects (a few seconds after launch), and after a
+        // server restart the other speakers are missing from players/all until their providers rediscover them.
+        // Only give it up when the server said player_removed, or when the own speaker was switched off here.
+        // Overwriting on mere absence is what silently moved playback from the remembered speaker to this PC.
         var remembered = Settings.ActivePlayerId;
-        var ownPending = remembered == Player.OwnPlayerId && Settings.SpeakerEnabled;   // own speaker joins the list only once it connects
-        if (!string.IsNullOrEmpty(remembered) && (Client.Players.ContainsKey(remembered) || ownPending)) return;
+        if (!string.IsNullOrEmpty(remembered))
+        {
+            if (Client.Players.ContainsKey(remembered)) return;
+            var own     = remembered == Player.OwnPlayerId;
+            var ownOff  = own && !Settings.SpeakerEnabled;
+            var removed = !own && Client.RemovedPlayers.ContainsKey(remembered);   // own speaker comes and goes with its connection
+            if (!ownOff && !removed) return;
+        }
 
         var visible = Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name).ToList();
 
@@ -124,6 +132,7 @@ public partial class App : Application
         // crash does not make the app open selecting itself.
         var ownStreaming = Window.SpeakerPlaying;
         var fallback     = (visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId;
+        if (fallback is null) return;   // nothing to select yet; re-evaluated on the next player event
         Log($"Active player fallback: '{remembered}' is gone, selecting '{fallback}'");
         SetActivePlayer(fallback);
     }
