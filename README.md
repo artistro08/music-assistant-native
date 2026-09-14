@@ -20,6 +20,10 @@ Music Assistant is a music server. It pulls your music together from services li
 
 This app is a desktop client for it: a real Windows program, not a web page in a window. You point it at your Music Assistant server, sign in, and browse and play your music. You can also turn this PC into one of the speakers, control playback from the Windows media keys and the tray, and reach your server from anywhere when you set up remote access.
 
+
+## Why
+I hate web apps. Native feels better and uses less ram. Also <a href="https://havn.blog/2024/03/21/why-i-dont.html">this</a> article sums up my views on it
+
 ## Install
 
 You need a Music Assistant server already running on your network. If you don't have one, set it up first: https://www.music-assistant.io/
