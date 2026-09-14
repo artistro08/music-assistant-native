@@ -1,4 +1,3 @@
-using System.Numerics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -101,15 +100,12 @@ public sealed partial class MediaRow : UserControl
             };
             slot.Click += OnSlotClick;
 
-            // Self-drawn cards: no hover surface behind them, the card itself sinks in slightly under the pointer
+            // Self-drawn cards: no hover surface behind them, the card itself tints under the pointer
             if (ShowAll)
             {
-                slot.Style           = (Style)Application.Current.Resources["PlainCardButtonStyle"];
-                slot.Padding         = new Thickness(0);
-                slot.Margin          = new Thickness(0);
-                slot.ScaleTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(150) };
-                slot.PointerEntered += (s, _) => SetHover((Button)s, true);
-                slot.PointerExited  += (s, _) => SetHover((Button)s, false);
+                slot.Style   = (Style)Application.Current.Resources["PlainCardButtonStyle"];
+                slot.Padding = new Thickness(0);
+                slot.Margin  = new Thickness(0);
             }
             Grid.SetRow(slot, row);
             Grid.SetColumn(slot, i % SlotCount);
@@ -162,15 +158,6 @@ public sealed partial class MediaRow : UserControl
         if (step == 0) return;
         e.Handled = true;
         TurnPage(step);
-    }
-
-    // Hover
-
-    /// <summary>Sink the card in a touch (97%) while the pointer is over it, scaling around its own center.</summary>
-    private static void SetHover(Button slot, bool over)
-    {
-        slot.CenterPoint = new Vector3((float)slot.ActualWidth / 2, (float)slot.ActualHeight / 2, 0);
-        slot.Scale       = over ? new Vector3(0.97f, 0.97f, 1) : Vector3.One;
     }
 
     // Activation
