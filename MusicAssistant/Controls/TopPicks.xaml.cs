@@ -2,6 +2,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using MusicAssistant.Api;
 
 namespace MusicAssistant.Controls;
@@ -99,11 +101,44 @@ public sealed partial class TopPicks : UserControl
         };
         tile.Tapped  += (s, _) => Open(((ContentControl)s).Content);
         tile.KeyDown += (s, e) => { if (e.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space) Open(((ContentControl)s).Content); };
+        tile.PointerEntered += (s, _) => ZoomArt((ContentControl)s, true);
+        tile.PointerExited  += (s, _) => ZoomArt((ContentControl)s, false);
         Grid.SetColumn(tile, column);
         Grid.SetRow(tile, row);
         Grid.SetRowSpan(tile, rowSpan);
         Collage.Children.Add(tile);
         tiles.Add(tile);
+    }
+
+    // Hover
+
+    private const double ArtZoom = 1.08;
+
+    /// <summary>
+    /// Slowly grow the tile's artwork while the pointer is over it and ease it back when it leaves. The card's rounded
+    /// grid clips the image, so only the picture moves inside the tile; the text and scrim stay put.
+    /// </summary>
+    private static void ZoomArt(ContentControl tile, bool zoomIn)
+    {
+        if (FindImage(tile) is not { } image) return;
+        if (image.RenderTransform is not ScaleTransform scale)
+        {
+            scale                       = new ScaleTransform();
+            image.RenderTransform       = scale;
+            image.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
+        }
+        Templates.ScaleTo(scale, zoomIn ? ArtZoom : 1, zoomIn ? 600 : 350, EasingMode.EaseOut);
+    }
+
+    private static Image? FindImage(DependencyObject root)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is Image image) return image;
+            if (FindImage(child) is { } found) return found;
+        }
+        return null;
     }
 
     // Paging: each page fills the same tiles with the next slice of picks

@@ -305,6 +305,29 @@ public sealed partial class Templates : ResourceDictionary
         storyboard.Begin();
     }
 
+    /// <summary>Ease a scale transform to a uniform size from wherever it is now, taking over any animation still running on it.</summary>
+    public static void ScaleTo(ScaleTransform target, double to, int milliseconds, EasingMode easing)
+        => AnimateBothAxes(target, () => new DoubleAnimation
+        {
+            To             = to,
+            Duration       = TimeSpan.FromMilliseconds(milliseconds),
+            EasingFunction = new CubicEase { EasingMode = easing },
+        });
+
+    /// <summary>Run one animation on both axes of a scale transform; <paramref name="make"/> builds the timeline for each axis.</summary>
+    public static void AnimateBothAxes(ScaleTransform target, Func<Timeline> make)
+    {
+        var storyboard = new Storyboard();
+        foreach (var property in new[] { "ScaleX", "ScaleY" })
+        {
+            var timeline = make();
+            Storyboard.SetTarget(timeline, target);
+            Storyboard.SetTargetProperty(timeline, property);
+            storyboard.Children.Add(timeline);
+        }
+        storyboard.Begin();
+    }
+
     private void OnImageOpened(object sender, RoutedEventArgs e) => FadeIn((UIElement)sender);
 
     private void OnCardClick(object sender, RoutedEventArgs e)
@@ -325,6 +348,22 @@ public sealed partial class Templates : ResourceDictionary
         => (Brush)Application.Current.Resources[playerId == App.Settings.ActivePlayerId ? activeKey : idleKey];
 
     private static MediaItem? ItemOf(object sender) => (sender as FrameworkElement)?.DataContext as MediaItem;
+
+    /// <summary>
+    /// Track row menu (right-click or the "..." button): rebuilt for the row's track each time it opens. The page the row
+    /// sits on is found by walking up from the row, so an album or playlist page can offer "play from here".
+    /// </summary>
+    private void OnTrackMenuOpening(object sender, object e)
+    {
+        if (sender is not MenuFlyout menu || (menu.Target as FrameworkElement)?.DataContext is not MediaItem track) return;
+
+        MediaItem? parent = null;
+        for (DependencyObject? node = menu.Target; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is Pages.ItemPage page) { parent = page.Item; break; }
+        }
+        Controls.TrackMenu.Populate(menu, track, parent);
+    }
 
     private async void OnPlayNow(object sender, RoutedEventArgs e)        { if (ItemOf(sender) is { } item) await App.PlayAsync(item, "play"); }
     private async void OnPlayNext(object sender, RoutedEventArgs e)       { if (ItemOf(sender) is { } item) await App.PlayAsync(item, "next"); }

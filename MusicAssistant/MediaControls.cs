@@ -144,7 +144,7 @@ public static class MediaControls
                                 : resumable                 ? MediaPlaybackStatus.Paused
                                 :                             MediaPlaybackStatus.Stopped;
 
-        var title    = item?.Name ?? media?.Title ?? "";
+        var title    = item?.Title ?? media?.Title ?? "";
         var artist   = item?.MediaItem?.ArtistsText ?? media?.Artist ?? "";
         var album    = item?.MediaItem?.Album?.Name ?? media?.Album ?? "";
         var imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 512) : media?.ImageUrl;

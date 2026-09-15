@@ -121,6 +121,7 @@ public sealed class MassClient : IDisposable
         Players.Clear();
         Queues.Clear();
         RemovedPlayers.Clear();
+        providersCache = null;   // a different server (or remote session) may run different providers
         CurrentUser = null;
         ServerInfo  = null;
     }
@@ -325,6 +326,44 @@ public sealed class MassClient : IDisposable
         => SendAsync<JsonElement>("music/favorites/remove_item", new { media_type = item.MediaType, library_item_id = item.ItemId });
 
     public Task<List<ProviderInstance>> GetProvidersAsync() => SendAsync<List<ProviderInstance>>("providers");
+
+    private Task<List<ProviderInstance>>? providersCache;
+
+    /// <summary>Provider instances with their capabilities, fetched once per connection (the track menu asks on every open).</summary>
+    public Task<List<ProviderInstance>> GetProvidersCachedAsync()
+    {
+        var cached = providersCache;
+        if (cached is { IsFaulted: false, IsCanceled: false }) return cached;
+        return providersCache = GetProvidersAsync();
+    }
+
+    /// <summary>The library copy of an item held by a provider, or null when it is not in the library.</summary>
+    public Task<MediaItem?> GetLibraryItemAsync(string mediaType, string itemId, string provider)
+        => SendAsync<MediaItem?>("music/get_library_item", new { media_type = mediaType, item_id = itemId, provider_instance_id_or_domain = provider });
+
+    public Task AddToLibraryAsync(string uri)
+        => SendAsync<JsonElement>("music/library/add_item", new { item = uri, overwrite_existing = false });
+
+    /// <summary>Remove a library item. Items depending on it are removed too (the server recurses).</summary>
+    public Task RemoveFromLibraryAsync(string mediaType, string libraryItemId)
+        => SendAsync<JsonElement>("music/library/remove_item", new { media_type = mediaType, library_item_id = libraryItemId });
+
+    /// <summary>Every playlist in the library, fetched a page at a time.</summary>
+    public async Task<List<MediaItem>> GetAllLibraryPlaylistsAsync()
+    {
+        const int pageSize = 500;
+        var all = new List<MediaItem>();
+        for (var offset = 0; ; offset += pageSize)
+        {
+            var page = await SendAsync<List<MediaItem>>("music/playlists/library_items", new { limit = pageSize, offset, order_by = "sort_name" });
+            all.AddRange(page);
+            if (page.Count < pageSize) return all;
+        }
+    }
+
+    /// <summary>Add items (by URI) to a library playlist. Albums are expanded to their tracks by the server.</summary>
+    public Task AddPlaylistTracksAsync(string dbPlaylistId, IEnumerable<string> uris)
+        => SendAsync<JsonElement>("music/playlists/add_playlist_tracks", new { db_playlist_id = dbPlaylistId, uris = uris.ToArray() });
 
     private static string Plural(string mediaType) => mediaType == "radio" ? "radios" : mediaType + "s";
 

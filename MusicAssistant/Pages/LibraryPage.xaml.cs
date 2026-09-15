@@ -19,6 +19,7 @@ public sealed partial class LibraryPage : Page
     private readonly ObservableCollection<MediaItem> items = [];
     private string mediaType = "albums";
     private int    offset;
+    private int    loadVersion;   // bumped per reload so a slow page for the previous listing cannot land in this one
 
     public LibraryPage()
     {
@@ -52,16 +53,19 @@ public sealed partial class LibraryPage : Page
         List.Visibility = asList ? Visibility.Visible : Visibility.Collapsed;
         CardGrid.Visibility = asList ? Visibility.Collapsed : Visibility.Visible;
 
-        // The footer element can only live in one list at a time
+        // The footer element can only live in one list at a time: detach it from wherever it is before attaching it,
+        // or switching between Albums and Tracks (same cached page) throws and the navigation fails half-done
         ((Grid)Content).Children.Remove(Footer);
-        List.Footer     = asList ? Footer : null;
-        CardGrid.Footer = asList ? null : Footer;
+        List.Footer     = null;
+        CardGrid.Footer = null;
+        if (asList) List.Footer = Footer; else CardGrid.Footer = Footer;
 
         _ = ReloadAsync();
     }
 
     private async Task ReloadAsync()
     {
+        loadVersion++;
         items.Clear();
         offset = 0;
         EmptyState.Visibility = Visibility.Collapsed;
@@ -70,11 +74,13 @@ public sealed partial class LibraryPage : Page
 
     private async Task LoadPageAsync()
     {
+        var version = loadVersion;
         Busy.IsActive = true; Busy.Visibility = Visibility.Visible;
         MoreButton.Visibility = Visibility.Collapsed;
         try
         {
             var page = await App.Client.GetLibraryItemsAsync(mediaType, SearchBox.Text, FavoritesToggle.IsChecked == true, PageSize, offset);
+            if (version != loadVersion) return;   // listing, filter or favorites changed while this page loaded
             foreach (var item in page) items.Add(item);
             offset += page.Count;
             MoreButton.Visibility = page.Count == PageSize ? Visibility.Visible : Visibility.Collapsed;
@@ -82,11 +88,11 @@ public sealed partial class LibraryPage : Page
         }
         catch (ApiException ex)
         {
-            App.Window.ShowMessage(ex.Message);
+            if (version == loadVersion) App.Window.ShowMessage(ex.Message);
         }
         finally
         {
-            Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
+            if (version == loadVersion) { Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed; }
         }
     }
 

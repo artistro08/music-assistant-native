@@ -171,21 +171,28 @@
     </DataTemplate>
     <!-- /Hero Card -->
 
+    <!-- Row Content Padding: 7 physical pixels (on the 125% display this was tuned on) between the hover/selection
+         background and the row content. The list item draws that background inset 4 on the sides and 2 on top and
+         bottom; the 2 lands on half pixels and Windows snaps both edges inward, so the rows are 56 tall (70 pixels)
+         to leave a 64 pixel background around the 50 pixel art: 7 above, 7 below. On the left the current track's
+         selection line (4 pixels, flush with the edge) comes first, so the content starts 7 pixels past it.
+         Used with TrackListItemStyle, which has no padding of its own -->
+    <Thickness x:Key="RowContentPadding">12.8,8,9.6,8</Thickness>
+
     <!-- Track Row -->
     <DataTemplate x:Key="TrackRowTemplate" x:DataType="api:MediaItem">
-        <Grid ColumnSpacing="12" Padding="4,6" MinHeight="48" AutomationProperties.Name="{x:Bind Name}">
+        <Grid ColumnSpacing="12" Padding="{StaticResource RowContentPadding}" MinHeight="48" AutomationProperties.Name="{x:Bind Name}">
+            <!-- One menu for right-click and the "..." button, like the queue rows. Built each time it opens (Controls/TrackMenu.cs) -->
+            <Grid.Resources>
+                <MenuFlyout x:Key="TrackMenu" Opening="OnTrackMenuOpening" />
+            </Grid.Resources>
             <Grid.ContextFlyout>
-                <MenuFlyout>
-                    <MenuFlyoutItem Text="Play now" Icon="Play" Click="OnPlayNow" />
-                    <MenuFlyoutItem Text="Play next" Icon="Next" Click="OnPlayNext" />
-                    <MenuFlyoutItem Text="Add to queue" Icon="Add" Click="OnAddToQueue" />
-                    <MenuFlyoutSeparator />
-                    <MenuFlyoutItem Text="Toggle favorite" Icon="Favorite" Click="OnToggleFavorite" />
-                </MenuFlyout>
+                <StaticResource ResourceKey="TrackMenu" />
             </Grid.ContextFlyout>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="40" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
@@ -206,13 +213,38 @@
 
             <controls:NowPlayingBars Grid.Column="2" Width="18" Height="14" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.Vis(IsNowPlaying), Mode=OneWay}" />
             <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Margin="0,0,0,2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
+
+            <Button Grid.Column="3" Style="{StaticResource SubtleButtonStyle}" Padding="6" Flyout="{StaticResource TrackMenu}" AutomationProperties.Name="Track actions">
+                <FontIcon Glyph="&#xE712;" FontSize="14" />
+            </Button>
         </Grid>
     </DataTemplate>
     <!-- /Track Row -->
 
+    <!-- Playlist Pick Row: one playlist in the "Add to playlist..." dialog -->
+    <DataTemplate x:Key="PlaylistPickRowTemplate" x:DataType="api:MediaItem">
+        <Grid ColumnSpacing="12" Padding="{StaticResource RowContentPadding}" AutomationProperties.Name="{x:Bind Name}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="40" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Width="40" Height="40" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                <FontIcon Glyph="&#xE90B;" FontSize="16" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <Image Source="{x:Bind local:Templates.ToThumb(ThumbUrl)}" Opacity="{x:Bind local:Templates.ReadyThumb(ThumbUrl)}" Stretch="UniformToFill" ImageOpened="OnImageOpened" />
+            </Grid>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,0,3">
+                <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                <TextBlock Text="{x:Bind SubtitleText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </Grid>
+    </DataTemplate>
+    <!-- /Playlist Pick Row -->
+
     <!-- Queue Row -->
     <DataTemplate x:Key="QueueRowTemplate" x:DataType="api:QueueItem">
-        <Grid ColumnSpacing="12" Padding="4,6" MinHeight="48" AutomationProperties.Name="{x:Bind Name}">
+        <Grid ColumnSpacing="12" Padding="{StaticResource RowContentPadding}" MinHeight="48" AutomationProperties.Name="{x:Bind Title}">
             <Grid.Resources>
                 <MenuFlyout x:Key="QueueMenu">
                     <MenuFlyoutItem Text="Play now" Icon="Play" Click="OnQueuePlayHere" />
@@ -230,7 +262,6 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Grid Width="40" Height="40" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
@@ -240,33 +271,15 @@
 
             <!-- Same lift as the track row: centered line boxes draw the ink low -->
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,0,3">
-                <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" MaxLines="1" />
                 <TextBlock Text="{x:Bind SubtitleText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
 
             <controls:NowPlayingBars Grid.Column="2" Width="18" Height="14" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.Vis(IsNowPlaying), Mode=OneWay}" />
             <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Margin="0,0,0,2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
 
-            <!-- Drag handle: the row itself is draggable; this just signals it -->
-            <Grid Grid.Column="3" VerticalAlignment="Center" Padding="6,0" RowSpacing="3" ColumnSpacing="3" ToolTipService.ToolTip="Drag to reorder">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorTertiaryBrush}" />
-                <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorTertiaryBrush}" Grid.Column="1" />
-                <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorTertiaryBrush}" Grid.Row="1" />
-                <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorTertiaryBrush}" Grid.Row="1" Grid.Column="1" />
-                <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorTertiaryBrush}" Grid.Row="2" />
-                <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorTertiaryBrush}" Grid.Row="2" Grid.Column="1" />
-            </Grid>
-
-            <Button Grid.Column="4" Style="{StaticResource SubtleButtonStyle}" Padding="6" Flyout="{StaticResource QueueMenu}" AutomationProperties.Name="Queue item actions">
+            <!-- The whole row drags to reorder, so there is no separate drag handle -->
+            <Button Grid.Column="3" Style="{StaticResource SubtleButtonStyle}" Padding="6" Flyout="{StaticResource QueueMenu}" AutomationProperties.Name="Queue item actions">
                 <FontIcon Glyph="&#xE712;" FontSize="14" />
             </Button>
         </Grid>
@@ -277,13 +290,11 @@
     <!-- Page content is capped and centered, Microsoft Store style; scrollers stay full width -->
     <x:Double x:Key="ContentMaxWidth">1600</x:Double>
 
-    <!-- Row container for track and queue lists: the default 16/12px side padding put the art 16px inside the hover
-         background but only 4px below its top. 4px on each side makes the row content sit evenly inside the hover and
-         selection background, and lines the art up with the page's section titles -->
+    <!-- Row container for track and queue lists. No padding of its own: the row template's padding sets the gap between
+         the hover/selection background and the row content (see RowContentPadding) -->
     <Style x:Key="TrackListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
-        <Setter Property="Padding" Value="4,0,4,0" />
+        <Setter Property="Padding" Value="0" />
     </Style>
-
     <Style x:Key="TrackListStyle" TargetType="ListView">
         <Setter Property="ItemTemplate" Value="{StaticResource TrackRowTemplate}" />
         <Setter Property="ItemContainerStyle" Value="{StaticResource TrackListItemStyle}" />

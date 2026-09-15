@@ -63,7 +63,8 @@
                 <NavigationViewItemHeader Content="Explore" />
                 <NavigationViewItem Content="Discover" Tag="home">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE82F;" />
+                        <!-- Compass: Segoe Fluent Icons has none, so ring + needle drawn to match its 1px stroke on the 16px grid -->
+                        <PathIcon Data="F0 M0.5,8 A7.5,7.5 0 1 1 15.5,8 A7.5,7.5 0 1 1 0.5,8 Z M1.5,8 A6.5,6.5 0 1 1 14.5,8 A6.5,6.5 0 1 1 1.5,8 Z M11.5,4.5 L9.6,9.6 L4.5,11.5 L6.4,6.4 Z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Search" Tag="search" Icon="Find" />

@@ -5,16 +5,13 @@
 
     <Page.Resources>
         <!-- Section Header ("NOW PLAYING", "UP NEXT 7") -->
-        <DataTemplate x:Key="QueueHeaderTemplate" x:DataType="x:String">
-            <Grid ColumnSpacing="12" Padding="4,16,4,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="{x:Bind}" FontSize="11" FontWeight="SemiBold" CharacterSpacing="80" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                <Rectangle Grid.Column="1" Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" VerticalAlignment="Center" />
-            </Grid>
-        </DataTemplate>
+        <Style x:Key="QueueSectionTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="CharacterSpacing" Value="80" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
     </Page.Resources>
 
     <Grid Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
@@ -70,20 +67,74 @@
             </StackPanel>
             <!-- /Now Playing -->
 
-            <!-- Queue -->
+            <!-- Queue: three separate lists so a drag can never cross sections. Only Up Next reorders; already played
+                 tracks and the track playing now ride along in its header, so everything scrolls as one and Up Next
+                 stays virtualized -->
             <Grid Grid.Column="1">
                 <ListView
-                    x:Name="List"
+                    x:Name="UpNextList"
+                    ItemTemplate="{StaticResource QueueRowTemplate}"
                     ItemContainerStyle="{StaticResource TrackListItemStyle}"
                     IsItemClickEnabled="True"
-                    SelectionMode="Single"
+                    SelectionMode="None"
                     CanDragItems="True"
                     CanReorderItems="True"
                     AllowDrop="True"
                     ItemClick="OnItemClick"
                     DragItemsStarting="OnDragStarting"
-                    DragItemsCompleted="OnDragCompleted"
-                    ContainerContentChanging="OnContainerContentChanging" />
+                    DragItemsCompleted="OnDragCompleted">
+                    <ListView.Header>
+                        <StackPanel>
+
+                            <!-- Played: dimmed, click to play again, not reorderable. Inside the header it is not virtualized
+                                 (ponytail: a queue with hundreds of played tracks realizes all of them; cap or collapse it if that shows up in memory) -->
+                            <ListView
+                                x:Name="PlayedList"
+                                ItemTemplate="{StaticResource QueueRowTemplate}"
+                                ItemContainerStyle="{StaticResource TrackListItemStyle}"
+                                IsItemClickEnabled="True"
+                                SelectionMode="None"
+                                Opacity="0.5"
+                                ScrollViewer.VerticalScrollMode="Disabled"
+                                ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                ItemClick="OnItemClick" />
+                            <!-- /Played -->
+
+                            <!-- Now Playing: a single row, selected for the accent line, never draggable or a drop target -->
+                            <StackPanel x:Name="NowPlayingSection" Visibility="Collapsed">
+                                <Grid ColumnSpacing="12" Padding="4,16,4,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="NOW PLAYING" Style="{StaticResource QueueSectionTextStyle}" />
+                                    <Rectangle Grid.Column="1" Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" VerticalAlignment="Center" />
+                                </Grid>
+                                <ListView
+                                    x:Name="NowPlayingList"
+                                    ItemTemplate="{StaticResource QueueRowTemplate}"
+                                    ItemContainerStyle="{StaticResource TrackListItemStyle}"
+                                    IsItemClickEnabled="True"
+                                    SelectionMode="Single"
+                                    ScrollViewer.VerticalScrollMode="Disabled"
+                                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                    ItemClick="OnItemClick" />
+                            </StackPanel>
+                            <!-- /Now Playing -->
+
+                            <!-- Up Next header; its rows are this list's items -->
+                            <Grid x:Name="UpNextHeader" ColumnSpacing="12" Padding="4,16,4,4" Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="UpNextText" Style="{StaticResource QueueSectionTextStyle}" />
+                                <Rectangle Grid.Column="1" Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" VerticalAlignment="Center" />
+                            </Grid>
+
+                        </StackPanel>
+                    </ListView.Header>
+                </ListView>
                 <ProgressRing x:Name="Busy" IsActive="True" />
                 <TextBlock x:Name="EmptyText" Text="The queue is empty." Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>

@@ -166,8 +166,14 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
     public int?             Position    { get; set; }
 
     // Playlist
-    public string? Owner      { get; set; }
-    public bool?   IsEditable { get; set; }
+    public string?       Owner               { get; set; }
+    public bool?         IsEditable          { get; set; }
+    public bool?         IsDynamic           { get; set; }
+    public List<string>? SupportedMediatypes { get; set; }
+    public JsonElement?  Access              { get; set; }   // who owns and may edit a Music Assistant playlist; absent on older servers
+
+    // Where the item comes from, and whether each copy is in the library
+    public List<ProviderMapping>? ProviderMappings { get; set; }
 
     // Podcast / audiobook (authors and narrators arrive as plain strings or artist objects)
     public string?            Publisher     { get; set; }
@@ -183,6 +189,14 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
     public bool?            EnabledByDefault { get; set; }
 
     // Derived display helpers
+
+    /// <summary>In the library: a favorite always is, otherwise any provider copy marked in_library (the web app's rule).</summary>
+    [JsonIgnore]
+    public bool IsInLibrary => Favorite || ProviderMappings?.Any(m => m.InLibrary == true) == true;
+
+    /// <summary>Playable right now: any available provider copy, or the item's own flag when it carries no mappings (folders, item mappings).</summary>
+    [JsonIgnore]
+    public bool IsAvailableNow => ProviderMappings is { Count: > 0 } mappings ? mappings.Any(m => m.Available != false) : Available;
 
     [JsonIgnore]
     public string ArtistsText => Artists is { Count: > 0 } ? string.Join(", ", Artists.Select(a => a.Name)) : "";
@@ -258,6 +272,16 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
         => Image ?? Metadata?.Images?.FirstOrDefault(i => i.Type == "thumb") ?? Metadata?.Images?.FirstOrDefault();
 }
 
+/// <summary>One provider copy of a media item: which provider instance holds it, under which id, and whether it is in the library.</summary>
+public sealed class ProviderMapping
+{
+    public string ItemId           { get; set; } = "";
+    public string ProviderDomain   { get; set; } = "";
+    public string ProviderInstance { get; set; } = "";
+    public bool?  Available        { get; set; }   // nullable: queue items carry mappings with these unset (null)
+    public bool?  InLibrary        { get; set; }
+}
+
 public sealed class SearchResults
 {
     public List<MediaItem> Artists   { get; set; } = [];
@@ -269,11 +293,15 @@ public sealed class SearchResults
 
 public sealed class ProviderInstance
 {
-    public string Type       { get; set; } = "";
-    public string Domain     { get; set; } = "";
-    public string Name       { get; set; } = "";
-    public string InstanceId { get; set; } = "";
-    public bool   Available  { get; set; }
+    public string       Type                { get; set; } = "";
+    public string       Domain              { get; set; } = "";
+    public string       Name                { get; set; } = "";
+    public string       InstanceId          { get; set; } = "";
+    public bool         Available           { get; set; }
+    public bool?        IsStreamingProvider { get; set; }
+    public List<string> SupportedFeatures   { get; set; } = [];
+
+    public bool Supports(string feature) => SupportedFeatures?.Contains(feature) == true;
 }
 
 // =========================================================================
@@ -424,6 +452,9 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsNowPlaying)));
         }
     }
+
+    /// <summary>The track's own title. The queue item's name is "Artist - Title", and the artist is already on the line below it.</summary>
+    [JsonIgnore] public string Title => MediaItem?.Name is { Length: > 0 } title ? title : Name;
 
     [JsonIgnore] public string SubtitleText => MediaItem?.SubtitleText ?? "";
     [JsonIgnore] public string DurationText => Duration is > 0 ? Format.Duration(Duration.Value) : "";

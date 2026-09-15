@@ -100,7 +100,7 @@ public sealed partial class PlayerBar : UserControl
         var item  = queue?.CurrentItem;
         var media = player?.CurrentMedia;
 
-        TitleText.Text    = item?.Name ?? media?.Title ?? "Nothing playing";
+        TitleText.Text    = item?.Title ?? media?.Title ?? "Nothing playing";
         SubtitleText.Text = item?.SubtitleText ?? JoinNonEmpty(media?.Artist, media?.Album);
         TrimTip(TitleText);
         TrimTip(SubtitleText);
@@ -325,7 +325,7 @@ public sealed partial class PlayerBar : UserControl
     {
         if (visible == thumbShown) return;
         thumbShown = visible;
-        AnimateScale(SeekThumbScale, visible ? 1 : 0, 150, visible ? EasingMode.EaseOut : EasingMode.EaseIn);
+        Templates.ScaleTo(SeekThumbScale, visible ? 1 : 0, 150, visible ? EasingMode.EaseOut : EasingMode.EaseIn);
     }
 
     /// <summary>The thumb's dot follows the Fluent slider: bigger while the pointer rests on the thumb, smaller while pressed.</summary>
@@ -335,31 +335,9 @@ public sealed partial class PlayerBar : UserControl
         var target    = isSeeking ? InnerScalePressed : overThumb ? InnerScaleOver : InnerScaleNormal;
         if (target == innerScale) return;
         innerScale = target;
-        AnimateScale(SeekInnerScale, target, target == InnerScaleNormal ? 167 : 250, EasingMode.EaseOut);   // Fluent's fast and normal control durations
+        Templates.ScaleTo(SeekInnerScale, target, target == InnerScaleNormal ? 167 : 250, EasingMode.EaseOut);   // Fluent's fast and normal control durations
     }
 
-    /// <summary>Ease a scale transform to a uniform size from wherever it is now, taking over any animation still running on it.</summary>
-    private static void AnimateScale(ScaleTransform target, double to, int milliseconds, EasingMode easing)
-        => AnimateBothAxes(target, () => new DoubleAnimation
-        {
-            To             = to,
-            Duration       = TimeSpan.FromMilliseconds(milliseconds),
-            EasingFunction = new CubicEase { EasingMode = easing },
-        });
-
-    /// <summary>Run one animation on both axes of a scale transform; <paramref name="make"/> builds the timeline for each axis.</summary>
-    private static void AnimateBothAxes(ScaleTransform target, Func<Timeline> make)
-    {
-        var storyboard = new Storyboard();
-        foreach (var property in new[] { "ScaleX", "ScaleY" })
-        {
-            var timeline = make();
-            Storyboard.SetTarget(timeline, target);
-            Storyboard.SetTargetProperty(timeline, property);
-            storyboard.Children.Add(timeline);
-        }
-        storyboard.Begin();
-    }
 
     private void OnProgressValueChanged(object sender, RangeBaseValueChangedEventArgs e) => PositionThumb();
 
@@ -452,7 +430,7 @@ public sealed partial class PlayerBar : UserControl
     }
 
     /// <summary>Quick 1.0 → 1.35 → 1.0 scale bounce.</summary>
-    private static void Pop(ScaleTransform scale) => AnimateBothAxes(scale, () =>
+    private static void Pop(ScaleTransform scale) => Templates.AnimateBothAxes(scale, () =>
     {
         var frames = new DoubleAnimationUsingKeyFrames();
         frames.KeyFrames.Add(new EasingDoubleKeyFrame { KeyTime = TimeSpan.FromMilliseconds(0),   Value = 1.0 });

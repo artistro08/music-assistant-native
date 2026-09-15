@@ -17,6 +17,9 @@ public sealed partial class ItemPage : Page
     private MediaItem item = new();
     private int       loadVersion;   // bumped per navigation so a slow load for the previous item cannot land on this one
 
+    /// <summary>The album, playlist, artist or other item this page shows; the track menu uses it for "Play Album from here".</summary>
+    public MediaItem Item => item;
+
     public ItemPage()
     {
         InitializeComponent();

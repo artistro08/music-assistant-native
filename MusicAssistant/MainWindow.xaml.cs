@@ -176,7 +176,7 @@ public sealed partial class MainWindow : Window
     {
         var player = App.ActivePlayer;
         var item   = player is null ? null : App.Client.Queues.GetValueOrDefault(App.Client.QueueIdFor(player))?.CurrentItem;
-        var title  = item?.Name ?? player?.CurrentMedia?.Title;
+        var title  = item?.Title ?? player?.CurrentMedia?.Title;
         tray.SetTip(title is null ? "Music Assistant" : $"Music Assistant\n{title}\n{player!.Name}");
     }
 

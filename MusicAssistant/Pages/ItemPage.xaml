@@ -49,7 +49,8 @@
                             </Button>
                             <Button Click="OnPlayNext" Content="Play next" />
                             <Button Click="OnAddToQueue" Content="Add to queue" />
-                            <ToggleButton x:Name="FavoriteToggle" Click="OnFavorite" ToolTipService.ToolTip="Favorite" AutomationProperties.Name="Favorite">
+                            <!-- Stretch: an icon alone is shorter than the text line in the buttons beside it -->
+                            <ToggleButton x:Name="FavoriteToggle" VerticalAlignment="Stretch" Click="OnFavorite" ToolTipService.ToolTip="Favorite" AutomationProperties.Name="Favorite">
                                 <FontIcon Glyph="&#xEB51;" FontSize="14" />
                             </ToggleButton>
                         </StackPanel>
