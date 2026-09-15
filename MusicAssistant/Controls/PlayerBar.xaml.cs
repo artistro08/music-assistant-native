@@ -81,6 +81,13 @@ public sealed partial class PlayerBar : UserControl
         };
         Unloaded += (_, _) => App.Window.VisibilityChanged -= OnWindowVisibilityChanged;
 
+        // Icon colors (accent when on) are assigned in code, so switching between light and dark mode assigns them again.
+        ActualThemeChanged += (_, _) =>
+        {
+            Refresh();
+            SetQueueOpen(QueueButton.IsChecked == true);
+        };
+
         App.StateChanged += Refresh;
         Refresh();
     }

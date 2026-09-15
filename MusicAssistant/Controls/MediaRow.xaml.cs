@@ -20,6 +20,9 @@ public sealed partial class MediaRow : UserControl
     private const int SlotCount = 5;
 
     private readonly List<Button> slots = [];
+
+    /// <summary>Hover overlays of self-drawn cards; their brush comes from code, so a theme change re-applies it.</summary>
+    private readonly List<Border> tints = [];
     private IList<object> items = [];
     private int page;
 
@@ -41,6 +44,17 @@ public sealed partial class MediaRow : UserControl
             Templates.ImagesInvalidated += Rebind;
         };
         Unloaded += (_, _) => Templates.ImagesInvalidated -= Rebind;
+
+        // Card colors picked in code (player card backgrounds, hover overlays) are resolved once; switching between light
+        // and dark mode resolves them again.
+        ActualThemeChanged += (_, _) =>
+        {
+            foreach (Border tint in tints)
+            {
+                tint.Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+            }
+            Rebind();
+        };
     }
 
     /// <summary>
@@ -160,6 +174,7 @@ public sealed partial class MediaRow : UserControl
                     IsHitTestVisible  = false,
                     OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(150) },
                 };
+                tints.Add(tint);
                 slot.PointerEntered += (_, _) => tint.Opacity = 1;
                 slot.PointerExited  += (_, _) => tint.Opacity = 0;
 
