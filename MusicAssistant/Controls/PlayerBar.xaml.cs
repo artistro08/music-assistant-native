@@ -151,7 +151,37 @@ public sealed partial class PlayerBar : UserControl
         suppressVolume = false;
 
         UpdateProgress();
+        BalanceColumns();   // the player name or the power button may have changed the right group's width
     }
+
+    // =========================================================================
+    // LAYOUT
+    // =========================================================================
+
+    private const double MinSideWidth      = 220;   // art plus a short title
+    private const double MinTransportWidth = 320;   // heart, shuffle, previous, play, next, repeat, queue
+
+    /// <summary>
+    /// Keep the transport at the true center of the window: both side columns get the same width, the width the right
+    /// group (volume, power, player picker) needs, but at least room for the art and a short title. Now Playing text
+    /// trims inside whatever the left side gets. Never squeezes the transport below its own width.
+    /// </summary>
+    private void BalanceColumns()
+    {
+        if (BarRoot.ActualWidth <= 0) return;
+
+        RightPanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var available = BarRoot.ActualWidth - BarRoot.Padding.Left - BarRoot.Padding.Right - 2 * BarRoot.ColumnSpacing;
+        var side      = Math.Min(Math.Max(RightPanel.DesiredSize.Width, MinSideWidth), Math.Max(0, (available - MinTransportWidth) / 2));
+
+        if (Math.Abs(LeftColumn.Width.Value - side) < 0.5) return;
+        LeftColumn.Width  = new GridLength(side);
+        RightColumn.Width = new GridLength(side);
+    }
+
+    private void OnBarSizeChanged(object sender, SizeChangedEventArgs e) => BalanceColumns();
+
+    private void OnBarStateChanged(object sender, VisualStateChangedEventArgs e) => BalanceColumns();
 
     /// <summary>Full text as a tooltip, only while the ellipsis is actually cutting it off. Also wired to IsTextTrimmedChanged for resizes.</summary>
     private static void TrimTip(TextBlock text)

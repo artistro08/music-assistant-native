@@ -7,17 +7,19 @@
     xmlns:local="using:MusicAssistant">
 
     <Grid
+        x:Name="BarRoot"
         Height="96"
         Padding="16,8"
         ColumnSpacing="16"
         Background="{ThemeResource LayerFillColorDefaultBrush}"
         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-        BorderThickness="0,1,0,0">
+        BorderThickness="0,1,0,0"
+        SizeChanged="OnBarSizeChanged">
+        <!-- Both side columns always get the same width (set in BalanceColumns), so the transport sits at the true center of the window -->
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="3*" MinWidth="160" />
-            <ColumnDefinition Width="5*" MinWidth="240" />
-            <!-- Right side sizes to its content so nothing gets clipped -->
-            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition x:Name="LeftColumn" Width="240" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition x:Name="RightColumn" Width="240" />
         </Grid.ColumnDefinitions>
 
         <!-- Now Playing -->
@@ -52,8 +54,8 @@
         <!-- Transport: heart and queue bookend the transport row -->
         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
-                <!-- Plain icon: no hover chrome, no tooltip; the heart fill is the only state -->
-                <Button x:Name="LikeButton" VerticalAlignment="Center" Padding="8" Click="OnLike" AutomationProperties.Name="Favorite">
+                <!-- Plain icon: no hover chrome, no tooltip; the heart fill is the only state. Same width as the queue button at the other end, so play stays centered -->
+                <Button x:Name="LikeButton" VerticalAlignment="Center" Padding="10,8" Click="OnLike" AutomationProperties.Name="Favorite">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <ContentPresenter Padding="{TemplateBinding Padding}" Content="{TemplateBinding Content}" />
@@ -109,7 +111,7 @@
         <!-- /Transport -->
 
         <!-- Volume + Player: one row, even gaps, hugging the right edge -->
-        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
+        <StackPanel x:Name="RightPanel" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
             <Button x:Name="MuteButton" Style="{StaticResource SubtleButtonStyle}" Click="OnMute" PointerWheelChanged="OnVolumeWheel" ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute">
                 <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" FontSize="16" />
             </Button>
@@ -176,17 +178,18 @@
         </StackPanel>
         <!-- /Volume + Player -->
 
-        <!-- Narrow windows: drop the volume slider first, then the player name -->
+        <!-- Narrow windows: drop the volume slider first, then the player name. The widths leave the centered transport
+             enough room once both side columns are as wide as the right group -->
         <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup>
+            <VisualStateGroup CurrentStateChanged="OnBarStateChanged">
                 <VisualState x:Name="Wide">
                     <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="1000" />
+                        <AdaptiveTrigger MinWindowWidth="1200" />
                     </VisualState.StateTriggers>
                 </VisualState>
                 <VisualState x:Name="Medium">
                     <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="820" />
+                        <AdaptiveTrigger MinWindowWidth="980" />
                     </VisualState.StateTriggers>
                     <VisualState.Setters>
                         <Setter Target="VolumeSlider.Visibility" Value="Collapsed" />
