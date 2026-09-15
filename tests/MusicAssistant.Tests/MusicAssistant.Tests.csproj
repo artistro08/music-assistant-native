@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests for the parts of the app that don't need a window: the Sendspin listener, the audio scheduler and
+       the clock filter. The sources are linked in, the same way MusicAssistant.Check does, because the app project
+       builds as a WinUI executable and can't be referenced from a test project. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MusicAssistant.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\MusicAssistant\ExceptionFilters.cs" Link="ExceptionFilters.cs" />
+    <Compile Include="..\..\MusicAssistant\Sendspin\AudioScheduler.cs" Link="Sendspin\AudioScheduler.cs" />
+    <Compile Include="..\..\MusicAssistant\Sendspin\Base64Url.cs" Link="Sendspin\Base64Url.cs" />
+    <Compile Include="..\..\MusicAssistant\Sendspin\Clock.cs" Link="Sendspin\Clock.cs" />
+    <Compile Include="..\..\MusicAssistant\Sendspin\ISendspinSocket.cs" Link="Sendspin\ISendspinSocket.cs" />
+    <Compile Include="..\..\MusicAssistant\Sendspin\SendspinListener.cs" Link="Sendspin\SendspinListener.cs" />
+    <Compile Include="..\..\MusicAssistant\Sendspin\TimeFilter.cs" Link="Sendspin\TimeFilter.cs" />
+    <Compile Include="..\..\MusicAssistant\Sendspin\WebSocketWire.cs" Link="Sendspin\WebSocketWire.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Coverage settings for `dotnet test`. The OpenCover format carries cyclomatic complexity, which ReportGenerator
+     needs for the Risk Hotspots (CRAP) table. -->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura,opencover</Format>
+          <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+
+          <!-- The app's sources are linked into the test project (a WinUI executable can't be referenced), so the
+               test assembly has to be measured, and the test files themselves are excluded by path instead. -->
+          <ExcludeByFile>**/obj/**/*,**/*.g.cs,**/*.g.i.cs,**/*.designer.cs,**/tests/**/*</ExcludeByFile>
+          <IncludeTestAssembly>true</IncludeTestAssembly>
+          <SingleHit>false</SingleHit>
+          <UseSourceLink>true</UseSourceLink>
+          <SkipAutoProps>true</SkipAutoProps>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

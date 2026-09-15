@@ -5,3 +5,6 @@ obj/
 *.pfx
 dist/
 node_modules/
+
+TestResults/
+coverage/

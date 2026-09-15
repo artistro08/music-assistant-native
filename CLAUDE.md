@@ -36,6 +36,18 @@ Start-Process "shell:AppsFolder\artistro08.MusicAssistantNative_80wzptmyxepxj!Ap
 - Reinstalling stops playback on this PC's speaker. Check whether it was playing first, and start it again afterwards.
 - The build must end with 0 warnings.
 
+## Tests
+
+`tests/MusicAssistant.Tests` covers the parts that don't need a window. It links the app's sources rather than referencing the project, because a WinUI executable can't be referenced, and it carries a small `App` stand-in for the logging calls those sources make.
+
+```powershell
+dotnet test tests\MusicAssistant.Tests\MusicAssistant.Tests.csproj --settings coverage.runsettings --collect:"XPlat Code Coverage" --results-directory .\TestResults
+dotnet tool restore
+dotnet reportgenerator -reports:"TestResults/**/coverage.opencover.xml" -targetdir:"coverage" -reporttypes:"Html;TextSummary"
+```
+
+The report's Risk Hotspots table gives each method a CRAP score (complexity weighed against coverage); anything above 30 wants tests or splitting up. UI pages and controls aren't covered; move logic worth testing out of them instead of testing through XAML.
+
 ## Checking the UI
 
 - Drive and inspect the app through UI Automation, and capture the window with `PrintWindow(hwnd, hdc, 2)`, which works even when another window covers it.
