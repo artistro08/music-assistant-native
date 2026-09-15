@@ -10,9 +10,11 @@ namespace MusicAssistant.Sendspin;
 /// Drives one <see cref="SendspinConnection"/>: answers server/hello with the
 /// player's capabilities, reports state, keeps the clock synchronized with
 /// NTP-style bursts, decodes audio chunks into the scheduler and completes the
-/// Pairing PSK flow when the server (told by the app through the API) offers
-/// it. Presents itself as Music Assistant's built-in "Web Player" so the
-/// server pairs and lists it the way it does the browser player.
+/// Pairing PSK flow when the server offers it.
+///
+/// It reports the PC's real make and model, like any Sendspin speaker. Music Assistant lists such a device as a
+/// protocol player wrapped in a universal player that every client sees, and admits it through the client's guest
+/// access. Presenting as the built-in Web Player instead would make the server hide it from everyone but this account.
 /// </summary>
 /// <remarks>
 /// @link https://github.com/Sendspin/spec/blob/main/roles/player/v1.md
@@ -42,6 +44,12 @@ public sealed class SendspinPlayer : IDisposable
 
     // Protocol state.
     private bool     activated;
+
+    /// <summary>Set by <see cref="Dispose"/>, so a handshake finishing afterwards opens no audio device.</summary>
+    private bool     disposed;
+
+    /// <summary>Whether any server/activate arrived on this connection, re-handshakes included.</summary>
+    private bool     everActivated;
     private bool     playerRoleActive;
     private byte[]?  pendingLongTermPsk;
     private int      volume = 100;
@@ -59,11 +67,20 @@ public sealed class SendspinPlayer : IDisposable
     /// <summary>Raised whenever the connection, playback, pairing or clock state changes, on any thread.</summary>
     public event Action? StateChanged;
 
+    /// <summary>
+    /// Raised on the socket thread for every server/activate, with its activities and whether it is the connection's
+    /// first. The first one decides whether this connection is admitted when another server is already connected.
+    /// </summary>
+    public event Action<SendspinPlayer, bool>? Activated;
+
     /// <summary>This PC's Sendspin client_id.</summary>
     public string ClientId     => identity.ClientId;
 
-    /// <summary>The token the app hands the server so it can pair this player.</summary>
-    public string PairingToken => identity.PairingToken;
+    /// <summary>The server_id of the server on the other end, known once the handshake is done.</summary>
+    public string ServerId     => connection.ServerId;
+
+    /// <summary>The activities the server last declared in server/activate: playback, pairing, both, or none.</summary>
+    public IReadOnlyList<string> Activities { get; private set; } = [];
 
     /// <summary>Whether the encrypted session is up and the audio device opened.</summary>
     public bool   Connected    { get; private set; }
@@ -113,20 +130,18 @@ public sealed class SendspinPlayer : IDisposable
         connection.Closed             += OnClosed;
     }
 
-    /// <summary>Open the audio device, connect and finish the handshake. Returns when the encrypted session is up.</summary>
+    /// <summary>Connect and finish the handshake, then keep the audio device open. Returns when the encrypted session is up.</summary>
     /// <param name="ct">Cancels the connect and handshake.</param>
     /// <returns>A task that completes when the session is up.</returns>
     /// <exception cref="IOException">The audio output failed while the handshake ran.</exception>
+    /// <exception cref="ObjectDisposedException">The player was disposed while connecting.</exception>
     public async Task ConnectAsync(CancellationToken ct)
     {
-        output = new WasapiOutput((buffer, frames, time) => scheduler?.Render(buffer, frames, time));
-        output.Failed += OnOutputFailed;
-        output.Start();
-        scheduler = new AudioScheduler(timeFilter, output.SampleRate, output.Channels, remote);
-        decoder   = new ChunkDecoder(output.SampleRate, output.Channels);
-        ApplyGain();
-
         await connection.StartAsync(ct);
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+        }
         // The render thread died during the handshake; a "connected" session with no audio is worse than a retry.
         if (outputFailed)
         {
@@ -135,6 +150,22 @@ public sealed class SendspinPlayer : IDisposable
         }
         Connected = true;
         Notify();
+    }
+
+    /// <summary>
+    /// Turns this connection away because another server holds this speaker: a pairing attempt is refused with
+    /// pair/abort, anything else with client/goodbye, as the spec's multiple server rules require.
+    /// </summary>
+    public void Reject()
+    {
+        if (Activities.Contains("pairing"))
+        {
+            connection.SendControl("pair/abort", new { reason = "concurrent_attempt" });
+            connection.Abort("Another server holds this speaker");
+            return;
+        }
+
+        connection.Close("Another server holds this speaker", "concurrent_attempt");
     }
 
     /// <summary>Sends client/goodbye and closes the session.</summary>
@@ -151,6 +182,7 @@ public sealed class SendspinPlayer : IDisposable
     private void OnHandshake(SendspinConnection.HandshakeInfo info)
     {
         App.Debug($"Speaker: {(info.IsRehandshake ? "re-handshake" : "handshake")} done with {info.Matched.Category} key, server {info.ServerId[..8]}…");
+        OpenOutput();
         lock (gate)
         {
             // A (re)handshake restarts the activation sequence; pairing state that belonged to the old keys is void.
@@ -159,6 +191,40 @@ public sealed class SendspinPlayer : IDisposable
             StopTimers();
         }
         Notify();
+    }
+
+    /// <summary>
+    /// Opens the audio device once the first handshake is done, not when the connection arrives: a connection that
+    /// never completes a handshake (any host on the network can open one to the listener) then costs no audio device or
+    /// render thread. Runs on the socket thread before server/hello is handled, so the hello reports the device's rate.
+    /// </summary>
+    private void OpenOutput()
+    {
+        lock (gate)
+        {
+            if (disposed || (output is not null))
+            {
+                return;
+            }
+
+            var device = new WasapiOutput((buffer, frames, time) => scheduler?.Render(buffer, frames, time));
+            device.Failed += OnOutputFailed;
+            try
+            {
+                device.Start();
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                // No usable output device: the handshake fails with this, and ConnectAsync reports it.
+                outputFailed = true;
+                device.Dispose();
+                throw;
+            }
+            scheduler = new AudioScheduler(timeFilter, device.SampleRate, device.Channels, remote);
+            decoder   = new ChunkDecoder(device.SampleRate, device.Channels);
+            output    = device;
+        }
+        ApplyGain();
     }
 
     private void SendClientHello()
@@ -170,9 +236,10 @@ public sealed class SendspinPlayer : IDisposable
             ["supported_roles"] = new[] { "player@v1" },
             ["device_info"]     = new
             {
-                // What the server recognizes as its built-in player and pairs through the API.
-                product_name     = "Web Player",
-                manufacturer     = "Music Assistant",
+                // The PC's own make and model. The server treats "Web Player" or "Music Assistant" as its built-in
+                // player and hides it from other clients, so neither may appear here.
+                product_name     = HardwareIdentity.Model,
+                manufacturer     = HardwareIdentity.Manufacturer,
                 software_version = $"Music Assistant for Windows {typeof(SendspinPlayer).Assembly.GetName().Version?.ToString(3) ?? "1.0.0"}",
             },
             ["player@v1_support"] = new
@@ -252,7 +319,11 @@ public sealed class SendspinPlayer : IDisposable
 
     private void OnActivate(JsonElement payload)
     {
-        List<string?> activities = payload.TryGetProperty("activities", out JsonElement a) ? [.. a.EnumerateArray().Select(x => x.GetString())] : [];
+        List<string> activities = payload.TryGetProperty("activities", out JsonElement a) ? [.. a.EnumerateArray().Select(x => x.GetString() ?? "")] : [];
+        bool first = !everActivated;
+        everActivated = true;
+        Activities    = activities;
+        Activated?.Invoke(this, first);
         if (payload.TryGetProperty("active_roles", out JsonElement roles)) playerRoleActive = roles.EnumerateArray().Any(r => r.GetString() == "player@v1");
 
         if (activities.Contains("pairing"))
@@ -543,7 +614,7 @@ public sealed class SendspinPlayer : IDisposable
     // =========================================================================
 
     /// <summary>
-    /// The render device died mid-session (device invalidated, default output switched, driver reset). The socket is
+    /// The render device died mid-session (driver reset, or no output device left to move to). The socket is
     /// still up, so without this the server would keep this player marked playing with no audio coming out. Drop the
     /// session and let Speaker's reconnect loop rebuild the whole pipeline on the current default device.
     /// </summary>
@@ -599,7 +670,11 @@ public sealed class SendspinPlayer : IDisposable
     /// <summary>Stops the timers, closes the session and releases the audio device and decoder.</summary>
     public void Dispose()
     {
-        lock (gate) StopTimers();
+        lock (gate)
+        {
+            disposed = true;
+            StopTimers();
+        }
         connection.Dispose();
         output?.Dispose();
         decoder?.Dispose();

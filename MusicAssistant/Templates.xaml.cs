@@ -361,37 +361,38 @@ public sealed partial class Templates : ResourceDictionary
         }
     }
 
-    // Queue row menu.
-
-    private static QueueItem? QueueItemOf(object sender) => (sender as FrameworkElement)?.DataContext as QueueItem;
-
-    private async void OnQueuePlayHere(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Queue row menu (right-click, Shift+F10 or the menu key on a queue row, or its "..." button): rebuilt for the row's
+    /// queue item each time it opens, with its place in the queue from the queue page.
+    /// </summary>
+    /// <param name="sender">The shared queue item menu.</param>
+    /// <param name="e">Unused.</param>
+    private void OnQueueItemMenuOpening(object sender, object e)
     {
-        if (QueueItemOf(sender) is { } item) await App.PlayQueueItemAsync(item);
-    }
-
-    private void OnQueuePlayNext(object sender, RoutedEventArgs e)
-        => QueueAction(sender, item => App.Client.QueueCommandAsync(item.QueueId, "move_item", new { queue_item_id = item.QueueItemId, pos_shift = 0 }));
-
-    private void OnQueueMoveEnd(object sender, RoutedEventArgs e)
-        => QueueAction(sender, item => App.Client.QueueCommandAsync(item.QueueId, "move_item_end", new { queue_item_id = item.QueueItemId }));
-
-    private void OnQueueRemove(object sender, RoutedEventArgs e)
-        => QueueAction(sender, item => App.Client.QueueCommandAsync(item.QueueId, "delete_item", new { item_id_or_index = item.QueueItemId }));
-
-    private static async void QueueAction(object sender, Func<QueueItem, Task> action)
-    {
-        if (QueueItemOf(sender) is not { } item) return;
-        try
+        if (sender is not MenuFlyout menu)
         {
-            await action(item);
+            return;
         }
-        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
-        {
-            App.Window.ShowMessage(ex.Message);
-        }
-    }
 
+        // List rows carry the item as content; a row's "..." button only has it as its data context.
+        QueueItem? item = ((menu.Target as ContentControl)?.Content as QueueItem) ?? ((menu.Target as FrameworkElement)?.DataContext as QueueItem);
+        if (item is null)
+        {
+            menu.Items.Clear();
+            return;
+        }
+
+        int position = -1;
+        for (DependencyObject? node = menu.Target; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is Pages.QueuePage page)
+            {
+                position = page.PositionOf(item);
+                break;
+            }
+        }
+        Controls.ItemMenu.PopulateQueueItem(menu, item, position);
+    }
     /// <summary>x:Bind helper: Visible when the value is true, Collapsed otherwise.</summary>
     /// <param name="value">The condition to show on.</param>
     /// <returns>The matching visibility.</returns>

@@ -76,7 +76,7 @@ public static class MediaControls
     private static Player? Target()
     {
         Player? selected = App.ActivePlayer;
-        Player? local    = Player.OwnPlayerId is { } id && App.Client.Players.GetValueOrDefault(id) is { IsVisible: true } p ? p : null;
+        Player? local    = App.OwnPlayer is { IsVisible: true } own ? own : null;
 
         Player? target;
         if (local is null || (local.PlayerId == selected?.PlayerId) || selected?.PlaybackState is "playing" or "paused") target = selected;

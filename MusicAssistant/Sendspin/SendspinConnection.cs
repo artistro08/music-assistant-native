@@ -446,6 +446,10 @@ public sealed class SendspinConnection : IDisposable
         Fail(reason);
     }
 
+    /// <summary>Closes without client/goodbye, for exchanges whose own message already ended the session (pair/abort).</summary>
+    /// <param name="reason">The reason passed to <see cref="Closed"/>.</param>
+    public void Abort(string reason) => Fail(reason);
+
     private void Fail(string reason)
     {
         lock (gate)

@@ -417,6 +417,22 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
         => Image ?? Metadata?.Images?.FirstOrDefault(i => i.Type == "thumb") ?? Metadata?.Images?.FirstOrDefault();
 }
 
+/// <summary>One way the server can deliver audio to a player: its own protocol or a protocol player it wraps.</summary>
+public sealed class OutputProtocol
+{
+    /// <summary>Id of the protocol player behind this output, or "native" for the player's own protocol.</summary>
+    public string OutputProtocolId { get; set; } = "";
+
+    /// <summary>Display name of the protocol, such as Sendspin or AirPlay.</summary>
+    public string Name             { get; set; } = "";
+
+    /// <summary>Provider domain of the protocol, such as sendspin.</summary>
+    public string ProtocolDomain   { get; set; } = "";
+
+    /// <summary>True while the server can reach the player through this protocol.</summary>
+    public bool   Available        { get; set; }
+}
+
 /// <summary>One provider copy of a media item: which provider instance holds it, under which id, and whether it is in the library.</summary>
 public sealed class ProviderMapping
 {
@@ -574,15 +590,17 @@ public sealed class Player
     public ActiveSourceAudio? ActiveSourceAudio { get; set; }
 
     /// <summary>
-    /// Player id of this PC's own speaker. The server flags web players as
-    /// hide_in_ui so other clients do not list them; the client that owns one
-    /// still shows it, the same way the web app shows its own web player.
+    /// Sendspin client_id of this PC's own speaker. The server lists the speaker as a universal player whose output
+    /// protocols include that id; an older app version's hidden web player used it as the player id directly.
     /// </summary>
     public static string? OwnPlayerId { get; set; }
 
-    /// <summary>True when this player is this PC's own speaker.</summary>
+    /// <summary>The ways the server can reach this player (native, Sendspin, AirPlay, ...), for a universal player the protocol players it wraps.</summary>
+    public List<OutputProtocol>? OutputProtocols { get; set; }
+
+    /// <summary>True when this player is this PC's own speaker, directly or through a universal player wrapping it.</summary>
     [JsonIgnore]
-    public bool    IsThisDevice => PlayerId == OwnPlayerId;
+    public bool    IsThisDevice => (OwnPlayerId is not null) && ((PlayerId == OwnPlayerId) || (OutputProtocols?.Any(p => p.OutputProtocolId == OwnPlayerId) == true));
 
     /// <summary>The player's name, marked "(This Device)" for this PC's own speaker.</summary>
     [JsonIgnore]
@@ -806,6 +824,9 @@ public sealed class PlayerQueue
 
     /// <summary>Index of the current item in the queue, or null when nothing is loaded.</summary>
     public int?       CurrentIndex           { get; set; }
+
+    /// <summary>Index of the last item already buffered into the player's stream; items up to it can't be moved or removed.</summary>
+    public int?       IndexInBuffer          { get; set; }
 
     /// <summary>Seconds played into the current item at the last report.</summary>
     public double     ElapsedTime            { get; set; }

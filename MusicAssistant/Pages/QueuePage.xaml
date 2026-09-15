@@ -94,7 +94,7 @@
                 <ListView
                     x:Name="UpNextList"
                     ItemTemplate="{StaticResource QueueRowTemplate}"
-                    ItemContainerStyle="{StaticResource TrackListItemStyle}"
+                    ItemContainerStyle="{StaticResource QueueListItemStyle}"
                     IsItemClickEnabled="True"
                     SelectionMode="None"
                     CanDragItems="True"
@@ -111,7 +111,7 @@
                             <ListView
                                 x:Name="PlayedList"
                                 ItemTemplate="{StaticResource QueueRowTemplate}"
-                                ItemContainerStyle="{StaticResource TrackListItemStyle}"
+                                ItemContainerStyle="{StaticResource QueueListItemStyle}"
                                 IsItemClickEnabled="True"
                                 SelectionMode="None"
                                 Opacity="0.5"
@@ -133,7 +133,7 @@
                                 <ListView
                                     x:Name="NowPlayingList"
                                     ItemTemplate="{StaticResource QueueRowTemplate}"
-                                    ItemContainerStyle="{StaticResource TrackListItemStyle}"
+                                    ItemContainerStyle="{StaticResource QueueListItemStyle}"
                                     IsItemClickEnabled="True"
                                     SelectionMode="Single"
                                     ScrollViewer.VerticalScrollMode="Disabled"
