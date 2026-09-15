@@ -413,22 +413,25 @@ public partial class App : Application
     /// <returns>A task that completes once the server accepted the change or the error was shown.</returns>
     public static async Task ToggleFavoriteAsync(MediaItem item)
     {
+        // Decided up front: the server's media_item_updated event lands before the reply and already updates the
+        // queue's copy of this track, which may be this very item, so flipping it afterward would undo the change.
+        bool favorite = !item.Favorite;
         try
         {
-            if (item.Favorite)
+            if (favorite)
+            {
+                await Client.AddFavoriteAsync(item);
+            }
+            else
             {
                 // Removal needs the library id; queue and provider items carry the provider's id instead.
                 MediaItem library = item.Provider == "library" ? item : await Client.GetItemByUriAsync(item.Uri);
                 await Client.RemoveFavoriteAsync(library);
             }
-            else
-            {
-                await Client.AddFavoriteAsync(item);
-            }
-            item.Favorite = !item.Favorite;
+            item.Favorite = favorite;
 
             // Every other copy of this track (the player bar's queue item, for one) follows at once.
-            Client.RecordFavorite(item, item.Favorite);
+            Client.RecordFavorite(item, favorite);
             StateChanged?.Invoke();
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
