@@ -31,6 +31,10 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
 
+    <!-- Coding conventions: report .editorconfig style rules and missing XML docs on public members as build warnings -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
     <!-- Memory: workstation non-concurrent GC (no background GC thread/heap), conserve memory, no satellite resource strings -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>

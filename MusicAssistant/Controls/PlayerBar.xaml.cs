@@ -72,8 +72,34 @@ public sealed partial class PlayerBar : UserControl
             DimWhenDisabled(button);
         }
 
+        // The tick only redraws the bar, so it stops while the window is minimized or hidden in the tray and the app
+        // doesn't wake the CPU in the background.
+        Loaded += (_, _) =>
+        {
+            App.Window.VisibilityChanged -= OnWindowVisibilityChanged;
+            App.Window.VisibilityChanged += OnWindowVisibilityChanged;
+        };
+        Unloaded += (_, _) => App.Window.VisibilityChanged -= OnWindowVisibilityChanged;
+
         App.StateChanged += Refresh;
         Refresh();
+    }
+
+    /// <summary>
+    /// Pauses the progress tick while the window can't be seen, and catches the bar up as soon as it's shown again.
+    /// </summary>
+    /// <param name="sender">The main window.</param>
+    /// <param name="args">Whether the window is now visible.</param>
+    private void OnWindowVisibilityChanged(object sender, WindowVisibilityChangedEventArgs args)
+    {
+        if (!args.Visible)
+        {
+            tickTimer.Stop();
+            return;
+        }
+
+        UpdateProgress();
+        tickTimer.Start();
     }
 
     private static void DimWhenDisabled(Control control) => control.Opacity = control.IsEnabled ? 1 : 0.4;
