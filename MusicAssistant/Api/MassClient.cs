@@ -533,6 +533,12 @@ public sealed class MassClient : IDisposable
         return SendAsync<JsonElement>($"player_queues/{command}", Merge(new { queue_id = queueId }, args));
     }
 
+    /// <summary>Move a queue (its items and position) to another player's queue, which carries on playing if the source was.</summary>
+    /// <param name="sourceQueueId">The queue to move.</param>
+    /// <param name="targetQueueId">The queue that takes it over.</param>
+    /// <returns>A task that completes when the server accepted the transfer.</returns>
+    public Task TransferQueueAsync(string sourceQueueId, string targetQueueId)
+        => SendAsync<JsonElement>("player_queues/transfer", new { source_queue_id = sourceQueueId, target_queue_id = targetQueueId });
     /// <summary>A page of the items in a queue.</summary>
     /// <param name="queueId">The queue to read.</param>
     /// <param name="limit">Maximum number of items to return.</param>

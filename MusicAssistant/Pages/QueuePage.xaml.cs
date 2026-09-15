@@ -220,6 +220,35 @@ public sealed partial class QueuePage : Page
         _ = Run(() => App.Client.QueueCommandAsync(queue.QueueId, "clear"));
     }
 
+    /// <summary>Lists every other visible player as a place to move the queue to.</summary>
+    /// <param name="sender">The transfer menu.</param>
+    /// <param name="e">Unused.</param>
+    private void OnTransferMenuOpening(object sender, object e)
+    {
+        TransferMenu.Items.Clear();
+        if ((Queue is not { } queue) || (App.ActivePlayer is not { } source))
+        {
+            TransferMenu.Items.Add(new MenuFlyoutItem { Text = "No queue to transfer", IsEnabled = false });
+            return;
+        }
+
+        foreach (Player target in App.Client.Players.Values.Where(p => p.IsVisible && (p.PlayerId != source.PlayerId)).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var entry = new MenuFlyoutItem { Text = target.DisplayName };
+            entry.Click += (_, _) => _ = TransferAsync(queue, target);
+            TransferMenu.Items.Add(entry);
+        }
+    }
+
+    /// <summary>Moves the queue to the target player's queue, then follows it there so this view keeps showing the music.</summary>
+    /// <param name="queue">The queue shown now.</param>
+    /// <param name="target">The player that takes the queue over.</param>
+    /// <returns>A task that completes once the move is done or its error is shown.</returns>
+    private static Task TransferAsync(PlayerQueue queue, Player target) => Run(async () =>
+    {
+        await App.Client.TransferQueueAsync(queue.QueueId, App.Client.QueueIdFor(target));
+        App.SetActivePlayer(target.PlayerId);
+    });
     private void OnAutoplay(object sender, RoutedEventArgs e)
     {
         if (Queue is not { } queue) return;

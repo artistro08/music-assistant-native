@@ -42,6 +42,16 @@
                         <TextBlock Text="Crossfade" />
                     </StackPanel>
                 </ToggleButton>
+                <!-- Transfer Queue: the menu lists the other players, rebuilt each time it opens -->
+                <DropDownButton x:Name="TransferButton" ToolTipService.ToolTip="Move this queue to another player" AutomationProperties.Name="Transfer queue">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE8AB;" FontSize="14" />
+                        <TextBlock Text="Transfer queue" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout x:Name="TransferMenu" Placement="BottomEdgeAlignedRight" Opening="OnTransferMenuOpening" />
+                    </DropDownButton.Flyout>
+                </DropDownButton>
                 <Button Content="Clear queue" Click="OnClear" />
             </StackPanel>
         </Grid>
