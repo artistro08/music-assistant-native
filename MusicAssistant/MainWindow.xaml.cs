@@ -663,7 +663,7 @@ public sealed partial class MainWindow : Window
     {
         CloseQueue();
         ContentFrame.Navigate(page, parameter, new DrillInNavigationTransitionInfo());
-        BackButton.IsEnabled = ContentFrame.CanGoBack;
+        UpdateBackButton();
     }
 
     // Queue Panel
@@ -711,6 +711,9 @@ public sealed partial class MainWindow : Window
     /// <summary>Keep the sliding queue inside its row: a clip on the host, which does not move, cuts off whatever of the panel is still below it.</summary>
     private void OnQueueHostSizeChanged(object sender, SizeChangedEventArgs e)
         => QueueHost.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
+
+    /// <summary>Width of the back button's slot when shown: the 40px button plus the 4px gap before the logo.</summary>
+    private const double BackSlotWidth = 44;
 
     /// <summary>How far the panel travels: the content row's height, which is valid even on the first open (the frame itself has ActualHeight 0 until laid out).</summary>
     private double QueueDistance => Math.Max(120, Nav.ActualHeight);
@@ -775,6 +778,54 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Shows the back button only while there's a page to go back to, sliding and fading it in or out of the title bar.
+    /// </summary>
+    /// <remarks>
+    /// The button's slot widens or narrows at the same time, so the logo and title glide over instead of jumping. Each
+    /// animation starts from the current value, so a change of direction midway reverses smoothly.
+    /// </remarks>
+    private void UpdateBackButton()
+    {
+        bool canGoBack = ContentFrame.CanGoBack;
+        if (BackButton.IsEnabled == canGoBack)
+        {
+            return;
+        }
+
+        // Disabled while hidden, so keyboard focus and Narrator skip it.
+        BackButton.IsEnabled = canGoBack;
+
+        var easing     = new CubicEase { EasingMode = canGoBack ? EasingMode.EaseOut : EasingMode.EaseIn };
+        var duration   = TimeSpan.FromMilliseconds(canGoBack ? 250 : 180);
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(BackButtonAnimation(BackSlot, "Width", canGoBack ? BackSlotWidth : 0, duration, easing));
+        storyboard.Children.Add(BackButtonAnimation(BackButton, "Opacity", canGoBack ? 1 : 0, duration, easing));
+        storyboard.Children.Add(BackButtonAnimation(BackButtonShift, "X", canGoBack ? 0 : -12, duration, easing));
+        storyboard.Begin();
+    }
+
+    /// <summary>Builds one timeline of the back button's show or hide animation.</summary>
+    /// <param name="target">The element or transform to animate.</param>
+    /// <param name="property">The animated property.</param>
+    /// <param name="to">The value the property ends at.</param>
+    /// <param name="duration">How long the animation runs.</param>
+    /// <param name="easing">The easing curve.</param>
+    /// <returns>A timeline ready to add to a storyboard.</returns>
+    private static DoubleAnimation BackButtonAnimation(DependencyObject target, string property, double to, TimeSpan duration, EasingFunctionBase easing)
+    {
+        // Width is a layout property, which only animates with dependent animation turned on.
+        var animation = new DoubleAnimation
+        {
+            To                       = to,
+            Duration                 = duration,
+            EasingFunction           = easing,
+            EnableDependentAnimation = property == "Width",
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+        return animation;
+    }
     private void GoBack()
     {
         if (QueueOpen)
@@ -784,14 +835,14 @@ public sealed partial class MainWindow : Window
         }
         if (!ContentFrame.CanGoBack) return;
         ContentFrame.GoBack();
-        BackButton.IsEnabled = ContentFrame.CanGoBack;
+        UpdateBackButton();
     }
 
     private void GoForward()
     {
         if (!ContentFrame.CanGoForward) return;
         ContentFrame.GoForward();
-        BackButton.IsEnabled = ContentFrame.CanGoBack;
+        UpdateBackButton();
     }
 
     /// <summary>Shows a message in the shell's info bar, closing it after six seconds unless told to stay open.</summary>

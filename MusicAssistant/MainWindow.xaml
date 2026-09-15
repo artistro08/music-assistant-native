@@ -22,14 +22,22 @@
         <!-- Title Bar: back button stays interactive, the rest is the drag region. The row is sized to the system caption
              area at runtime (SyncTitleBarHeight) and the 32px content sits at its bottom, level with the caption buttons -->
         <Grid x:Name="TitleBarRow">
-            <Grid Height="32" VerticalAlignment="Bottom" Padding="4,0,0,0" ColumnSpacing="4">
+            <Grid Height="32" VerticalAlignment="Bottom" Padding="4,0,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Button x:Name="BackButton" Style="{StaticResource SubtleButtonStyle}" Width="40" Height="28" Padding="0" IsEnabled="False" VerticalAlignment="Center" Click="OnBackClick" ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
-                    <FontIcon Glyph="&#xE72B;" FontSize="12" />
-                </Button>
+                <!-- Back Button: only there while there is a page to go back to. The slot's width (button plus its 4px gap)
+                     animates open and closed so the logo slides over with it; starts closed on the first page -->
+                <Grid x:Name="BackSlot" Width="0" HorizontalAlignment="Left">
+                    <Button x:Name="BackButton" Style="{StaticResource SubtleButtonStyle}" Width="40" Height="28" Padding="0" Opacity="0" IsEnabled="False" HorizontalAlignment="Left" VerticalAlignment="Center" Click="OnBackClick" ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
+                        <Button.RenderTransform>
+                            <TranslateTransform x:Name="BackButtonShift" X="-12" />
+                        </Button.RenderTransform>
+                        <FontIcon Glyph="&#xE72B;" FontSize="12" />
+                    </Button>
+                </Grid>
+                <!-- /Back Button -->
                 <Grid x:Name="AppTitleBar" Grid.Column="1" Padding="8,0" ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
