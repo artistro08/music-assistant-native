@@ -261,7 +261,18 @@ public sealed class MassClient : IDisposable
     /// <param name="albumUri">URI of the album being listed, so its cards resolve the borrowed cover too.</param>
     public async Task<List<MediaItem>> GetAlbumTracksAsync(string itemId, string provider, string? albumUri = null)
     {
-        var tracks = await SendAsync<List<MediaItem>>("music/albums/album_tracks", new { item_id = itemId, provider_instance_id_or_domain = provider });
+        var args   = new { item_id = itemId, provider_instance_id_or_domain = provider };
+        var tracks = await SendAsync<List<MediaItem>>("music/albums/album_tracks", args);
+
+        // A library album whose tracks came from a streaming provider (YouTube Music) can have track number 0 stored for
+        // every track. The server sorts by disc and track number, so the list comes back in its alphabetical database
+        // order, and it copies the provider's real numbers into the database during that same request. Asking once more
+        // returns the album in its real order.
+        // ponytail: an album whose provider has no track numbers at all costs one extra request every time it opens
+        if (tracks.Count > 1 && tracks.Any(t => t.TrackNumber is null or 0))
+        {
+            tracks = await SendAsync<List<MediaItem>>("music/albums/album_tracks", args);
+        }
 
         if (tracks.Select(t => t.OwnImage()).FirstOrDefault(i => i is not null) is { } cover)
         {

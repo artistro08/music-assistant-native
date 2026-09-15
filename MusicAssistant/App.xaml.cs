@@ -248,6 +248,15 @@ public partial class App : Application
             var queueId = Client.QueueIdFor(player);
             var before  = Client.Queues.GetValueOrDefault(queueId)?.CurrentItem?.QueueItemId;
 
+            // The server builds an album's queue from the same track list the album page shows, so an album whose stored
+            // track numbers are still 0 would be queued in alphabetical order. Loading its tracks first has the server
+            // repair the numbers (see GetAlbumTracksAsync). A failure here must not block playback.
+            if (item.MediaType == "album")
+            {
+                try { await Client.GetAlbumTracksAsync(item.ItemId, item.Provider, item.Uri); }
+                catch (ApiException ex) { Log("Album track order check: " + ex.Message); }
+            }
+
             var watch = System.Diagnostics.Stopwatch.StartNew();
             await Client.PlayMediaAsync(queueId, item.Uri, option, startItem);
             if (watch.Elapsed > TimeSpan.FromSeconds(5)) Log($"play_media on {player.Name} took {watch.Elapsed.TotalSeconds:0}s to be accepted");
