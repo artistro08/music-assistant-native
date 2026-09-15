@@ -97,16 +97,37 @@
                 </ToggleButton>
             </StackPanel>
 
-            <Grid ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="40" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="40" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="ElapsedText" Text="0:00" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" HorizontalAlignment="Right" />
-                <Slider x:Name="ProgressSlider" Grid.Column="1" Minimum="0" Maximum="1" StepFrequency="1" IsThumbToolTipEnabled="False" PointerCaptureLost="OnSeekCommitted" />
-                <TextBlock x:Name="DurationText" Grid.Column="2" Text="0:00" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
-            </Grid>
+            <!-- Seek Bar: drawn like the Music Assistant web player's timeline. A thin track at 30% of the text color with a
+                 solid filled part, no time labels, and the thumb shown only while hovering a seekable bar or dragging -->
+            <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" StepFrequency="1" IsThumbToolTipEnabled="False" PointerCaptureLost="OnSeekCommitted" Loaded="OnProgressLoaded" PointerEntered="OnProgressPointerEntered" PointerExited="OnProgressPointerExited">
+                <Slider.Resources>
+                    <ResourceDictionary>
+                        <ResourceDictionary.ThemeDictionaries>
+                            <ResourceDictionary x:Key="Default">
+                                <SolidColorBrush x:Key="SliderTrackFill" Color="White" Opacity="0.3" />
+                                <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="White" Opacity="0.3" />
+                                <SolidColorBrush x:Key="SliderTrackFillPressed" Color="White" Opacity="0.3" />
+                                <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="White" Opacity="0.3" />
+                                <SolidColorBrush x:Key="SliderTrackValueFill" Color="White" />
+                                <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="White" />
+                                <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="White" />
+                                <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="White" />
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="Light">
+                                <SolidColorBrush x:Key="SliderTrackFill" Color="Black" Opacity="0.3" />
+                                <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="Black" Opacity="0.3" />
+                                <SolidColorBrush x:Key="SliderTrackFillPressed" Color="Black" Opacity="0.3" />
+                                <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="Black" Opacity="0.3" />
+                                <SolidColorBrush x:Key="SliderTrackValueFill" Color="Black" />
+                                <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="Black" />
+                                <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="Black" />
+                                <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="Black" />
+                            </ResourceDictionary>
+                        </ResourceDictionary.ThemeDictionaries>
+                    </ResourceDictionary>
+                </Slider.Resources>
+            </Slider>
+            <!-- /Seek Bar -->
         </StackPanel>
         <!-- /Transport -->
 

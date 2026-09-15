@@ -219,8 +219,47 @@ public sealed partial class PlayerBar : UserControl
         // Queue playback seeks on the server by restarting the stream, so it works even for players without a native
         // seek (the PC speaker). Locked while a resume is in flight: the position stays put, but a seek would race it.
         ProgressSlider.IsEnabled = !resuming && duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
-        ElapsedText.Text         = Format.Duration(elapsed);
-        DurationText.Text        = duration > 0 ? Format.Duration(duration) : "--:--";
+        if (!ProgressSlider.IsEnabled) SetThumbVisible(false);   // the bar can lock while the pointer rests on it
+    }
+
+    // Seek Bar Thumb
+
+    private Thumb? progressThumb;
+    private bool   progressHovered;
+
+    /// <summary>The template's thumb, hidden until the pointer is over a seekable bar. Opacity keeps it grabbable while hidden.</summary>
+    private void OnProgressLoaded(object sender, RoutedEventArgs e)
+    {
+        progressThumb = FindNamed<Thumb>(ProgressSlider, "HorizontalThumb");
+        SetThumbVisible(false);
+    }
+
+    private void OnProgressPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        progressHovered = true;
+        SetThumbVisible(ProgressSlider.IsEnabled);
+    }
+
+    private void OnProgressPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        progressHovered = false;
+        if (!isSeeking) SetThumbVisible(false);
+    }
+
+    private void SetThumbVisible(bool visible)
+    {
+        if (progressThumb is not null) progressThumb.Opacity = visible ? 1 : 0;
+    }
+
+    private static T? FindNamed<T>(DependencyObject root, string name) where T : FrameworkElement
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match && match.Name == name) return match;
+            if (FindNamed<T>(child, name) is { } found) return found;
+        }
+        return null;
     }
 
     private static Brush AccentBrush  => (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
@@ -323,6 +362,7 @@ public sealed partial class PlayerBar : UserControl
         // every time the window was resized.
         if (!isSeeking) return;
         isSeeking = false;
+        if (!progressHovered) SetThumbVisible(false);   // released outside the bar
         if (Player is not { } player) return;
         var position = (int)ProgressSlider.Value;
         _ = Queue?.CurrentItem is not null
