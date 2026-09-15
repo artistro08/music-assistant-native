@@ -10,6 +10,9 @@
          focused row or card, and by a row's "..." button. Rebuilt for the item each time it opens (Controls/ItemMenu.cs) -->
     <MenuFlyout x:Key="ItemMenu" Opening="OnItemMenuOpening" />
 
+    <!-- Queue Item Menu: the queue actions plus the item menu's entries for the track, for every queue row -->
+    <MenuFlyout x:Key="QueueItemMenu" Opening="OnQueueItemMenuOpening" />
+
     <!-- Shared Brushes -->
     <LinearGradientBrush x:Key="HeroScrimBrush" StartPoint="0.5,0" EndPoint="0.5,1">
         <GradientStop Color="#00000000" Offset="0" />
@@ -228,18 +231,7 @@
     <!-- Queue Row -->
     <DataTemplate x:Key="QueueRowTemplate" x:DataType="api:QueueItem">
         <Grid ColumnSpacing="12" Padding="{StaticResource RowContentPadding}" MinHeight="48" AutomationProperties.Name="{x:Bind Title}">
-            <Grid.Resources>
-                <MenuFlyout x:Key="QueueMenu">
-                    <MenuFlyoutItem Text="Play now" Icon="Play" Click="OnQueuePlayHere" />
-                    <MenuFlyoutItem Text="Play next" Icon="Next" Click="OnQueuePlayNext" />
-                    <MenuFlyoutItem Text="Move to end" Icon="Download" Click="OnQueueMoveEnd" />
-                    <MenuFlyoutSeparator />
-                    <MenuFlyoutItem Text="Delete item" Icon="Delete" Click="OnQueueRemove" />
-                </MenuFlyout>
-            </Grid.Resources>
-            <Grid.ContextFlyout>
-                <StaticResource ResourceKey="QueueMenu" />
-            </Grid.ContextFlyout>
+            <!-- Right-click and the keyboard open the queue item menu from the row container (QueueListItemStyle); the "..." button opens the same menu -->
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="40" />
                 <ColumnDefinition Width="*" />
@@ -262,7 +254,7 @@
             <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Margin="0,0,0,2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
 
             <!-- The whole row drags to reorder, so there is no separate drag handle -->
-            <Button Grid.Column="3" Style="{StaticResource SubtleButtonStyle}" Padding="6" Flyout="{StaticResource QueueMenu}" AutomationProperties.Name="Queue item actions">
+            <Button Grid.Column="3" Style="{StaticResource SubtleButtonStyle}" Padding="6" Flyout="{StaticResource QueueItemMenu}" AutomationProperties.Name="Queue item actions">
                 <FontIcon Glyph="&#xE712;" FontSize="14" />
             </Button>
         </Grid>
@@ -281,6 +273,10 @@
     <!-- Row container for track, album and browse lists: adds the item menu, so it opens for the focused row from the keyboard as well as by right-click -->
     <Style x:Key="MediaListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource TrackListItemStyle}">
         <Setter Property="ContextFlyout" Value="{StaticResource ItemMenu}" />
+    </Style>
+    <!-- Row container for the queue lists: adds the queue item menu, reachable by right-click and the keyboard -->
+    <Style x:Key="QueueListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource TrackListItemStyle}">
+        <Setter Property="ContextFlyout" Value="{StaticResource QueueItemMenu}" />
     </Style>
     <Style x:Key="TrackListStyle" TargetType="ListView">
         <Setter Property="ItemTemplate" Value="{StaticResource TrackRowTemplate}" />

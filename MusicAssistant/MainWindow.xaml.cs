@@ -209,12 +209,10 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private static async Task StopOwnSpeakerAsync()
     {
-        string? id = App.Settings.SpeakerClientId;
-        if (!App.Settings.SpeakerEnabled || string.IsNullOrEmpty(id)) return;
-        if (!App.Client.Players.TryGetValue(id, out Player? pc) || !pc.IsPlaying) return;
+        if (!App.Settings.SpeakerEnabled || (App.OwnPlayer is not { IsPlaying: true } pc)) return;
         try
         {
-            await App.Client.PlayerCommandAsync(id, "stop").WaitAsync(TimeSpan.FromSeconds(2));
+            await App.Client.PlayerCommandAsync(pc.PlayerId, "stop").WaitAsync(TimeSpan.FromSeconds(2));
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {

@@ -26,6 +26,9 @@ public sealed class MassClient : IDisposable
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> pending = new();
     private readonly ConcurrentDictionary<string, List<JsonElement>>                 partials = new();
 
+    /// <summary>Favorite states learned since connecting, by item URI.</summary>
+    private readonly ConcurrentDictionary<string, bool> knownFavorites = new();
+
     /// <summary>Where the client reports non-fatal oddities (the app points this at its log file). The API layer has no UI dependency.</summary>
     public static Action<string>? Logger { get; set; }
 
@@ -142,6 +145,7 @@ public sealed class MassClient : IDisposable
         StateLoaded = false;
         Players.Clear();
         Queues.Clear();
+        knownFavorites.Clear();
         RemovedPlayers.Clear();
         // A different server (or remote session) may run different providers.
         providersCache = null;
@@ -689,7 +693,16 @@ public sealed class MassClient : IDisposable
                 break;
             case "queue_added":
             case "queue_updated":
-                if (data.Deserialize<PlayerQueue>(Json.Options) is { } queue) Queues[queue.QueueId] = Stamped(queue);
+                if (data.Deserialize<PlayerQueue>(Json.Options) is { } queue)
+                {
+                    ApplyKnownFavorites(queue.CurrentItem?.MediaItem);
+                    ApplyKnownFavorites(queue.NextItem?.MediaItem);
+                    Queues[queue.QueueId] = Stamped(queue);
+                }
+                break;
+            case "media_item_updated":
+                // A favorite added or removed anywhere (this app, the web app, the Android app) arrives here.
+                if (data.Deserialize<MediaItem>(Json.Options) is { } updated) RecordFavorite(updated, updated.Favorite);
                 break;
             case "queue_time_updated":
                 if (objectId is not null && Queues.TryGetValue(objectId, out PlayerQueue? q) && (data.ValueKind == JsonValueKind.Number))
@@ -698,6 +711,65 @@ public sealed class MassClient : IDisposable
                     q.ElapsedTimeLastUpdated = NowSeconds();
                 }
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Remembers an item's favorite state under its own URI and every provider URI it's known by, and applies it to the
+    /// loaded queues' current and next items right away.
+    /// </summary>
+    /// <remarks>
+    /// Queue items carry a snapshot of their track, and a queue item for a streaming track is addressed by the provider
+    /// URI while the favorite belongs to the library copy. Without this the player bar's heart kept the old state.
+    /// </remarks>
+    /// <param name="item">The item whose favorite state changed, ideally with its provider mappings.</param>
+    /// <param name="favorite">The new favorite state.</param>
+    public void RecordFavorite(MediaItem item, bool favorite)
+    {
+        foreach (string uri in UrisOf(item))
+        {
+            knownFavorites[uri] = favorite;
+        }
+
+        foreach (PlayerQueue queue in Queues.Values)
+        {
+            ApplyKnownFavorites(queue.CurrentItem?.MediaItem);
+            ApplyKnownFavorites(queue.NextItem?.MediaItem);
+        }
+    }
+
+    /// <summary>Sets an item's favorite flag from the known states, when one of its URIs has one.</summary>
+    /// <param name="item">A queue item's track, or null.</param>
+    private void ApplyKnownFavorites(MediaItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        foreach (string uri in UrisOf(item))
+        {
+            if (knownFavorites.TryGetValue(uri, out bool favorite))
+            {
+                item.Favorite = favorite;
+                return;
+            }
+        }
+    }
+
+    /// <summary>The item's URI and the provider URI of each of its provider mappings.</summary>
+    /// <param name="item">The media item.</param>
+    /// <returns>Every URI the item can be addressed by.</returns>
+    private static IEnumerable<string> UrisOf(MediaItem item)
+    {
+        if (item.Uri.Length > 0)
+        {
+            yield return item.Uri;
+        }
+
+        foreach (ProviderMapping mapping in item.ProviderMappings ?? [])
+        {
+            yield return $"{mapping.ProviderInstance}://{item.MediaType}/{mapping.ItemId}";
         }
     }
 

@@ -5,6 +5,12 @@ namespace MusicAssistant.Sendspin;
 /// <summary>
 /// Shared-mode WASAPI render stream on the default output device, event driven.
 ///
+/// Follows the default device: when Windows switches the output (headphones
+/// plugged in, a speaker picked in the volume flyout, the device unplugged),
+/// the stream reopens on the new default in the format it started with, and
+/// Windows converts to the new device's format, so the decoder and scheduler
+/// carry on without knowing.
+///
 /// A render thread wakes on every device period, asks the renderer callback to
 /// fill the free part of the buffer and tells it the exact local time the first
 /// frame it writes will leave the device, computed from IAudioClock (device
@@ -15,6 +21,7 @@ namespace MusicAssistant.Sendspin;
 /// <remarks>
 /// @link https://learn.microsoft.com/windows/win32/coreaudio/rendering-a-stream
 /// @link https://learn.microsoft.com/windows/win32/api/audioclient/nn-audioclient-iaudioclock
+/// @link https://learn.microsoft.com/windows/win32/api/mmdeviceapi/nn-mmdeviceapi-immnotificationclient
 /// </remarks>
 public sealed class WasapiOutput : IDisposable
 {
@@ -30,8 +37,20 @@ public sealed class WasapiOutput : IDisposable
     /// <summary>The device mix format's channel count; set by <see cref="Start"/>.</summary>
     public int Channels   { get; private set; }
 
-    /// <summary>Raised when the render thread dies unexpectedly (device invalidated, format change, driver reset), never on a normal Stop(). Handlers must not block or call Stop()/Dispose() inline, since this fires on the render thread mid-teardown.</summary>
+    /// <summary>Raised when the render thread dies unexpectedly (driver reset, or no output device left to move to), never on a normal Stop(). Handlers must not block or call Stop()/Dispose() inline, since this may fire on the render thread mid-teardown.</summary>
     public event Action? Failed;
+
+    /// <summary>AUDCLNT_E_DEVICE_INVALIDATED: the device the stream ran on was removed or disabled.</summary>
+    private const int DeviceInvalidated = unchecked((int)0x88890004);
+
+    /// <summary>Serializes starting, stopping and device switches, which arrive from the app and from Windows' callbacks.</summary>
+    private readonly object lifecycle = new();
+
+    /// <summary>Whether the owner wants audio running: set by Start, cleared by Stop, so a late device switch opens nothing.</summary>
+    private bool wanted;
+
+    private IMMDeviceEnumerator? watchEnumerator;
+    private DefaultDeviceWatcher? watcher;
 
     private IAudioClient?       client;
     private IAudioRenderClient? render;
@@ -54,11 +73,60 @@ public sealed class WasapiOutput : IDisposable
         this.callback = callback;
     }
 
-    /// <summary>Open the default render device in its mix format and start the render thread.</summary>
+    /// <summary>Open the default render device in its mix format, start the render thread and follow default device changes.</summary>
     public void Start()
     {
-        if (running) return;
+        lock (lifecycle)
+        {
+            wanted = true;
+            if (!running)
+            {
+                Open(keepFormat: false);
+            }
+            Watch();
+        }
+    }
 
+    /// <summary>Signals the render thread to stop and waits up to 3 seconds for it; the thread releases the device itself.</summary>
+    public void Stop()
+    {
+        lock (lifecycle)
+        {
+            wanted = false;
+            Halt();
+        }
+    }
+
+    /// <summary>Reopens the stream on the current default device, keeping the format the decoder and scheduler use.</summary>
+    /// <param name="why">What triggered the switch, for the log.</param>
+    private void SwitchDevice(string why)
+    {
+        lock (lifecycle)
+        {
+            if (!wanted)
+            {
+                return;
+            }
+
+            App.Debug($"Speaker output: {why}, moving to the default device");
+            Halt();
+            try
+            {
+                Open(keepFormat: true);
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                // No usable output left (the last device went away): the owner decides what a dead output means.
+                App.Log($"Speaker output couldn't move to the default device: {ex.Message}");
+                Failed?.Invoke();
+            }
+        }
+    }
+
+    /// <summary>Opens the default device and starts the render thread. Caller holds <see cref="lifecycle"/>.</summary>
+    /// <param name="keepFormat">Reopen in the current <see cref="SampleRate"/> and <see cref="Channels"/> as float, letting Windows convert, instead of the device's mix format.</param>
+    private void Open(bool keepFormat)
+    {
         // A prior Stop() only joins for 3s, so its render thread may still be tearing down the COM objects.
         // Never reuse the COM fields until that thread has fully exited, or its finally would release the new session's objects.
         thread?.Join();
@@ -82,16 +150,32 @@ public sealed class WasapiOutput : IDisposable
         // No render thread runs yet, so any failure here must release the COM objects itself; Stop() would no-op with running still false.
         try
         {
-            client.GetMixFormat(out nint formatPtr);
-            try
+            if (keepFormat)
             {
-                ReadFormat(formatPtr);
-                // 100ms of buffer: room for a late wake-up; the device clock, not the buffer size, drives timing.
-                client.Initialize(ShareModeShared, StreamFlagsEventCallback, 100 * 10_000, 0, formatPtr, IntPtr.Zero);
+                nint formatPtr = FloatFormat(SampleRate, Channels);
+                try
+                {
+                    ReadFormat(formatPtr);
+                    client.Initialize(ShareModeShared, StreamFlagsEventCallback | StreamFlagsAutoConvertPcm | StreamFlagsSrcDefaultQuality, 100 * 10_000, 0, formatPtr, IntPtr.Zero);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(formatPtr);
+                }
             }
-            finally
+            else
             {
-                Marshal.FreeCoTaskMem(formatPtr);
+                client.GetMixFormat(out nint formatPtr);
+                try
+                {
+                    ReadFormat(formatPtr);
+                    // 100ms of buffer: room for a late wake-up; the device clock, not the buffer size, drives timing.
+                    client.Initialize(ShareModeShared, StreamFlagsEventCallback, 100 * 10_000, 0, formatPtr, IntPtr.Zero);
+                }
+                finally
+                {
+                    Marshal.FreeCoTaskMem(formatPtr);
+                }
             }
 
             client.GetBufferSize(out bufferFrames);
@@ -120,8 +204,8 @@ public sealed class WasapiOutput : IDisposable
         thread.Start();
     }
 
-    /// <summary>Signals the render thread to stop and waits up to 3 seconds for it; the thread releases the device itself.</summary>
-    public void Stop()
+    /// <summary>Stops the render thread, waiting up to 3 seconds. Caller holds <see cref="lifecycle"/>.</summary>
+    private void Halt()
     {
         if (!running) return;
         running = false;
@@ -147,6 +231,13 @@ public sealed class WasapiOutput : IDisposable
                 if (!running) break;
                 FillOnce();
             }
+        }
+        catch (COMException ex) when (ex.HResult == DeviceInvalidated)
+        {
+            // The device went away; Windows picks a new default, so move there rather than fail. Queued, because the
+            // switch joins this thread.
+            running = false;
+            ThreadPool.QueueUserWorkItem(_ => SwitchDevice("device removed"));
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
@@ -260,6 +351,56 @@ public sealed class WasapiOutput : IDisposable
         if (!isFloat && bitsPerSample is not (16 or 32)) throw new NotSupportedException($"Output format {bitsPerSample}-bit integer is not supported");
     }
 
+    /// <summary>Allocates a WAVEFORMATEXTENSIBLE for 32-bit float at the given rate and channel count; free with Marshal.FreeHGlobal.</summary>
+    /// <param name="sampleRate">Frames per second.</param>
+    /// <param name="channels">Interleaved channels.</param>
+    /// <returns>The native format block.</returns>
+    private static nint FloatFormat(int sampleRate, int channels)
+    {
+        const int size = 40;
+        nint format = Marshal.AllocHGlobal(size);
+        int blockAlign = channels * 4;
+        Marshal.WriteInt16(format, 0,  unchecked((short)FormatExtensible));
+        Marshal.WriteInt16(format, 2,  (short)channels);
+        Marshal.WriteInt32(format, 4,  sampleRate);
+        Marshal.WriteInt32(format, 8,  sampleRate * blockAlign);
+        Marshal.WriteInt16(format, 12, (short)blockAlign);
+        Marshal.WriteInt16(format, 14, 32);
+        Marshal.WriteInt16(format, 16, 22);
+        Marshal.WriteInt16(format, 18, 32);
+
+        // Front left and right for stereo; other layouts are left for Windows to map.
+        Marshal.WriteInt32(format, 20, channels == 2 ? 0x3 : 0);
+        Marshal.StructureToPtr(SubtypeIeeeFloat, format + 24, false);
+        return format;
+    }
+
+    /// <summary>Registers for default device changes once; Windows calls back on its own threads.</summary>
+    private void Watch()
+    {
+        if (watcher is not null)
+        {
+            return;
+        }
+
+        watchEnumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+        watcher         = new DefaultDeviceWatcher(this);
+        watchEnumerator.RegisterEndpointNotificationCallback(watcher);
+    }
+
+    private void Unwatch()
+    {
+        if (watcher is null)
+        {
+            return;
+        }
+
+        watchEnumerator!.UnregisterEndpointNotificationCallback(watcher);
+        Marshal.ReleaseComObject(watchEnumerator);
+        watchEnumerator = null;
+        watcher         = null;
+    }
+
     private void Release()
     {
         if (render is not null) Marshal.ReleaseComObject(render);
@@ -272,8 +413,49 @@ public sealed class WasapiOutput : IDisposable
         wake = null;
     }
 
-    /// <summary>Stops the render thread, which releases the device.</summary>
-    public void Dispose() => Stop();
+    /// <summary>Stops following the default device and stops the render thread, which releases the device.</summary>
+    public void Dispose()
+    {
+        lock (lifecycle)
+        {
+            wanted = false;
+            Unwatch();
+            Halt();
+        }
+    }
+
+    /// <summary>Receives Windows' endpoint notifications and hands a default output change to the output.</summary>
+    /// <param name="owner">The output to move.</param>
+    private sealed class DefaultDeviceWatcher(WasapiOutput owner) : IMMNotificationClient
+    {
+        public void OnDeviceStateChanged(string deviceId, uint newState)
+        {
+        }
+
+        public void OnDeviceAdded(string deviceId)
+        {
+        }
+
+        public void OnDeviceRemoved(string deviceId)
+        {
+        }
+
+        public void OnDefaultDeviceChanged(EDataFlow flow, ERole role, string? defaultDeviceId)
+        {
+            // One call per role; the stream opens the multimedia default. A null id means no output device is left,
+            // which the render thread reports itself. Audio calls are not allowed inside this callback, so queue it.
+            if ((flow != EDataFlow.Render) || (role != ERole.Multimedia) || (defaultDeviceId is null))
+            {
+                return;
+            }
+
+            ThreadPool.QueueUserWorkItem(_ => owner.SwitchDevice("default output changed"));
+        }
+
+        public void OnPropertyValueChanged(string deviceId, PropertyKey key)
+        {
+        }
+    }
 
     // =========================================================================
     // COM
@@ -282,13 +464,22 @@ public sealed class WasapiOutput : IDisposable
     private const uint ClsCtxAll = 23;
     private const int  ShareModeShared = 0;
     private const int  StreamFlagsEventCallback = 0x00040000;
+    private const int  StreamFlagsAutoConvertPcm = unchecked((int)0x80000000);
+    private const int  StreamFlagsSrcDefaultQuality = 0x08000000;
     private const int  BufferFlagsSilent = 0x2;
     private const ushort FormatIeeeFloat = 3;
     private const ushort FormatExtensible = 0xFFFE;
     private static readonly Guid SubtypeIeeeFloat = new("00000003-0000-0010-8000-00aa00389b71");
 
-    private enum EDataFlow { Render = 0 }
-    private enum ERole { Console = 0, Multimedia = 1 }
+    private enum EDataFlow { Render = 0, Capture = 1, All = 2 }
+    private enum ERole { Console = 0, Multimedia = 1, Communications = 2 }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PropertyKey
+    {
+        public Guid FormatId;
+        public uint PropertyId;
+    }
 
     [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
     private class MMDeviceEnumerator { }
@@ -298,6 +489,19 @@ public sealed class WasapiOutput : IDisposable
     {
         void EnumAudioEndpoints(EDataFlow dataFlow, uint stateMask, out IntPtr devices);
         void GetDefaultAudioEndpoint(EDataFlow dataFlow, ERole role, out IMMDevice endpoint);
+        void GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice device);
+        void RegisterEndpointNotificationCallback(IMMNotificationClient client);
+        void UnregisterEndpointNotificationCallback(IMMNotificationClient client);
+    }
+
+    [ComImport, Guid("7991EEC9-7E89-4D85-8390-6C703CEC60C0"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IMMNotificationClient
+    {
+        void OnDeviceStateChanged([MarshalAs(UnmanagedType.LPWStr)] string deviceId, uint newState);
+        void OnDeviceAdded([MarshalAs(UnmanagedType.LPWStr)] string deviceId);
+        void OnDeviceRemoved([MarshalAs(UnmanagedType.LPWStr)] string deviceId);
+        void OnDefaultDeviceChanged(EDataFlow flow, ERole role, [MarshalAs(UnmanagedType.LPWStr)] string? defaultDeviceId);
+        void OnPropertyValueChanged([MarshalAs(UnmanagedType.LPWStr)] string deviceId, PropertyKey key);
     }
 
     [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

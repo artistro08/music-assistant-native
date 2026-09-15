@@ -32,6 +32,13 @@ public partial class App : Application
     public static Player? ActivePlayer
         => Settings.ActivePlayerId is { } id && Client.Players.TryGetValue(id, out Player? player) ? player : null;
 
+    /// <summary>
+    /// This PC's own speaker as the server lists it: the universal player wrapping its Sendspin protocol player, or the
+    /// hidden web player an older app version registered. Null while the speaker isn't connected.
+    /// </summary>
+    public static Player? OwnPlayer
+        => Client.Players.Values.Where(p => p.IsThisDevice && p.Enabled && p.Available).OrderBy(p => p.PlayerId == Player.OwnPlayerId).FirstOrDefault();
+
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "crash.log");
 
@@ -150,6 +157,15 @@ public partial class App : Application
         // Only give it up when the server said player_removed, or when the own speaker was switched off here.
         // Overwriting on mere absence is what silently moved playback from the remembered speaker to this PC.
         string? remembered = Settings.ActivePlayerId;
+
+        // This PC's speaker used to be listed under its client_id; now a universal player wraps it. Follow it there.
+        if ((remembered == Player.OwnPlayerId) && (OwnPlayer is { } ownPlayer) && (ownPlayer.PlayerId != remembered))
+        {
+            Log($"Active player: this PC's speaker is now listed as '{ownPlayer.PlayerId}'");
+            SetActivePlayer(ownPlayer.PlayerId);
+            return;
+        }
+
         if (!string.IsNullOrEmpty(remembered))
         {
             if (Client.Players.ContainsKey(remembered)) return;
@@ -410,6 +426,10 @@ public partial class App : Application
                 await Client.AddFavoriteAsync(item);
             }
             item.Favorite = !item.Favorite;
+
+            // Every other copy of this track (the player bar's queue item, for one) follows at once.
+            Client.RecordFavorite(item, item.Favorite);
+            StateChanged?.Invoke();
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {

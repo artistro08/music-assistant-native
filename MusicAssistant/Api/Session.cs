@@ -33,6 +33,9 @@ public sealed class Session
     /// <summary>Sendspin client id of this PC's speaker, which is also its player id on the server.</summary>
     public string? SpeakerClientId { get; set; }
 
+    /// <summary>server_id of the last Sendspin server this PC's speaker played for, which wins ties between idle servers.</summary>
+    public string? SpeakerLastPlaybackServerId { get; set; }
+
     /// <summary>Closing the window hides the app and keeps it running, instead of quitting. Default on.</summary>
     public bool    RunInBackground { get; set; } = true;
 

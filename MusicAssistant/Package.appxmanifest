@@ -3,11 +3,12 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
+  xmlns:desktop2="http://schemas.microsoft.com/appx/manifest/desktop/windows10/2"
+  IgnorableNamespaces="uap rescap desktop2">
 
   <!-- Identity as reserved in Partner Center (Store ID 9N0L3WRKFC58, package family artistro08.MusicAssistantNative_80wzptmyxepxj).
        Publisher must match the signing certificate subject exactly; sideload builds use a self-signed cert with this same subject. -->
-  <Identity Name="artistro08.MusicAssistantNative" Publisher="CN=BF59F607-536B-4252-888F-7B3ED9D56F96" Version="1.1.0.0" />
+  <Identity Name="artistro08.MusicAssistantNative" Publisher="CN=BF59F607-536B-4252-888F-7B3ED9D56F96" Version="1.2.0.0" />
 
   <Properties>
     <DisplayName>Music Assistant Native</DisplayName>
@@ -36,6 +37,16 @@
       </uap:VisualElements>
     </Application>
   </Applications>
+
+  <Extensions>
+    <!-- Inbound rule for the speaker's Sendspin listener, installed with the package so Windows doesn't prompt.
+         Music Assistant discovers the speaker over mDNS and connects to one of these ports on home and work networks -->
+    <desktop2:Extension Category="windows.firewallRules">
+      <desktop2:FirewallRules Executable="MusicAssistant.exe">
+        <desktop2:Rule Direction="in" IPProtocol="TCP" Profile="domainAndPrivate" LocalPortMin="8928" LocalPortMax="8937" />
+      </desktop2:FirewallRules>
+    </desktop2:Extension>
+  </Extensions>
 
   <Capabilities>
     <!-- LAN server, remote relay, and loopback listeners -->

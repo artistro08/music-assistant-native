@@ -83,6 +83,52 @@ public static class ItemMenu
             menu.Items.Add(enqueue);
         }
 
+        AddItemEntries(menu, item, parent);
+    }
+
+    /// <summary>
+    /// Fill the menu for one queue row: the queue actions first (Play Now, Play Next, Move to end, Delete item, as the
+    /// web app's queue menu has them), then the entries for the track itself.
+    /// </summary>
+    /// <param name="menu">The shared queue item menu, cleared and refilled.</param>
+    /// <param name="queueItem">The queue item the menu was opened on.</param>
+    /// <param name="position">The item's place in the queue, or -1 when unknown.</param>
+    public static void PopulateQueueItem(MenuFlyout menu, QueueItem queueItem, int position)
+    {
+        menu.Items.Clear();
+        PlayerQueue? queue = App.Client.Queues.GetValueOrDefault(queueItem.QueueId);
+
+        // Items up to the buffered one are already cued in the stream, so they can't be moved or removed; the playing
+        // or buffered item can't be started again.
+        bool isCurrent  = queue?.CurrentItem?.QueueItemId == queueItem.QueueItemId;
+        bool isBuffered = (position >= 0) && (position == queue?.IndexInBuffer);
+        bool locked     = (position >= 0) && (position <= (queue?.IndexInBuffer ?? -1));
+
+        MenuFlyoutItem playNow = Add(menu, "Play Now", "", () => App.PlayQueueItemAsync(queueItem));
+        playNow.IsEnabled = !isCurrent && !isBuffered;
+
+        MenuFlyoutItem playNext = Add(menu, "Play Next", "", () => App.Client.QueueCommandAsync(queueItem.QueueId, "move_item", new { queue_item_id = queueItem.QueueItemId, pos_shift = 0 }));
+        playNext.IsEnabled = !locked;
+
+        MenuFlyoutItem moveEnd = Add(menu, "Move to end", "", () => App.Client.QueueCommandAsync(queueItem.QueueId, "move_item_end", new { queue_item_id = queueItem.QueueItemId }));
+        moveEnd.IsEnabled = !locked;
+
+        MenuFlyoutItem delete = Add(menu, "Delete item", "", () => App.Client.QueueCommandAsync(queueItem.QueueId, "delete_item", new { item_id_or_index = queueItem.QueueItemId }));
+        delete.IsEnabled = !locked;
+
+        if (queueItem.MediaItem is { } track)
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+            AddItemEntries(menu, track, parent: null);
+        }
+    }
+
+    /// <summary>The entries about the item itself: go to its artist, album and endless mix, library, favorites and playlists.</summary>
+    /// <param name="menu">The menu to add to.</param>
+    /// <param name="item">The media item.</param>
+    /// <param name="parent">The item whose page the row or card is on, or null.</param>
+    private static void AddItemEntries(MenuFlyout menu, MediaItem item, MediaItem? parent)
+    {
         // Navigation: artist (only when there is exactly one, like the web app), album, endless mix.
         if (item.IsAvailableNow && item.Artists is [var artist])
         {

@@ -154,13 +154,22 @@ public sealed partial class QueuePage : Page
         }
     }
 
+    /// <summary>The item's place in the loaded queue, for the queue item menu's move and delete rules.</summary>
+    /// <param name="item">A queue item shown on this page.</param>
+    /// <returns>The zero-based position, or -1 when the item isn't in the loaded list.</returns>
+    public int PositionOf(QueueItem item) => allItems.FindIndex(i => i.QueueItemId == item.QueueItemId);
+
     /// <summary>Light the level bars on the row playing right now; clear them everywhere else.</summary>
+    /// <remarks>
+    /// Matched by queue item id, not position: an item's sort index isn't its place in the list, so comparing it with the
+    /// current index lit the previous track. The id also stays right while a newer list is still loading.
+    /// </remarks>
     private void UpdateNowPlaying()
     {
-        bool playing = App.ActivePlayer?.IsPlaying == true;
+        string? currentId = App.ActivePlayer?.IsPlaying == true ? Queue?.CurrentItem?.QueueItemId : null;
         foreach (QueueItem item in allItems)
         {
-            item.IsNowPlaying = playing && (item.SortIndex == currentIndex);
+            item.IsNowPlaying = (currentId is not null) && (item.QueueItemId == currentId);
         }
     }
 

@@ -41,7 +41,8 @@
                     </Button>
                 </Grid>
                 <!-- /Back Button -->
-                <Grid x:Name="AppTitleBar" Grid.Column="1" Padding="8,0" ColumnSpacing="12">
+                <!-- 12px in from the row's 4px padding puts the logo 16px from the window edge, the Windows title bar margin -->
+                <Grid x:Name="AppTitleBar" Grid.Column="1" Padding="12,0,8,0" ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
