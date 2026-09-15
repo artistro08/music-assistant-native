@@ -205,7 +205,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <InfoBar x:Name="MessageBar" Margin="24,8,24,0" MaxWidth="{StaticResource ContentMaxWidth}" IsClosable="True" />
-                <Frame x:Name="ContentFrame" Grid.Row="1" />
+                <Frame x:Name="ContentFrame" Grid.Row="1" Navigated="OnContentNavigated" />
             </Grid>
         </NavigationView>
         <!-- /Navigation -->

@@ -8,7 +8,7 @@
 
   <!-- Identity as reserved in Partner Center (Store ID 9N0L3WRKFC58, package family artistro08.MusicAssistantNative_80wzptmyxepxj).
        Publisher must match the signing certificate subject exactly; sideload builds use a self-signed cert with this same subject. -->
-  <Identity Name="artistro08.MusicAssistantNative" Publisher="CN=BF59F607-536B-4252-888F-7B3ED9D56F96" Version="1.2.1.0" />
+  <Identity Name="artistro08.MusicAssistantNative" Publisher="CN=BF59F607-536B-4252-888F-7B3ED9D56F96" Version="1.2.1.2" />
 
   <Properties>
     <DisplayName>Music Assistant Native</DisplayName>
