@@ -35,7 +35,10 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <FontIcon Glyph="&#xEC4F;" FontSize="16" VerticalAlignment="Center" />
+                    <!-- App mark: the Music Assistant house logo redrawn as a one-color outline so it matches the Segoe Fluent icons -->
+                    <Viewbox Width="16" Height="16" VerticalAlignment="Center">
+                        <PathIcon Data="F0 M100.51,3.21L184.51,75.21C186.72,77.11 188,79.88 188,82.8L188,184.8C188,190.32 183.52,194.8 178,194.8L10,194.8C4.48,194.8 0,190.32 0,184.8L0,82.8C0,79.88 1.28,77.11 3.49,75.21L87.49,3.21C91.24,-0 96.76,-0 100.51,3.21Z M94,15.3L176,85.6L176,182.8L12,182.8L12,85.6Z M31.6,113.2C31.6,109.67 34.47,106.8 38,106.8C41.53,106.8 44.4,109.67 44.4,113.2L44.4,159.6C44.4,163.13 41.53,166 38,166C34.47,166 31.6,163.13 31.6,159.6L31.6,113.2ZM54,113.2C54,109.67 56.87,106.8 60.4,106.8C63.93,106.8 66.8,109.67 66.8,113.2L66.8,159.6C66.8,163.13 63.93,166 60.4,166C56.87,166 54,163.13 54,159.6L54,113.2ZM76.4,113.2C76.4,109.67 79.27,106.8 82.8,106.8C86.33,106.8 89.2,109.67 89.2,113.2L89.2,159.6C89.2,163.13 86.33,166 82.8,166C79.27,166 76.4,163.13 76.4,159.6L76.4,113.2ZM112.97,161.3C112.03,164.71 108.5,166.71 105.1,165.77C101.69,164.83 99.69,161.3 100.63,157.9L113.43,111.5C114.37,108.09 117.9,106.09 121.3,107.03C124.71,107.97 126.71,111.5 125.77,114.9L112.97,161.3ZM131.03,114.9C130.09,111.5 132.09,107.97 135.5,107.03C138.9,106.09 142.43,108.09 143.37,111.5L156.17,157.9C157.11,161.3 155.11,164.83 151.7,165.77C148.3,166.71 144.77,164.71 143.83,161.3L131.03,114.9Z" />
+                    </Viewbox>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <TextBlock Text="Music Assistant" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" />
                         <!-- Shown while connected through Music Assistant remote access -->
