@@ -64,6 +64,7 @@ public partial class App : Application
             EnsureActivePlayer();
             StateChanged?.Invoke();
         });
+        Client.FavoritesChanged += () => Dispatcher.TryEnqueue(() => StateChanged?.Invoke());
         UnhandledException += OnUnhandledException;
     }
 
