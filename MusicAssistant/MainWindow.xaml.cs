@@ -268,6 +268,8 @@ public sealed partial class MainWindow : Window
         bool light = Root.ActualTheme == ElementTheme.Light;
         Microsoft.UI.Windowing.AppWindowTitleBar bar = AppWindow.TitleBar;
 
+        // The Fluent text fill colors: primary for the glyphs, disabled while the window is inactive, secondary while
+        // pressed, and the subtle fills for hover and press backgrounds.
         bar.ButtonBackgroundColor         = Microsoft.UI.Colors.Transparent;
         bar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
         bar.ButtonForegroundColor         = light ? Windows.UI.Color.FromArgb(0xE4, 0x00, 0x00, 0x00) : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
@@ -295,9 +297,10 @@ public sealed partial class MainWindow : Window
 
         // Windows draws the caption glyphs a pixel above their buttons' center; lifting the title bar content one physical
         // pixel lines the back arrow, logo, title and search box up with them (measured at 125%, maximized).
-        if ((TitleBarRow.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform)?.Y != -1 / scale)
+        double lift = -1 / scale;
+        if ((TitleBarRow.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform)?.Y != lift)
         {
-            TitleBarRow.RenderTransform = new Microsoft.UI.Xaml.Media.TranslateTransform { Y = -1 / scale };
+            TitleBarRow.RenderTransform = new Microsoft.UI.Xaml.Media.TranslateTransform { Y = lift };
         }
     }
 
@@ -1009,7 +1012,6 @@ public sealed partial class MainWindow : Window
         };
         storyboard.Begin();
     }
-
 
     /// <summary>Builds one timeline of the back button's show or hide animation.</summary>
     /// <param name="target">The element or transform to animate.</param>

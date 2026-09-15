@@ -53,6 +53,7 @@ public sealed partial class MediaRow : UserControl
             {
                 tint.Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
             }
+
             Rebind();
         };
     }
