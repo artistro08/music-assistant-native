@@ -228,7 +228,7 @@ public sealed partial class PlayerBar : UserControl
         // Queue playback seeks on the server by restarting the stream, so it works even for players without a native
         // seek (the PC speaker). Locked while a resume is in flight: the position stays put, but a seek would race it.
         ProgressSlider.IsEnabled = !resuming && duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
-        if (!ProgressSlider.IsEnabled) SetThumbVisible(false);   // the bar can lock while the pointer rests on it
+        SetThumbVisible(ProgressSlider.IsEnabled && progressHovered);   // re-applied every tick: the bar can lock while the pointer rests on it
 
         var shown = duration > 0 ? Math.Min(elapsed, duration) : elapsed;
         ElapsedText.Text  = showTimeLeft && duration > 0 ? "-" + Format.Duration(Math.Max(0, duration - shown)) : Format.Duration(shown);
@@ -249,11 +249,7 @@ public sealed partial class PlayerBar : UserControl
     private bool   progressHovered;
 
     /// <summary>The template's thumb, hidden until the pointer is over a seekable bar. Opacity keeps it grabbable while hidden.</summary>
-    private void OnProgressLoaded(object sender, RoutedEventArgs e)
-    {
-        progressThumb = FindNamed<Thumb>(ProgressSlider, "HorizontalThumb");
-        SetThumbVisible(false);
-    }
+    private void OnProgressLoaded(object sender, RoutedEventArgs e) => SetThumbVisible(false);
 
     private void OnProgressPointerEntered(object sender, PointerRoutedEventArgs e)
     {
@@ -269,8 +265,17 @@ public sealed partial class PlayerBar : UserControl
 
     private void SetThumbVisible(bool visible)
     {
-        if (progressThumb is not null) progressThumb.Opacity = visible ? 1 : 0;
+        // The slider applies its template lazily, so the thumb may not exist yet at Loaded; keep looking until it does
+        progressThumb ??= FindNamed<Thumb>(ProgressSlider, "HorizontalThumb");
+        if (progressThumb is null)
+        {
+            if (!thumbMissingLogged && ProgressSlider.ActualWidth > 0) { thumbMissingLogged = true; App.Log("Seek bar thumb not found in the slider template"); }
+            return;
+        }
+        progressThumb.Opacity = visible ? 1 : 0;
     }
+
+    private bool thumbMissingLogged;
 
     private static T? FindNamed<T>(DependencyObject root, string name) where T : FrameworkElement
     {
