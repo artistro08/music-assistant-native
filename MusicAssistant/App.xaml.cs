@@ -45,6 +45,9 @@ public partial class App : Application
     /// <summary>Stable identity for the taskbar, notifications and the media overlay ("Unknown app" otherwise).</summary>
     public const string AppUserModelId = "DevinGreen.MusicAssistant";
 
+    /// <summary>The app version as shown to people: three parts, plus the fourth when a build revision is set (1.2.1.2).</summary>
+    public static string DisplayVersion { get; } = typeof(App).Assembly.GetName().Version is { } version ? version.ToString((version.Revision > 0) ? 4 : 3) : "1.0.0";
+
     [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
 

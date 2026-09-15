@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Navigation;
 using MusicAssistant.Api;
 using MusicAssistant.Pages;
 using MusicAssistant.Remote;
@@ -1032,6 +1033,7 @@ public sealed partial class MainWindow : Window
         Storyboard.SetTargetProperty(animation, property);
         return animation;
     }
+
     private void GoBack()
     {
         if (QueueOpen)
@@ -1089,6 +1091,44 @@ public sealed partial class MainWindow : Window
         {
             Navigate(page, tag);
         }
+    }
+
+    /// <summary>
+    /// Highlights the sidebar item for the page shown after going back or forward, which the NavigationView doesn't
+    /// follow on its own. A page outside the sidebar (an item, search results) keeps the section it was opened from:
+    /// the nearest sidebar page below it in the back stack.
+    /// </summary>
+    /// <param name="sender">The content frame.</param>
+    /// <param name="e">The page and parameter now showing, and how the frame got there.</param>
+    private void OnContentNavigated(object sender, NavigationEventArgs e)
+    {
+        if (e.NavigationMode is not (NavigationMode.Back or NavigationMode.Forward))
+        {
+            return;
+        }
+
+        string? tag = NavTag(e.SourcePageType, e.Parameter)
+            ?? ContentFrame.BackStack.Reverse().Select(entry => NavTag(entry.SourcePageType, entry.Parameter)).FirstOrDefault(t => t is not null);
+        Nav.SelectedItem = Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>().FirstOrDefault(item => (tag is not null) && ((item.Tag as string) == tag));
+    }
+
+    /// <summary>The sidebar tag of a page, or null for pages the sidebar doesn't list.</summary>
+    /// <param name="page">The page type.</param>
+    /// <param name="parameter">The page's navigation parameter; library pages carry their sidebar tag.</param>
+    /// <returns>The matching NavigationViewItem tag, or <see langword="null"/>.</returns>
+    private static string? NavTag(Type page, object? parameter)
+    {
+        if (page == typeof(LibraryPage))
+        {
+            return parameter as string;
+        }
+
+        if (page == typeof(SettingsPage))
+        {
+            return "settings";
+        }
+
+        return NavPages.FirstOrDefault(entry => entry.Value == page).Key;
     }
 
     private void OnBackClick(object sender, RoutedEventArgs e) => GoBack();

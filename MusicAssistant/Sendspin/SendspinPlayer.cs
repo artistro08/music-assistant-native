@@ -240,7 +240,7 @@ public sealed class SendspinPlayer : IDisposable
                 // player and hides it from other clients, so neither may appear here.
                 product_name     = HardwareIdentity.Model,
                 manufacturer     = HardwareIdentity.Manufacturer,
-                software_version = $"Music Assistant for Windows {typeof(SendspinPlayer).Assembly.GetName().Version?.ToString(3) ?? "1.0.0"}",
+                software_version = $"Music Assistant for Windows {App.DisplayVersion}",
             },
             ["player@v1_support"] = new
             {
