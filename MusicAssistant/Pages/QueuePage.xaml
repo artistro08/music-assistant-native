@@ -74,6 +74,7 @@
             <Grid Grid.Column="1">
                 <ListView
                     x:Name="List"
+                    ItemContainerStyle="{StaticResource TrackListItemStyle}"
                     IsItemClickEnabled="True"
                     SelectionMode="Single"
                     CanDragItems="True"

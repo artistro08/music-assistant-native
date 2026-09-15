@@ -197,13 +197,15 @@
                 </Grid>
             </Grid>
 
-            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <!-- Bottom margins lift the text: its line boxes carry more space above the capitals than below the letters,
+                 so a centered box drew the ink about 1.5px low against the art and the row's hover background -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,0,3">
                 <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1" />
                 <TextBlock Text="{x:Bind SubtitleText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
 
             <controls:NowPlayingBars Grid.Column="2" Width="18" Height="14" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.Vis(IsNowPlaying), Mode=OneWay}" />
-            <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
+            <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Margin="0,0,0,2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
         </Grid>
     </DataTemplate>
     <!-- /Track Row -->
@@ -236,13 +238,14 @@
                 <Image Source="{x:Bind local:Templates.ToThumb(ThumbUrl)}" Opacity="{x:Bind local:Templates.ReadyThumb(ThumbUrl)}" Stretch="UniformToFill" ImageOpened="OnImageOpened" />
             </Grid>
 
-            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <!-- Same lift as the track row: centered line boxes draw the ink low -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,0,3">
                 <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1" />
                 <TextBlock Text="{x:Bind SubtitleText}" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
 
             <controls:NowPlayingBars Grid.Column="2" Width="18" Height="14" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.Vis(IsNowPlaying), Mode=OneWay}" />
-            <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
+            <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Margin="0,0,0,2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
 
             <!-- Drag handle: the row itself is draggable; this just signals it -->
             <Grid Grid.Column="3" VerticalAlignment="Center" Padding="6,0" RowSpacing="3" ColumnSpacing="3" ToolTipService.ToolTip="Drag to reorder">
@@ -274,8 +277,16 @@
     <!-- Page content is capped and centered, Microsoft Store style; scrollers stay full width -->
     <x:Double x:Key="ContentMaxWidth">1600</x:Double>
 
+    <!-- Row container for track and queue lists: the default 16/12px side padding put the art 16px inside the hover
+         background but only 4px below its top. 4px on each side makes the row content sit evenly inside the hover and
+         selection background, and lines the art up with the page's section titles -->
+    <Style x:Key="TrackListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+        <Setter Property="Padding" Value="4,0,4,0" />
+    </Style>
+
     <Style x:Key="TrackListStyle" TargetType="ListView">
         <Setter Property="ItemTemplate" Value="{StaticResource TrackRowTemplate}" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource TrackListItemStyle}" />
         <Setter Property="IsItemClickEnabled" Value="True" />
         <Setter Property="SelectionMode" Value="None" />
     </Style>
