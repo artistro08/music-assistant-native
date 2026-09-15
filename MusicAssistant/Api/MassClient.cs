@@ -361,9 +361,45 @@ public sealed class MassClient : IDisposable
         }
     }
 
-    /// <summary>Add items (by URI) to a library playlist. Albums are expanded to their tracks by the server.</summary>
-    public Task AddPlaylistTracksAsync(string dbPlaylistId, IEnumerable<string> uris)
-        => SendAsync<JsonElement>("music/playlists/add_playlist_tracks", new { db_playlist_id = dbPlaylistId, uris = uris.ToArray() });
+    /// <summary>
+    /// Add items (by URI) to a library playlist. Albums are expanded to their tracks by the server.
+    ///
+    /// The server answers at once with a background task and does the work afterward, so a provider refusing the edit
+    /// only shows up in that task. This waits for it and throws its error, so callers never report a failed add as done.
+    /// </summary>
+    /// <exception cref="ApiException">The server refused the command, or its background task failed or never finished.</exception>
+    public async Task AddPlaylistTracksAsync(string dbPlaylistId, IEnumerable<string> uris)
+    {
+        var task = await SendAsync<JsonElement>("music/playlists/add_playlist_tracks", new { db_playlist_id = dbPlaylistId, uris = uris.ToArray() });
+        if (task.ValueKind != JsonValueKind.Object || !task.TryGetProperty("id", out var id)) return;   // older servers finish before answering
+        await WaitForTaskAsync(id.GetString()!, TimeSpan.FromMinutes(2));
+    }
+
+    /// <summary>Poll a background task until it finishes; throws its error when it failed.</summary>
+    private async Task WaitForTaskAsync(string taskId, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(500);
+            var tasks = await SendAsync<JsonElement>("tasks/list");   // ponytail: whole list per poll, a tasks/get command would be lighter if the server adds one
+            var match = tasks.EnumerateArray().FirstOrDefault(t => t.TryGetProperty("id", out var tid) && tid.GetString() == taskId);
+            if (match.ValueKind != JsonValueKind.Object) return;   // cleared from the list: finished
+
+            var status = match.TryGetProperty("status", out var s) ? s.GetString() : null;
+            if (status == "success") return;
+            if (status is "failed" or "cancelled")
+            {
+                var error = match.TryGetProperty("last_error", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+                throw new ApiException(0, error ?? $"The server task {status}.");
+            }
+        }
+        throw new ApiException(0, "The server is still working on it. Check the playlist in a moment.");
+    }
+
+    /// <summary>Create a playlist on a provider (the built-in one keeps it on the server) and return its library item.</summary>
+    public Task<MediaItem> CreatePlaylistAsync(string name, string providerInstance, IEnumerable<string> mediaTypes)
+        => SendAsync<MediaItem>("music/playlists/create_playlist", new { name, provider_instance_or_domain = providerInstance, media_types = mediaTypes.ToArray() });
 
     private static string Plural(string mediaType) => mediaType == "radio" ? "radios" : mediaType + "s";
 

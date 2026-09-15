@@ -23,6 +23,8 @@ public sealed partial class QueuePage : Page
     private string? lastImageUrl;
     private int     dragFromPosition = -1;
     private bool    reordering;   // from drag start until the server confirmed the move; periodic reloads would undo the drop
+    private int     loadVersion;  // bumped per fetch and per drag, so an older or overlapping fetch cannot repaint over newer state
+    private int     inFlight;     // fetches running; a periodic reload waits for the fetch in flight; on a slow connection each tick would otherwise supersede the last and none would land
 
     public QueuePage()
     {
@@ -82,11 +84,14 @@ public sealed partial class QueuePage : Page
         // Refetch items only when the queue identity, length or position changed, or something else reordered it
         var changed = force || queue.QueueId != loadedQueueId || queue.Items != loadedCount || (queue.CurrentIndex ?? -1) != currentIndex
             || queue.NextItem?.QueueItemId != upNext.FirstOrDefault()?.QueueItemId;
-        if (!changed) return;
+        if (!changed || (inFlight > 0 && !force)) return;   // the next state change re-checks once this fetch has landed
 
+        var version = ++loadVersion;
+        inFlight++;
         try
         {
             var items = await App.Client.GetQueueItemsAsync(queue.QueueId);
+            if (version != loadVersion) return;   // a newer fetch or a drag started meanwhile
             loadedQueueId = queue.QueueId;
             loadedCount   = queue.Items;
             currentIndex  = queue.CurrentIndex ?? -1;
@@ -118,11 +123,12 @@ public sealed partial class QueuePage : Page
         }
         catch (ApiException ex)
         {
-            App.Window.ShowMessage(ex.Message);
+            if (version == loadVersion) App.Window.ShowMessage(ex.Message);
         }
         finally
         {
-            Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
+            inFlight--;
+            if (version == loadVersion) { Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed; }
         }
     }
 
@@ -144,6 +150,7 @@ public sealed partial class QueuePage : Page
     {
         if (e.Items.FirstOrDefault() is not QueueItem item) { e.Cancel = true; return; }
         reordering       = true;
+        loadVersion++;   // drop any fetch already in flight so it cannot replace the list under the drag
         dragFromPosition = upNext.IndexOf(item);
     }
 

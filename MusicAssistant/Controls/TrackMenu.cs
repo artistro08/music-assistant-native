@@ -35,39 +35,43 @@ public static class TrackMenu
     public static void Populate(MenuFlyout menu, MediaItem track, MediaItem? parent)
     {
         menu.Items.Clear();
-        var player = App.ActivePlayer;
+        var player  = App.ActivePlayer;
+        var canPlay = track.IsPlayable && track.IsAvailableNow;
 
-        // Play On: pick the player the play entries below use
-        var playOn = new MenuFlyoutSubItem { Text = $"Play on: {player?.DisplayName ?? "No player selected"}", Icon = Glyph("") };
-        foreach (var candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        // Primary play action: on an album, playlist or podcast page the whole list from this track, else the track alone
+        var fromHere = parent is { MediaType: "album" or "playlist" or "podcast" } && parent.Uri != track.Uri;
+        Func<Task> playPrimary = fromHere
+            ? () => App.PlayAsync(parent!, startItem: track.ItemId, loadingItem: track)
+            : () => App.PlayAsync(track);
+
+        // Play On: start that play action on the chosen speaker, which also becomes the active player
+        if (canPlay)
         {
-            var entry = new ToggleMenuFlyoutItem { Text = candidate.DisplayName, IsChecked = candidate.PlayerId == player?.PlayerId };
-            // On the checked state rather than Click: screen readers toggle the item without raising Click
-            entry.RegisterPropertyChangedCallback(ToggleMenuFlyoutItem.IsCheckedProperty, (_, _) => { if (entry.IsChecked) App.SetActivePlayer(candidate.PlayerId); });
-            playOn.Items.Add(entry);
+            var playOn = new MenuFlyoutSubItem { Text = $"Play on: {player?.DisplayName ?? "No player selected"}", Icon = Glyph("\uE7F5") };
+            foreach (var candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                var active = candidate.PlayerId == player?.PlayerId;
+                Add(playOn, candidate.DisplayName, active ? "\uE73E" : "", () =>
+                {
+                    App.SetActivePlayer(candidate.PlayerId);
+                    return playPrimary();
+                });
+            }
+            menu.Items.Add(playOn);
+            menu.Items.Add(new MenuFlyoutSeparator());
         }
-        menu.Items.Add(playOn);
-        menu.Items.Add(new MenuFlyoutSeparator());
 
-        // Playback: only for a playable, available track with a player to play it on
-        if (player is not null && track.IsPlayable && track.IsAvailableNow)
+        // Playback: needs a player to play on
+        if (player is not null && canPlay)
         {
-            var fromHere = parent is { MediaType: "album" or "playlist" or "podcast" } && parent.Uri != track.Uri;
-            if (fromHere)
-            {
-                var label = parent!.MediaType switch { "album" => "Play Album from here", "playlist" => "Play Playlist from here", _ => "Play from here to latest" };
-                Add(menu, label, "", () => App.PlayAsync(parent, startItem: track.ItemId, loadingItem: track));
-            }
-            else
-            {
-                Add(menu, "Play Now", "", () => App.PlayAsync(track));
-            }
+            var label = parent?.MediaType switch { "album" => "Play Album from here", "playlist" => "Play Playlist from here", _ => "Play from here to latest" };
+            Add(menu, fromHere ? label : "Play Now", "\uE768", playPrimary);
+            Add(menu, "Play Next", "\uE893", () => App.PlayAsync(track, "next"));
 
-            var enqueue = new MenuFlyoutSubItem { Text = "Enqueue options", Icon = Glyph("") };
-            foreach (var (option, label, glyph) in EnqueueOptions) Add(enqueue, label, glyph, () => App.PlayAsync(track, option));
+            var enqueue = new MenuFlyoutSubItem { Text = "Enqueue options", Icon = Glyph("\uE8FD") };
+            foreach (var (option, text, glyph) in EnqueueOptions) Add(enqueue, text, glyph, () => App.PlayAsync(track, option));
             menu.Items.Add(enqueue);
         }
-
         // Navigation: artist (only when there is exactly one, like the web app), album, endless mix
         if (track.IsAvailableNow && track.Artists is [var artist])
         {
@@ -216,11 +220,13 @@ public static class TrackMenu
             ItemTemplate       = (DataTemplate)Application.Current.Resources["PlaylistPickRowTemplate"],
             ItemContainerStyle = (Style)Application.Current.Resources["TrackListItemStyle"],
         };
+        var create  = new StackPanel { Spacing = 4 };   // "Create new playlist on ..." buttons, one per provider that can make one
         var content = new StackPanel { Spacing = 12, Width = 440 };   // fixed: long names realized while scrolling would widen the dialog
         content.Children.Add(filter);
         content.Children.Add(busy);
         content.Children.Add(empty);
         content.Children.Add(list);
+        content.Children.Add(create);
 
         var dialog = new ContentDialog
         {
@@ -230,31 +236,56 @@ public static class TrackMenu
             CloseButtonText = "Cancel",
         };
 
-        MediaItem? chosen = null;
+        MediaItem?        chosen   = null;
+        ProviderInstance? createOn = null;
         list.ItemClick += (_, e) => { chosen = e.ClickedItem as MediaItem; dialog.Hide(); };
 
         var shown = dialog.ShowAsync();
-        List<MediaItem> targets = [];
+        List<MediaItem>        targets  = [];
+        List<ProviderInstance> creators = [];
         try
         {
-            targets = await PlaylistTargetsAsync(track, parent);
+            (targets, creators) = await PlaylistTargetsAsync(track, parent);
         }
         catch (Exception ex)
         {
             empty.Text = ex.Message;
         }
-        busy.IsActive   = false;
-        busy.Visibility = Visibility.Collapsed;
+        busy.IsActive     = false;
+        busy.Visibility   = Visibility.Collapsed;
         empty.Visibility  = targets.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         filter.Visibility = targets.Count > 8 ? Visibility.Visible : Visibility.Collapsed;
+        list.Visibility   = targets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         list.ItemsSource  = targets;
         filter.TextChanged += (_, _) =>
         {
             var query = filter.Text.Trim();
             list.ItemsSource = query.Length == 0 ? targets : targets.Where(p => p.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
         };
+        foreach (var provider in creators)
+        {
+            var button = new Button { Content = $"Create new playlist on {provider.Name}", HorizontalAlignment = HorizontalAlignment.Stretch };
+            button.Click += (_, _) => { createOn = provider; dialog.Hide(); };
+            create.Children.Add(button);
+        }
 
         await shown;
+
+        // New playlist: ask for a name, create it, then add to it
+        if (createOn is not null)
+        {
+            var name = await AskPlaylistNameAsync();
+            if (name is null) return;
+            try
+            {
+                chosen = await App.Client.CreatePlaylistAsync(name, createOn.InstanceId, CreateMediaTypes(createOn, track));
+            }
+            catch (Exception ex)
+            {
+                App.Window.ShowMessage(ex.Message);
+                return;
+            }
+        }
         if (chosen is null) return;
 
         try
@@ -264,20 +295,60 @@ public static class TrackMenu
         }
         catch (Exception ex)
         {
-            App.Window.ShowMessage(ex.Message);
+            App.Window.ShowMessage($"Could not add {track.Name} to {chosen.Name}: {ex.Message}");
         }
+    }
+
+    /// <summary>The name for a new playlist, or null when cancelled. Create stays disabled until a name is typed.</summary>
+    private static async Task<string?> AskPlaylistNameAsync()
+    {
+        var input  = new TextBox { Header = "Enter a name for the new playlist" };
+        var dialog = new ContentDialog
+        {
+            XamlRoot               = App.Window.Content.XamlRoot,
+            Title                  = "New playlist",
+            Content                = input,
+            PrimaryButtonText      = "Create",
+            CloseButtonText        = "Cancel",
+            DefaultButton          = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
+        };
+        input.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = input.Text.Trim().Length > 0;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? input.Text.Trim() : null;
+    }
+
+    /// <summary>Media types for a new playlist, as the web app picks them: everything the provider can mix, or just this item's type.</summary>
+    private static List<string> CreateMediaTypes(ProviderInstance provider, MediaItem track)
+    {
+        if (!provider.Supports("playlist_create_mixed")) return [track.MediaType];
+
+        List<string> types = [];
+        if (provider.Supports("playlist_create") || provider.Supports("playlist_create_tracks")) types.Add("track");
+        if (provider.Supports("playlist_create_audiobooks"))                                      types.Add("audiobook");
+        if (provider.Supports("playlist_create_podcast_episodes"))                                types.Add("podcast_episode");
+        if (provider.Supports("playlist_create_radios"))                                          types.Add("radio");
+        return types;
     }
 
     /// <summary>
     /// The web app's rules for which playlists are offered: available, editable by this user, not the playlist being
     /// viewed, holding the track's media type (albums go into track playlists, the server unwraps them), and on a
     /// provider that can take this track (the built-in provider, a streaming provider, or one the track itself is on).
+    ///
+    /// One rule stricter than the web app: the playlist's provider must support editing playlist tracks. The server
+    /// refuses the add otherwise (YouTube Music does), but only in a background task after it already answered.
+    ///
+    /// Also returns the providers a new playlist can be created on, by the same web app rules.
     /// </summary>
-    private static async Task<List<MediaItem>> PlaylistTargetsAsync(MediaItem track, MediaItem? parent)
+    private static async Task<(List<MediaItem> Playlists, List<ProviderInstance> Creators)> PlaylistTargetsAsync(MediaItem track, MediaItem? parent)
     {
         var reference = track.ProviderMappings is not null ? track : await App.Client.GetItemByUriAsync(track.Uri);
         var providers = (await App.Client.GetProvidersCachedAsync()).ToDictionary(p => p.InstanceId);
         var playlists = await App.Client.GetAllLibraryPlaylistsAsync();
+
+        bool Fits(ProviderInstance provider) => provider.Domain == "builtin"
+            || provider.IsStreamingProvider == true
+            || reference.ProviderMappings?.Any(m => m.ProviderInstance == provider.InstanceId) == true;
 
         var result = new List<MediaItem>();
         foreach (var playlist in playlists)
@@ -291,14 +362,14 @@ public static class TrackMenu
             if (!types.Contains(reference.MediaType)) continue;
 
             if (!providers.TryGetValue(mappings[0].ProviderInstance, out var provider)) continue;
-            var fits = provider.Domain == "builtin"
-                || provider.IsStreamingProvider == true
-                || reference.ProviderMappings?.Any(m => m.ProviderInstance == provider.InstanceId) == true;
-            if (fits) result.Add(playlist);
+            if (provider.Supports("playlist_tracks_edit") && Fits(provider)) result.Add(playlist);
         }
-        return result;
-    }
 
+        var creators = providers.Values
+            .Where(p => p.Supports("playlist_tracks_edit") && (p.Supports("playlist_create") || p.Supports("playlist_create_tracks")) && Fits(p))
+            .ToList();
+        return (result, creators);
+    }
     /// <summary>
     /// Editable, and either without an access record (every provider playlist, and every playlist on servers that
     /// predate access control), managed by an admin, or owned by the signed-in user.
