@@ -29,7 +29,7 @@
     <SelfContained>true</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
     <EnableMsixTooling>true</EnableMsixTooling>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
     <!-- Coding conventions: report .editorconfig style rules and missing XML docs on public members as build warnings -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>

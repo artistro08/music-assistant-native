@@ -14,11 +14,15 @@ public sealed class SendspinListenerTests : IDisposable
     private readonly SendspinListener listener = new();
     private readonly List<ISendspinSocket> accepted = [];
 
+    /// <summary>Released once per accepted connection, so a test waits for the event instead of polling.</summary>
+    private readonly SemaphoreSlim accepts = new(0);
+
     public SendspinListenerTests()
     {
         listener.Accepted += socket =>
         {
             lock (accepted) accepted.Add(socket);
+            accepts.Release();
         };
         listener.Start();
     }
@@ -70,7 +74,7 @@ public sealed class SendspinListenerTests : IDisposable
             flood.Append($"X-Filler-{i}: ....................................\r\n");
         }
 
-        string response = await SendAsync(flood.ToString(), finish: false);
+        string response = await SendAsync(flood.ToString());
 
         Assert.True((response.Length == 0) || response.StartsWith("HTTP/1.1 400", StringComparison.Ordinal));
         Assert.False(await WaitForAcceptedAsync(1));
@@ -89,21 +93,15 @@ public sealed class SendspinListenerTests : IDisposable
 
     /// <summary>Sends one request to the listener and reads what comes back.</summary>
     /// <param name="request">The raw request text.</param>
-    /// <param name="finish">Whether the request is complete; an unfinished one is left hanging on purpose.</param>
     /// <returns>The response text, empty when the listener closed without answering.</returns>
-    private async Task<string> SendAsync(string request, bool finish = true)
+    private async Task<string> SendAsync(string request)
     {
         using var client = new TcpClient();
         await client.ConnectAsync("127.0.0.1", listener.Port);
         NetworkStream stream = client.GetStream();
         await stream.WriteAsync(Encoding.ASCII.GetBytes(request));
 
-        if (!finish)
-        {
-            // Nothing more is coming; give the listener its moment to answer or hang up.
-            await Task.Delay(500);
-        }
-
+        // The read returns when the listener answers or hangs up, so no waiting around is needed.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         byte[] buffer = new byte[4096];
         try
@@ -117,22 +115,22 @@ public sealed class SendspinListenerTests : IDisposable
         }
     }
 
+    /// <summary>Waits for the listener to hand on that many connections.</summary>
+    /// <param name="count">How many Accepted events to wait for.</param>
+    /// <returns>Whether they all arrived within a second.</returns>
     private async Task<bool> WaitForAcceptedAsync(int count)
     {
-        for (int i = 0; i < 20; i++)
+        for (int i = 0; i < count; i++)
         {
-            lock (accepted)
-            {
-                if (accepted.Count >= count) return true;
-            }
-            await Task.Delay(50);
+            if (!await accepts.WaitAsync(TimeSpan.FromSeconds(1))) return false;
         }
-        return false;
+        return true;
     }
 
     public void Dispose()
     {
         listener.Dispose();
+        accepts.Dispose();
         lock (accepted)
         {
             foreach (ISendspinSocket socket in accepted)

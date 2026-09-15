@@ -46,6 +46,8 @@ dotnet tool restore
 dotnet reportgenerator -reports:"TestResults/**/coverage.opencover.xml" -targetdir:"coverage" -reporttypes:"Html;TextSummary"
 ```
 
+Run `dotnet slopwatch analyze -d . --fail-on warning` after changing code. It fails on the shortcuts that make a build or a test look healthy without fixing anything: skipped tests, suppressed warnings, swallowed exceptions, sleeps standing in for synchronization. `.slopwatch/baseline.json` holds the empty catch blocks that predate the tool; don't add to it to make a new finding go away.
+
 The report's Risk Hotspots table gives each method a CRAP score (complexity weighed against coverage); anything above 30 wants tests or splitting up. UI pages and controls aren't covered; move logic worth testing out of them instead of testing through XAML.
 
 ## Checking the UI

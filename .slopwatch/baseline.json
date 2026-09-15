@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "createdAt": "2026-09-15T23:06:15.0916363+00:00",
+  "updatedAt": "2026-09-15T23:06:15.0987914+00:00",
+  "description": "Initial baseline created by \u0027slopwatch init\u0027 on 2026-09-15 23:06:15 UTC",
+  "entries": [
+    {
+      "hash": "ab914335485f7ff5",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/App.xaml.cs",
+      "lineNumber": 100,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n        {\r\n            // Unwritable profile folder: logging must not become the crash.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0986066+00:00"
+    },
+    {
+      "hash": "9e28cdd4e391cb93",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/MainWindow.xaml.cs",
+      "lineNumber": 565,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n                {\r\n                    // Keep retrying.\r\n                }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987214+00:00"
+    },
+    {
+      "hash": "4a689c53675018b4",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/MainWindow.xaml.cs",
+      "lineNumber": 683,
+      "codeSnippet": "catch (ApiException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987263+00:00"
+    },
+    {
+      "hash": "86655d6d1dbe1c1c",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Templates.xaml.cs",
+      "lineNumber": 185,
+      "codeSnippet": "catch (Exception deleteEx) when (deleteEx is IOException or UnauthorizedAccessException)\r\n            {\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987294+00:00"
+    },
+    {
+      "hash": "e285ba3480cab9ee",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Api/MassClient.cs",
+      "lineNumber": 144,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n            {\r\n                // Best-effort close; the transport is disposed next either way.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987354+00:00"
+    },
+    {
+      "hash": "d3fc286516f10dc6",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Api/Session.cs",
+      "lineNumber": 75,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)\r\n        {\r\n            // An unreadable settings file falls back to defaults below.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987387+00:00"
+    },
+    {
+      "hash": "2301cf2833537472",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Api/Session.cs",
+      "lineNumber": 130,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n        {\r\n            // Nothing stored.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987411+00:00"
+    },
+    {
+      "hash": "b65eabad5f052c2f",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Api/WebSocketTransport.cs",
+      "lineNumber": 72,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n            {\r\n                // Best-effort goodbye; the socket is disposed below either way.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987442+00:00"
+    },
+    {
+      "hash": "9a4a0863727149f0",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Api/WebSocketTransport.cs",
+      "lineNumber": 105,
+      "codeSnippet": "catch (OperationCanceledException)\r\n        {\r\n            // Closed on purpose; CloseAsync cancelled the read.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987467+00:00"
+    },
+    {
+      "hash": "42758c2ef7496d4c",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Pages/HomePage.xaml.cs",
+      "lineNumber": 139,
+      "codeSnippet": "catch (ApiException)\r\n            {\r\n                // No cover is not worth an error bar.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987495+00:00"
+    },
+    {
+      "hash": "4342b9f5ff9d1cbb",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Remote/DiagnosticLog.cs",
+      "lineNumber": 21,
+      "codeSnippet": "catch (IOException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.098752+00:00"
+    },
+    {
+      "hash": "14d8ee150943d657",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Remote/LocalImageProxy.cs",
+      "lineNumber": 117,
+      "codeSnippet": "catch (Exception cleanupEx) when (ExceptionFilters.IsRecoverable(cleanupEx))\r\n            {\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987671+00:00"
+    },
+    {
+      "hash": "d62adce11e8caa37",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Remote/RemotePeer.cs",
+      "lineNumber": 562,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n            {\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987695+00:00"
+    },
+    {
+      "hash": "cc397f00eb576ebc",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Remote/RemotePeer.cs",
+      "lineNumber": 603,
+      "codeSnippet": "catch (ObjectDisposedException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987716+00:00"
+    },
+    {
+      "hash": "899ef8bbb8c8caec",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Sendspin/Identity.cs",
+      "lineNumber": 189,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987802+00:00"
+    },
+    {
+      "hash": "ee80c644d79ca0f7",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Sendspin/SendspinConnection.cs",
+      "lineNumber": 442,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n            {\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987835+00:00"
+    },
+    {
+      "hash": "6bd4e77927224574",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Sendspin/WasapiOutput.cs",
+      "lineNumber": 256,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n            {\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.098786+00:00"
+    },
+    {
+      "hash": "31c05a725b82409a",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Sendspin/WasapiOutput.cs",
+      "lineNumber": 305,
+      "codeSnippet": "catch (COMException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987881+00:00"
+    },
+    {
+      "hash": "5c5bce5f40c2b846",
+      "ruleId": "SW003",
+      "filePath": "MusicAssistant/Sendspin/WebSocketWire.cs",
+      "lineNumber": 133,
+      "codeSnippet": "catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))\r\n        {\r\n            // Best-effort: the socket may already be gone.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-15T23:06:15.0987914+00:00"
+    }
+  ]
+}
