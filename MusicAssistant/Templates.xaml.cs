@@ -81,6 +81,12 @@ public sealed partial class Templates : ResourceDictionary
     private const int  CacheSize    = 200;
     private const long MaxArtBytes  = 500L * 1024 * 1024;
     private const long TrimArtBytes = 400L * 1024 * 1024;
+
+    /// <summary>New art files written between trims, so a session that runs for days stays near the size cap.</summary>
+    private const int TrimEveryDownloads = 250;
+
+    /// <summary>Art files written since the last trim; updated from download continuations on the thread pool.</summary>
+    private static int downloadsSinceTrim;
     private static readonly int[]    RetryDelaysSeconds = [1, 3, 8];
     private static readonly TimeSpan PlaylistMaxAge     = TimeSpan.FromDays(1);
     private static readonly string   ArtDir             = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "art");
@@ -222,6 +228,14 @@ public sealed partial class Templates : ResourceDictionary
 
             // Readers never see a half-written file.
             File.Move(temp, file, overwrite: true);
+
+            // The launch trim alone would let a long-running session grow the folder past the cap.
+            if (Interlocked.Increment(ref downloadsSinceTrim) >= TrimEveryDownloads)
+            {
+                Interlocked.Exchange(ref downloadsSinceTrim, 0);
+                TrimArtCache();
+            }
+
             return file;
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
@@ -280,8 +294,9 @@ public sealed partial class Templates : ResourceDictionary
     }
 
     /// <summary>
-    /// Keep the art folder under 500 MB and clear leftover partial downloads. Runs once at launch, off the UI thread,
-    /// while the app is still connecting; a card that loses its file to the trim re-downloads it on its next bind.
+    /// Keep the art folder under 500 MB and clear leftover partial downloads. Runs off the UI thread at launch, while the
+    /// app is still connecting, and again after every <see cref="TrimEveryDownloads"/> new files; a card that loses its
+    /// file to the trim re-downloads it on its next bind.
     /// </summary>
     public static void TrimArtCache() => Task.Run(() =>
     {

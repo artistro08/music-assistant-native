@@ -247,5 +247,11 @@ public sealed partial class ItemPage : Page
             : App.PlayAsync(item, startItem: track.ItemId, loadingItem: track);
     }
 
+    /// <summary>Shows the whole description in a tooltip when three lines cut it off.</summary>
+    /// <param name="sender">The description text block.</param>
+    /// <param name="args">Unused.</param>
+    private void OnDescriptionTrimmedChanged(TextBlock sender, IsTextTrimmedChangedEventArgs args)
+        => ToolTipService.SetToolTip(sender, sender.IsTextTrimmed ? sender.Text : null);
+
     private void OnImageOpened(object sender, RoutedEventArgs e) => Templates.FadeIn((UIElement)sender);
 }

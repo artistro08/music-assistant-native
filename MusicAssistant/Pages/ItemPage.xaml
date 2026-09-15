@@ -32,7 +32,7 @@
                         <TextBlock x:Name="TypeText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <TextBlock x:Name="NameText" Style="{StaticResource TitleLargeTextBlockStyle}" TextWrapping="Wrap" MaxLines="2" />
                         <TextBlock x:Name="SubtitleText" Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock x:Name="DescriptionText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+                        <TextBlock x:Name="DescriptionText" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" IsTextTrimmedChanged="OnDescriptionTrimmedChanged" Visibility="Collapsed" />
 
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                             <Button Style="{StaticResource AccentButtonStyle}" Click="OnPlay">

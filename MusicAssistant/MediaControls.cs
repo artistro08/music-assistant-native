@@ -60,9 +60,9 @@ public static class MediaControls
             key?.SetValue("IconUri", iconPath);
             key?.SetValue("IconBackgroundColor", "FF0E8FE0");
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            // Registry not writable: the overlay just shows a generic name.
+            // Registry not writable (or any other failure at startup): the overlay just shows a generic name.
         }
     }
 
