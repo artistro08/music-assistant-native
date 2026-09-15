@@ -54,6 +54,10 @@ public sealed partial class MainWindow : Window
         {
             // Tall (48px) caption buttons: the Windows size for a custom title bar, and some breathing room around the logo and title.
             AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
+
+            // Windows doesn't recolor the caption buttons for a custom title bar; follow the app's light or dark theme.
+            ApplyCaptionButtonColors();
+            Root.ActualThemeChanged += (_, _) => ApplyCaptionButtonColors();
         }
         RestorePlacement();
         SyncTitleBarHeight();
@@ -253,6 +257,25 @@ public sealed partial class MainWindow : Window
 
             if (s.WindowMaximized) presenter.Maximize();
         }
+    }
+
+    /// <summary>
+    /// Colors the minimize, maximize and close buttons for the current theme: dark glyphs in light mode, light glyphs in
+    /// dark mode, with the same subtle hover and press fills as the app's other title bar buttons.
+    /// </summary>
+    private void ApplyCaptionButtonColors()
+    {
+        bool light = Root.ActualTheme == ElementTheme.Light;
+        Microsoft.UI.Windowing.AppWindowTitleBar bar = AppWindow.TitleBar;
+
+        bar.ButtonBackgroundColor         = Microsoft.UI.Colors.Transparent;
+        bar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        bar.ButtonForegroundColor         = light ? Windows.UI.Color.FromArgb(0xE4, 0x00, 0x00, 0x00) : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        bar.ButtonInactiveForegroundColor = light ? Windows.UI.Color.FromArgb(0x5C, 0x00, 0x00, 0x00) : Windows.UI.Color.FromArgb(0x5D, 0xFF, 0xFF, 0xFF);
+        bar.ButtonHoverBackgroundColor    = light ? Windows.UI.Color.FromArgb(0x09, 0x00, 0x00, 0x00) : Windows.UI.Color.FromArgb(0x0F, 0xFF, 0xFF, 0xFF);
+        bar.ButtonHoverForegroundColor    = bar.ButtonForegroundColor;
+        bar.ButtonPressedBackgroundColor  = light ? Windows.UI.Color.FromArgb(0x06, 0x00, 0x00, 0x00) : Windows.UI.Color.FromArgb(0x0A, 0xFF, 0xFF, 0xFF);
+        bar.ButtonPressedForegroundColor  = light ? Windows.UI.Color.FromArgb(0x9E, 0x00, 0x00, 0x00) : Windows.UI.Color.FromArgb(0xC5, 0xFF, 0xFF, 0xFF);
     }
 
     /// <summary>
