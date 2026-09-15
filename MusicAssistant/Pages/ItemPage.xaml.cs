@@ -120,7 +120,11 @@ public sealed partial class ItemPage : Page
                 case "audiobook":
                     break;
                 case "album":
-                    tracks = await App.Client.GetAlbumTracksAsync(target.ItemId, target.Provider);
+                    // Loading the tracks also records a track's cover for an album the server has no image for; re-render
+                    // the hero when that just gave it one (the tracks resolve it through their album link on bind)
+                    var hadCover = target.FindImage() is not null;
+                    tracks = await App.Client.GetAlbumTracksAsync(target.ItemId, target.Provider, target.Uri);
+                    if (!hadCover && target.FindImage() is not null && version == loadVersion) Render();
                     break;
                 case "playlist":
                     tracks = await App.Client.GetPlaylistTracksAsync(target.ItemId, target.Provider);

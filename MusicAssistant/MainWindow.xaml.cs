@@ -50,6 +50,8 @@ public sealed partial class MainWindow : Window
             AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
         }
         RestorePlacement();
+        SyncTitleBarHeight();
+        AppWindow.Changed += (_, _) => SyncTitleBarHeight();   // DPI or caption height changes
 
         // App icon in the title bar / taskbar, and the tray icon with its menu
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
@@ -205,6 +207,22 @@ public sealed partial class MainWindow : Window
 
             if (s.WindowMaximized) presenter.Maximize();
         }
+    }
+
+    /// <summary>
+    /// The caption buttons are laid out from the window's top edge, but in a normal window XAML content starts one
+    /// physical pixel lower, below the window's top border line. A fixed 32px row therefore sat a pixel below the
+    /// buttons' center. Size the row to the caption height minus that border (none while maximized) and bottom-align
+    /// the 32px content in it, level with the buttons. Measured at 125% in both states.
+    /// </summary>
+    private void SyncTitleBarHeight()
+    {
+        var height = AppWindow.TitleBar.Height;
+        if (height <= 0) return;
+        var maximized = AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized };
+        var scale     = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+        var logical   = (height - (maximized ? 0 : 1)) / scale;
+        if (double.IsNaN(TitleBarRow.Height) || Math.Abs(TitleBarRow.Height - logical) > 0.01) TitleBarRow.Height = logical;
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -489,7 +507,17 @@ public sealed partial class MainWindow : Window
         image.ImageOpened += (_, _) => opened.TrySetResult(true);
         image.ImageFailed += (_, e) => { App.Log($"Avatar failed to load from {absolute}: {e.ErrorMessage}"); opened.TrySetResult(false); };
         AvatarBrush.ImageSource = image;
-        if (!await opened.Task) return;
+
+        // The art cache evicts an image it cannot fetch without raising ImageFailed, so do not wait on it forever
+        try
+        {
+            if (!await opened.Task.WaitAsync(TimeSpan.FromMinutes(1))) return;
+        }
+        catch (TimeoutException)
+        {
+            App.Log($"Avatar did not load from {absolute}; keeping app icon");
+            return;
+        }
 
         // Let the brush paint once, then capture the circle to a PNG (BitmapIcon only takes a file)
         await Task.Yield();
@@ -617,12 +645,7 @@ public sealed partial class MainWindow : Window
         }
 
         args.Handled = true;
-        if (App.ActivePlayer is { } player)
-        {
-            _ = App.Client.PlayerCommandAsync(player.PlayerId, "play_pause").ContinueWith(
-                t => DispatcherQueue.TryEnqueue(() => ShowMessage(t.Exception!.InnerException?.Message ?? "Command failed")),
-                TaskContinuationOptions.OnlyOnFaulted);
-        }
+        if (App.ActivePlayer is { } player) App.SendPlayerCommand(player, "play_pause");
     }
 
     // Mouse Buttons

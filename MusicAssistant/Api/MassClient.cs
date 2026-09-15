@@ -223,7 +223,7 @@ public sealed class MassClient : IDisposable
     private async Task FetchStateAsync()
     {
         foreach (var player in await SendAsync<List<Player>>("players/all"))       Players[player.PlayerId] = player;
-        foreach (var queue  in await SendAsync<List<PlayerQueue>>("player_queues/all")) Queues[queue.QueueId] = queue;
+        foreach (var queue  in await SendAsync<List<PlayerQueue>>("player_queues/all")) Queues[queue.QueueId] = Stamped(queue);
         StateLoaded = true;
     }
 
@@ -253,8 +253,25 @@ public sealed class MassClient : IDisposable
     public Task<MediaItem> GetItemAsync(string mediaType, string itemId, string provider)
         => SendAsync<MediaItem>($"music/{Plural(mediaType)}/get_{mediaType}", new { item_id = itemId, provider_instance_id_or_domain = provider });
 
-    public Task<List<MediaItem>> GetAlbumTracksAsync(string itemId, string provider)
-        => SendAsync<List<MediaItem>>("music/albums/album_tracks", new { item_id = itemId, provider_instance_id_or_domain = provider });
+    /// <summary>
+    /// Tracks of an album. Also remembers a cover for the album when the server has none: a library album can lack an
+    /// image while one of its tracks carries the album cover (metadata never merged server-side). Only a track's own
+    /// image counts, never an artist photo it inherits. Stored under the album's URI and each track's album link.
+    /// </summary>
+    /// <param name="albumUri">URI of the album being listed, so its cards resolve the borrowed cover too.</param>
+    public async Task<List<MediaItem>> GetAlbumTracksAsync(string itemId, string provider, string? albumUri = null)
+    {
+        var tracks = await SendAsync<List<MediaItem>>("music/albums/album_tracks", new { item_id = itemId, provider_instance_id_or_domain = provider });
+
+        if (tracks.Select(t => t.OwnImage()).FirstOrDefault(i => i is not null) is { } cover)
+        {
+            foreach (var uri in tracks.Select(t => t.Album?.Uri).Append(albumUri))
+            {
+                if (!string.IsNullOrEmpty(uri)) Images.BorrowedCovers.TryAdd(uri, cover);
+            }
+        }
+        return tracks;
+    }
 
     public Task<List<MediaItem>> GetPlaylistTracksAsync(string itemId, string provider)
         => SendAsync<List<MediaItem>>("music/playlists/playlist_tracks", new { item_id = itemId, provider_instance_id_or_domain = provider });
@@ -451,17 +468,29 @@ public sealed class MassClient : IDisposable
                 break;
             case "queue_added":
             case "queue_updated":
-                if (data.Deserialize<PlayerQueue>(Json.Options) is { } queue) Queues[queue.QueueId] = queue;
+                if (data.Deserialize<PlayerQueue>(Json.Options) is { } queue) Queues[queue.QueueId] = Stamped(queue);
                 break;
             case "queue_time_updated":
                 if (objectId is not null && Queues.TryGetValue(objectId, out var q) && data.ValueKind == JsonValueKind.Number)
                 {
                     q.ElapsedTime            = data.GetDouble();
-                    q.ElapsedTimeLastUpdated = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+                    q.ElapsedTimeLastUpdated = NowSeconds();
                 }
                 break;
         }
     }
+
+    /// <summary>
+    /// Replace the server's elapsed-time timestamp with this PC's clock at arrival. The server stamps with its own clock
+    /// and time reports are stamped here, so mixing the two made the position drift, freeze or jump to the end.
+    /// </summary>
+    private static PlayerQueue Stamped(PlayerQueue queue)
+    {
+        queue.ElapsedTimeLastUpdated = NowSeconds();
+        return queue;
+    }
+
+    private static double NowSeconds() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
 
     private void FailPending(Exception error)
     {

@@ -218,10 +218,16 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
     [JsonIgnore] public string  TypeLabel => MediaType.Length > 0 ? char.ToUpperInvariant(MediaType[0]) + MediaType[1..].Replace('_', ' ') : "";
 
     [JsonIgnore]
-    public string? ThumbUrl => Images.Resolver(FindImage(), 256);
+    public string? ThumbUrl => Volatile(Images.Resolver(FindImage(), 256));
 
     [JsonIgnore]
-    public string? LargeImageUrl => Images.Resolver(FindImage(), 512);
+    public string? LargeImageUrl => Volatile(Images.Resolver(FindImage(), 512));
+
+    /// <summary>
+    /// Playlist covers are the one kind of art that changes; the fragment tells the art cache to refresh them now and
+    /// then, and is stripped before any request. Inline data: images are left alone, they are never cached.
+    /// </summary>
+    private string? Volatile(string? url) => MediaType == "playlist" && url?.StartsWith("http", StringComparison.Ordinal) == true ? url + "#playlist" : url;
 
     [JsonIgnore]
     public string TypeGlyph => MediaType switch
@@ -238,15 +244,18 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
         _          => "\uEC4F",
     };
 
-    /// <summary>Best thumbnail for this item: own image, album image, then artist image.</summary>
+    /// <summary>Best thumbnail for this item: own image, a cover borrowed from one of its tracks (albums), album image, then artist image.</summary>
     public MediaImage? FindImage()
     {
-        if (Image is not null) return Image;
-        var own = Metadata?.Images?.FirstOrDefault(i => i.Type == "thumb") ?? Metadata?.Images?.FirstOrDefault();
-        if (own is not null) return own;
+        if (OwnImage() is { } own) return own;
+        if (MediaType == "album" && Uri.Length > 0 && Images.BorrowedCovers.TryGetValue(Uri, out var borrowed)) return borrowed;
         if (Album?.FindImage() is { } albumImage) return albumImage;
         return Artists?.Select(a => a.FindImage()).FirstOrDefault(i => i is not null);
     }
+
+    /// <summary>The item's own image only, never one inherited from its album or artists.</summary>
+    public MediaImage? OwnImage()
+        => Image ?? Metadata?.Images?.FirstOrDefault(i => i.Type == "thumb") ?? Metadata?.Images?.FirstOrDefault();
 }
 
 public sealed class SearchResults
@@ -440,6 +449,16 @@ public sealed class PlayerQueue
     public string     State                  { get; set; } = "idle";
     public QueueItem? CurrentItem            { get; set; }
     public QueueItem? NextItem               { get; set; }
+
+    /// <summary>
+    /// Position right now: the last reported elapsed time, advanced by the wall clock while playing. MassClient stamps
+    /// ElapsedTimeLastUpdated with this PC's clock whenever a queue or time report arrives, so the math never mixes the
+    /// server's clock with ours (a queue resumed after hours used to carry its old server timestamp and jump to the end).
+    /// </summary>
+    [JsonIgnore]
+    public double ElapsedNow => State == "playing"
+        ? ElapsedTime + Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 - ElapsedTimeLastUpdated)
+        : ElapsedTime;
 }
 
 // =========================================================================
@@ -464,6 +483,13 @@ public sealed class ApiException(int code, string message) : Exception(message)
 public static class Images
 {
     public static Func<MediaImage?, int, string?> Resolver { get; set; } = (_, _) => null;
+
+    /// <summary>
+    /// Covers for albums the server has no image for, taken from one of the album's own tracks, keyed by album URI.
+    /// Filled by MassClient whenever an album's tracks load; read by MediaItem.FindImage, so every list, the player
+    /// bar, the queue and the media overlay pick it up.
+    /// </summary>
+    public static System.Collections.Concurrent.ConcurrentDictionary<string, MediaImage> BorrowedCovers { get; } = new();
 }
 
 /// <summary>Small formatting helpers shared by models and views.</summary>

@@ -76,6 +76,13 @@ public sealed partial class HomePage : Page
 
             AddRow("Recently played", "Pick up where you left off", recentTask.Result);
             foreach (var (folder, items) in rows) AddRow(folder.Name, folder.Subtitle, items);
+
+            // Second pass, after the page is up: fill in album cards the server sent without a cover
+            if (await FillMissingAlbumArtAsync(recentTask.Result.Concat(rows.SelectMany(r => r.items))))
+            {
+                foreach (var row in Rows.Children.OfType<MediaRow>()) row.Rebind();
+                Picks.Rebind();
+            }
         }
         catch (ApiException ex)
         {
@@ -94,6 +101,26 @@ public sealed partial class HomePage : Page
         if (folder.Items is { Count: > 0 }) return folder.Items;
         try { return await App.Client.GetRecommendationItemsAsync(folder.Provider, folder.ItemId); }
         catch (ApiException) { return []; }
+    }
+
+    /// <summary>
+    /// Load the tracks of every album card the server sent without a cover; the client keeps a track's cover for the
+    /// album, and every card with that album's URI resolves it on re-bind. One request per blank album per session
+    /// (a filled album no longer counts as blank). True if any card gained a cover.
+    /// </summary>
+    private static async Task<bool> FillMissingAlbumArtAsync(IEnumerable<MediaItem> items)
+    {
+        var filled = false;
+        foreach (var album in items.Where(i => i.MediaType == "album" && i.Uri.Length > 0 && i.FindImage() is null).DistinctBy(i => i.Uri))
+        {
+            try
+            {
+                await App.Client.GetAlbumTracksAsync(album.ItemId, album.Provider, album.Uri);
+                filled |= album.FindImage() is not null;
+            }
+            catch (ApiException) { }   // no cover is not worth an error bar
+        }
+        return filled;
     }
 
     private void AddRow(string title, string? subtitle, List<MediaItem> items)

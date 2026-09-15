@@ -188,10 +188,7 @@ public sealed class TrayMenu
 
     private static void Send(string command)
     {
-        if (App.ActivePlayer is not { } player) return;
-        _ = App.Client.PlayerCommandAsync(player.PlayerId, command).ContinueWith(
-            t => App.Dispatcher.TryEnqueue(() => App.Window.ShowMessage(t.Exception!.InnerException?.Message ?? "Command failed")),
-            TaskContinuationOptions.OnlyOnFaulted);
+        if (App.ActivePlayer is { } player) App.SendPlayerCommand(player, command);
     }
 
     // =========================================================================

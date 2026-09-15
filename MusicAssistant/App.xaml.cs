@@ -87,6 +87,7 @@ public partial class App : Application
 
         Player.OwnPlayerId = Settings.SpeakerClientId;   // this PC's speaker stays listed even though the server hides web players
         Remote.DiagnosticLog.EnableIfRequested();
+        Templates.TrimArtCache();
         Window = new MainWindow();
         Window.Activate();
         MediaControls.Attach(Window);
@@ -148,6 +149,49 @@ public partial class App : Application
 
     /// <summary>The item currently being started, or null. Drives the loading overlay on the player bar.</summary>
     public static MediaItem? PendingItem { get; private set; }
+
+    // A play sent to a paused or idle player can take many seconds to turn into "playing" (the WiiM restarts its
+    // stream); the bar shows a spinner in the play button and locks the seek bar until the player reports playing,
+    // the command fails, or the wait runs out.
+    private static string?  resumingPlayerId;
+    private static DateTime resumeUntil;
+    private static readonly TimeSpan ResumeWait = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// Send a transport command to a player from any control: the player bar, the Space key, the tray menu or the
+    /// media keys. A play or play_pause to a player that is not playing starts the resume state; a failed command
+    /// ends it and shows the error. UI thread.
+    /// </summary>
+    public static void SendPlayerCommand(Player player, string command)
+    {
+        var resumes = command is "play" or "play_pause" && !player.IsPlaying;
+        if (resumes)
+        {
+            resumingPlayerId = player.PlayerId;
+            resumeUntil      = DateTime.UtcNow + ResumeWait;
+            StateChanged?.Invoke();
+        }
+
+        _ = Client.PlayerCommandAsync(player.PlayerId, command).ContinueWith(t => Dispatcher.TryEnqueue(() =>
+        {
+            if (resumes && resumingPlayerId == player.PlayerId)
+            {
+                resumingPlayerId = null;
+                StateChanged?.Invoke();
+            }
+            Window.ShowMessage(t.Exception!.InnerException?.Message ?? "Command failed");
+        }), TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    /// <summary>True while a resume sent to this player is still waiting for it to report playing. Clears itself once it is over. UI thread.</summary>
+    public static bool IsResuming(Player player)
+    {
+        if (resumingPlayerId != player.PlayerId) return false;
+        if (!player.IsPlaying && DateTime.UtcNow < resumeUntil) return true;
+
+        resumingPlayerId = null;   // playing now, or gave up: a later pause must not bring the spinner back
+        return false;
+    }
 
     /// <summary>
     /// Play a media item on the active player. option: play, replace, next, replace_next, add, or null

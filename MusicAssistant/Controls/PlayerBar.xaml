@@ -72,7 +72,11 @@
                     <FontIcon Glyph="&#xE892;" FontSize="16" />
                 </Button>
                 <Button x:Name="PlayPauseButton" Style="{StaticResource AccentButtonStyle}" Width="40" Height="40" CornerRadius="20" Padding="0" Click="OnPlayPause" ToolTipService.ToolTip="Play / Pause" AutomationProperties.Name="Play or pause">
-                    <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE768;" FontSize="16" />
+                    <Grid>
+                        <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE768;" FontSize="16" />
+                        <!-- Shown instead of the glyph while a resume is waiting for the player to start -->
+                        <ProgressRing x:Name="PlayPauseRing" Width="18" Height="18" IsActive="False" Visibility="Collapsed" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                    </Grid>
                 </Button>
                 <Button x:Name="NextButton" Style="{StaticResource SubtleButtonStyle}" Click="OnNext" ToolTipService.ToolTip="Next" AutomationProperties.Name="Next">
                     <FontIcon Glyph="&#xE893;" FontSize="16" />

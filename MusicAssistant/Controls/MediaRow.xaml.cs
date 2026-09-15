@@ -37,7 +37,7 @@ public sealed partial class MediaRow : UserControl
     /// Force every visible card to re-run its template. Re-assigning the same item reference is a no-op for the
     /// content presenter, and the card's image binding is OneTime, so the content has to go through null.
     /// </summary>
-    private void Rebind()
+    public void Rebind()
     {
         foreach (var slot in slots)
         {

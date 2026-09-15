@@ -63,6 +63,8 @@ public sealed partial class PlayerBar : UserControl
     private static PlayerQueue? Queue
         => Player is { } p && App.Client.Queues.TryGetValue(App.Client.QueueIdFor(p), out var q) ? q : null;
 
+    private static bool Resuming => Player is { } p && App.IsResuming(p);
+
     // =========================================================================
     // RENDER
     // =========================================================================
@@ -95,8 +97,7 @@ public sealed partial class PlayerBar : UserControl
             Templates.Show(ArtImage, imageUrl, 64);
         }
 
-        var playing = player?.IsPlaying == true;
-        PlayPauseIcon.Glyph = playing ? "\uE769" : "\uE768";
+        PlayPauseIcon.Glyph = player?.IsPlaying == true ? "\uE769" : "\uE768";
 
         // Loading overlay while a clicked item is being started
         var loading = App.PendingItem is not null;
@@ -160,15 +161,21 @@ public sealed partial class PlayerBar : UserControl
 
     private void UpdateProgress()
     {
+        var queue    = Queue;
+        var resuming = Resuming;
+
+        // Spinner in the play button while a resume waits for the player; on the 1 s tick so it also clears when the wait runs out
+        PlayPauseIcon.Visibility = resuming ? Visibility.Collapsed : Visibility.Visible;
+        PlayPauseRing.Visibility = resuming ? Visibility.Visible : Visibility.Collapsed;
+        PlayPauseRing.IsActive   = resuming;
+
         if (isSeeking) return;
 
-        var queue = Queue;
         double elapsed, duration;
 
         if (queue?.CurrentItem is { } item)
         {
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
-            elapsed  = queue.ElapsedTime + (queue.State == "playing" ? Math.Max(0, now - queue.ElapsedTimeLastUpdated) : 0);
+            elapsed  = queue.ElapsedNow;
             duration = item.Duration ?? 0;
         }
         else
@@ -179,8 +186,9 @@ public sealed partial class PlayerBar : UserControl
 
         ProgressSlider.Maximum   = Math.Max(1, duration);
         ProgressSlider.Value     = Math.Min(elapsed, ProgressSlider.Maximum);
-        // Queue playback seeks on the server by restarting the stream, so it works even for players without a native seek (the PC speaker)
-        ProgressSlider.IsEnabled = duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
+        // Queue playback seeks on the server by restarting the stream, so it works even for players without a native
+        // seek (the PC speaker). Locked while a resume is in flight: the position stays put, but a seek would race it.
+        ProgressSlider.IsEnabled = !resuming && duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
         ElapsedText.Text         = Format.Duration(elapsed);
         DurationText.Text        = duration > 0 ? Format.Duration(duration) : "--:--";
     }
@@ -205,7 +213,9 @@ public sealed partial class PlayerBar : UserControl
     }
 
     private void OnPlayPause(object sender, RoutedEventArgs e)
-        => _ = RunAsync(() => App.Client.PlayerCommandAsync(Player!.PlayerId, "play_pause"));
+    {
+        if (Player is { } player) App.SendPlayerCommand(player, "play_pause");
+    }
 
     private void OnNext(object sender, RoutedEventArgs e) => Skip("next");
 

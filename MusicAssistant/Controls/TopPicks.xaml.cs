@@ -132,6 +132,18 @@ public sealed partial class TopPicks : UserControl
         NextButton.IsEnabled = page < PageCount - 1;
     }
 
+    /// <summary>Re-run every tile's template so art resolved after the first bind shows (the image binding is OneTime).</summary>
+    public void Rebind()
+    {
+        foreach (var tile in tiles)
+        {
+            var item = tile.Content;
+            if (item is null) continue;
+            tile.Content = null;
+            tile.Content = item;
+        }
+    }
+
     private void OnPrev(object sender, RoutedEventArgs e) => TurnPage(-1);
     private void OnNext(object sender, RoutedEventArgs e) => TurnPage(+1);
 

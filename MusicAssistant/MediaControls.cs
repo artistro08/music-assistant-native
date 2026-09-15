@@ -1,4 +1,5 @@
 using Windows.Media;
+using Windows.Storage;
 using Windows.Storage.Streams;
 using MusicAssistant.Api;
 
@@ -17,7 +18,8 @@ namespace MusicAssistant;
 public static class MediaControls
 {
     private static SystemMediaTransportControls? controls;
-    private static string displaySignature = "";
+    private static string  displaySignature = "";
+    private static string? lastTargetId;   // the player the keys last controlled or last saw playing
 
     public static void Attach(Microsoft.UI.Xaml.Window window)
     {
@@ -61,20 +63,24 @@ public static class MediaControls
 
     /// <summary>
     /// The player the media keys and overlay stand for. Windows' controls are about the sound this PC
-    /// makes, so while this PC's own speaker is busy they follow it even if another player is selected
-    /// in the app; otherwise they follow the selected player. A web player cannot pause, the server
-    /// stops it instead, so "busy" also covers a stopped speaker that still has a queue to resume.
+    /// makes, so while this PC's own speaker is playing they follow it even if another player is selected
+    /// in the app; otherwise they follow the selected player. When both are idle, the one the keys last
+    /// drove wins, so a web player the server stopped (it cannot pause) still gets the next Play.
     /// </summary>
     private static Player? Target()
     {
         var selected = App.ActivePlayer;
         var local    = Player.OwnPlayerId is { } id && App.Client.Players.GetValueOrDefault(id) is { IsVisible: true } p ? p : null;
-        if (local is null || local.PlayerId == selected?.PlayerId) return selected;
-        if (selected?.PlaybackState is "playing" or "paused") return selected;
-        if (local.IsPlaying) return local;
 
-        var localQueue = App.Client.Queues.GetValueOrDefault(App.Client.QueueIdFor(local));
-        return localQueue?.CurrentItem is not null ? local : selected;
+        Player? target;
+        if (local is null || local.PlayerId == selected?.PlayerId || selected?.PlaybackState is "playing" or "paused") target = selected;
+        else if (local.IsPlaying) target = local;
+        // Both idle: the selected player, unless the keys last drove this PC's speaker. A paused WiiM goes idle after
+        // 30 s, and an old queue left on this PC's speaker must not steal the next Play from it.
+        else target = lastTargetId == local.PlayerId ? local : selected;
+
+        if (target?.PlaybackState is "playing" or "paused") lastTargetId = target.PlayerId;
+        return target;
     }
 
     // Windows → Music Assistant
@@ -94,13 +100,32 @@ public static class MediaControls
         };
         if (command is null) return;
 
+        lastTargetId = player.PlayerId;
         App.Log($"SMTC button {args.Button} -> {player.Name}");   // an external media key, headset or app press shows up here as the source
-        _ = App.Client.PlayerCommandAsync(player.PlayerId, command).ContinueWith(
-            t => App.Dispatcher.TryEnqueue(() => App.Window.ShowMessage(t.Exception!.InnerException?.Message ?? "Command failed")),
-            TaskContinuationOptions.OnlyOnFaulted);
+        App.Dispatcher.TryEnqueue(() => App.SendPlayerCommand(player, command));   // this event arrives off the UI thread
     }
 
     // Music Assistant → Windows
+
+    /// <summary>
+    /// Overlay art from the app's own art cache, so it gets the same retries and reuses the file the player bar
+    /// already downloaded, instead of Windows fetching the server URL on its own. Skipped if the track changed meanwhile.
+    /// </summary>
+    private static async Task ShowThumbnailAsync(string signature, string? imageUrl)
+    {
+        try
+        {
+            if (await Templates.ArtFileAsync(imageUrl) is not { } path) return;
+            var file = await StorageFile.GetFileFromPathAsync(path);
+            if (controls is null || signature != displaySignature) return;
+            controls.DisplayUpdater.Thumbnail = RandomAccessStreamReference.CreateFromFile(file);
+            controls.DisplayUpdater.Update();
+        }
+        catch (Exception ex)
+        {
+            App.Debug("SMTC thumbnail: " + ex.Message);
+        }
+    }
 
     private static void Update()
     {
@@ -111,12 +136,13 @@ public static class MediaControls
         var item   = queue?.CurrentItem;
         var media  = player?.CurrentMedia;
 
-        controls.PlaybackStatus = player?.PlaybackState switch
-        {
-            "playing" => MediaPlaybackStatus.Playing,
-            "paused"  => MediaPlaybackStatus.Paused,
-            _         => MediaPlaybackStatus.Stopped,
-        };
+        // Windows routes media keys to the most recent app whose session is playing or paused. A player that stopped
+        // with a queue still on it (a paused WiiM turns idle after 30 s, a stopped web player) is resumable, so report
+        // it as paused; reporting Stopped hands the keys to the next app and Play then goes nowhere.
+        var resumable = player?.PlaybackState is "paused" || item is not null;
+        controls.PlaybackStatus = player?.IsPlaying == true ? MediaPlaybackStatus.Playing
+                                : resumable                 ? MediaPlaybackStatus.Paused
+                                :                             MediaPlaybackStatus.Stopped;
 
         var title    = item?.Name ?? media?.Title ?? "";
         var artist   = item?.MediaItem?.ArtistsText ?? media?.Artist ?? "";
@@ -133,18 +159,16 @@ public static class MediaControls
             updater.MusicProperties.Title      = title;
             updater.MusicProperties.Artist     = artist;
             updater.MusicProperties.AlbumTitle = album;
-            updater.Thumbnail = Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
-                ? RandomAccessStreamReference.CreateFromUri(uri)
-                : null;
+            updater.Thumbnail = null;
             updater.Update();
+            _ = ShowThumbnailAsync(signature, imageUrl);
         }
 
         // Timeline for the overlay's progress bar
         var duration = item?.Duration ?? media?.Duration ?? 0;
         if (duration > 0 && queue is not null)
         {
-            var now     = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
-            var elapsed = queue.ElapsedTime + (queue.State == "playing" ? Math.Max(0, now - queue.ElapsedTimeLastUpdated) : 0);
+            var elapsed = queue.ElapsedNow;
             controls.UpdateTimelineProperties(new SystemMediaTransportControlsTimelineProperties
             {
                 StartTime   = TimeSpan.Zero,

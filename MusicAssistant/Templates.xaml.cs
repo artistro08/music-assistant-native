@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -40,10 +41,26 @@ public sealed partial class Templates : ResourceDictionary
         image.Opacity = bitmap is { PixelWidth: > 0 } ? 1 : 0;
     }
 
-    // Decoded bitmaps are kept per URL and size (most recent 200), so a card scrolled back into view, a
-    // recycled container or another page showing the same art reuses the decoded bitmap instead of
-    // fetching and decoding again. Artwork URLs from the server change when the art changes.
-    private const int CacheSize = 200;
+    // =========================================================================
+    // ARTWORK CACHE
+    // =========================================================================
+    //
+    // Two layers. Bytes are fetched once with our own HTTP client (retries, timeout, no dependence on the XAML image
+    // loader, which drops requests under load) and kept on disk under %LOCALAPPDATA%\MusicAssistant\art, keyed by the
+    // server-side image identity so the same file serves local and remote sessions and every display size. Art does
+    // not change, so a file is never re-fetched, except playlist covers (marked with a #playlist fragment by the
+    // model), which are refreshed when older than a day. Decoded bitmaps are kept in memory per URL and size (most
+    // recent 200) so a card scrolled back into view, a recycled container or another page reuses the decoded bitmap.
+    // All of it runs on the UI thread.
+    private const int  CacheSize    = 200;
+    private const long MaxArtBytes  = 500L * 1024 * 1024;
+    private const long TrimArtBytes = 400L * 1024 * 1024;
+    private static readonly int[]    RetryDelaysSeconds = [1, 3, 8];
+    private static readonly TimeSpan PlaylistMaxAge     = TimeSpan.FromDays(1);
+    private static readonly string   ArtDir             = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "art");
+    private static readonly HttpClient    http      = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly SemaphoreSlim downloads = new(6);   // a fast scroll through a big library must not flood the server's image resizer
+    private static readonly Dictionary<string, Task<string?>> inflight = [];   // file path -> its running download
     private static readonly Dictionary<string, LinkedListNode<(string Key, BitmapImage Bitmap)>> cache = [];
     private static readonly LinkedList<(string Key, BitmapImage Bitmap)> recent = [];
 
@@ -74,24 +91,171 @@ public sealed partial class Templates : ResourceDictionary
             return node.Value.Bitmap;
         }
 
-        var bitmap = new BitmapImage(uri) { DecodePixelType = DecodePixelType.Logical, DecodePixelWidth = logicalWidth };
-        // A failed load (proxy hiccup, transport dropping) must not stick in the cache, or the art stays blank forever;
-        // evict it so the next bind retries. Only if this exact bitmap is still the cached one for the key.
-        bitmap.ImageFailed += (_, _) =>
-        {
-            if (cache.TryGetValue(key, out var current) && ReferenceEquals(current.Value.Bitmap, bitmap))
-            {
-                recent.Remove(current);
-                cache.Remove(key);
-            }
-        };
+        var bitmap = new BitmapImage { DecodePixelType = DecodePixelType.Logical, DecodePixelWidth = logicalWidth };
         cache[key] = recent.AddFirst((key, bitmap));
         if (recent.Count > CacheSize)
         {
             cache.Remove(recent.Last!.Value.Key);
             recent.RemoveLast();
         }
+
+        if (uri.Scheme == "data") bitmap.UriSource = uri;   // inline image, nothing to fetch or store
+        else _ = LoadAsync(bitmap, uri, key);
         return bitmap;
+    }
+
+    /// <summary>
+    /// Fill a bitmap from the disk cache, downloading first when needed. A bitmap that cannot be filled is evicted so
+    /// the next bind starts over instead of reusing a blank.
+    /// </summary>
+    private static async Task LoadAsync(BitmapImage bitmap, Uri uri, string key)
+    {
+        if (await ArtFileAsync(uri) is not { } file)
+        {
+            Evict(key, bitmap);
+            return;
+        }
+
+        try
+        {
+            // Delete sharing lets a playlist refresh replace the file while this read is open
+            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
+        }
+        catch (Exception ex)
+        {
+            App.Debug($"Art: {uri} failed: {ex.Message}");
+            try { File.Delete(file); } catch (Exception) { }   // a corrupt file must not poison every later load
+            Evict(key, bitmap);
+        }
+    }
+
+    /// <summary>
+    /// Path of the cached file for an image URL, downloading it (or refreshing a stale playlist cover) first. Null when
+    /// the art cannot be had or the URL is not http(s). Also used for the Windows media overlay thumbnail.
+    /// </summary>
+    public static Task<string?> ArtFileAsync(string? url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? ArtFileAsync(uri) : Task.FromResult<string?>(null);
+
+    private static Task<string?> ArtFileAsync(Uri uri)
+    {
+        var file  = Path.Combine(ArtDir, FileNameFor(uri));
+        var fresh = File.Exists(file) && (uri.Fragment != "#playlist" || DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < PlaylistMaxAge);
+        if (fresh) return Task.FromResult<string?>(file);
+
+        // One download per file: a second caller (another display size, a re-bind mid-download) waits for the first
+        if (inflight.TryGetValue(file, out var running)) return running;
+        var task = DownloadAsync(uri, file);
+        inflight[file] = task;
+        return task;
+    }
+
+    private static async Task<string?> DownloadAsync(Uri uri, string file)
+    {
+        await Task.Yield();   // never finish synchronously, so the inflight entry exists before the finally removes it
+        try
+        {
+            var bytes = await FetchAsync(new UriBuilder(uri) { Fragment = "" }.Uri);
+            if (bytes is null) return File.Exists(file) ? file : null;   // a stale playlist cover that failed to refresh keeps its old file
+
+            Directory.CreateDirectory(ArtDir);
+            var temp = file + ".tmp";
+            await File.WriteAllBytesAsync(temp, bytes);
+            File.Move(temp, file, overwrite: true);   // readers never see a half-written file
+            return file;
+        }
+        catch (Exception ex)
+        {
+            App.Debug($"Art: saving {uri} failed: {ex.Message}");
+            return File.Exists(file) ? file : null;
+        }
+        finally
+        {
+            inflight.Remove(file);
+        }
+    }
+
+    /// <summary>GET the bytes with a few retries for network and server errors; null after the last failure or on a 4xx, which retrying cannot fix.</summary>
+    private static async Task<byte[]?> FetchAsync(Uri uri)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            await downloads.WaitAsync();
+            try
+            {
+                using var response = await http.GetAsync(uri);
+                if (response.IsSuccessStatusCode) return await response.Content.ReadAsByteArrayAsync();
+                App.Debug($"Art: {uri} -> {(int)response.StatusCode}");
+                if ((int)response.StatusCode is >= 400 and < 500) return null;
+            }
+            catch (Exception ex)
+            {
+                App.Debug($"Art: {uri} -> {ex.Message}");
+            }
+            finally
+            {
+                downloads.Release();
+            }
+
+            if (attempt >= RetryDelaysSeconds.Length) return null;
+            await Task.Delay(TimeSpan.FromSeconds(RetryDelaysSeconds[attempt]));
+
+            // A dropped connection gets up to two minutes to come back instead of burning the retries on it
+            for (var waited = 0; waited < 60 && !App.Client.IsConnected; waited++) await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+    }
+
+    /// <summary>
+    /// Disk name from the image identity, not the address: server-proxied art keys on its /imageproxy path and query
+    /// (the same behind the LAN address or the remote loopback proxy), anything else on its full URL. The decode width
+    /// is not part of it; every display size decodes from the same bytes.
+    /// </summary>
+    private static string FileNameFor(Uri uri)
+    {
+        var pathAndQuery = uri.PathAndQuery;
+        var proxyAt      = pathAndQuery.IndexOf("/imageproxy", StringComparison.Ordinal);
+        var identity     = proxyAt >= 0 ? pathAndQuery[proxyAt..] : uri.GetLeftPart(UriPartial.Query);
+        var hash         = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity));
+        return Convert.ToHexString(hash.AsSpan(0, 16)) + ".img";
+    }
+
+    /// <summary>
+    /// Keep the art folder under 500 MB and clear leftover partial downloads. Runs once at launch, off the UI thread,
+    /// while the app is still connecting; a card that loses its file to the trim re-downloads it on its next bind.
+    /// </summary>
+    public static void TrimArtCache() => Task.Run(() =>
+    {
+        try
+        {
+            if (!Directory.Exists(ArtDir)) return;
+            var files = new DirectoryInfo(ArtDir).GetFiles();
+            foreach (var partial in files.Where(f => f.Extension == ".tmp")) partial.Delete();
+
+            var art   = files.Where(f => f.Extension == ".img").OrderBy(f => f.LastWriteTimeUtc).ToList();
+            var total = art.Sum(f => f.Length);
+            if (total <= MaxArtBytes) return;
+
+            // ponytail: oldest download goes first, not least recently shown; track reads if a big library keeps evicting favorites
+            foreach (var file in art)
+            {
+                if (total <= TrimArtBytes) break;
+                total -= file.Length;
+                file.Delete();
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Debug("Art: trim failed: " + ex.Message);
+        }
+    });
+
+    private static void Evict(string key, BitmapImage bitmap)
+    {
+        if (cache.TryGetValue(key, out var current) && ReferenceEquals(current.Value.Bitmap, bitmap))
+        {
+            recent.Remove(current);
+            cache.Remove(key);
+        }
     }
 
     // Queue row menu
