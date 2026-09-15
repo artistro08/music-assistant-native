@@ -468,39 +468,17 @@ public sealed class MassClient : IDisposable
                 break;
             case "queue_added":
             case "queue_updated":
-                if (data.Deserialize<PlayerQueue>(Json.Options) is { } queue)
-                {
-                    if (Queues.TryGetValue(queue.QueueId, out var known) && FalseEnd(known, queue.CurrentItem, queue.State, queue.ElapsedTime))
-                    {
-                        queue.ElapsedTime = known.ElapsedTime;
-                    }
-                    Queues[queue.QueueId] = Stamped(queue);
-                }
+                if (data.Deserialize<PlayerQueue>(Json.Options) is { } queue) Queues[queue.QueueId] = Stamped(queue);
                 break;
             case "queue_time_updated":
                 if (objectId is not null && Queues.TryGetValue(objectId, out var q) && data.ValueKind == JsonValueKind.Number)
                 {
-                    var elapsed = data.GetDouble();
-                    if (FalseEnd(q, q.CurrentItem, q.State, elapsed)) break;
-                    q.ElapsedTime            = elapsed;
+                    q.ElapsedTime            = data.GetDouble();
                     q.ElapsedTimeLastUpdated = NowSeconds();
                 }
                 break;
         }
     }
-
-    /// <summary>
-    /// A paused WiiM times out to idle after 30 s and its provider then reports the track as played to the very end,
-    /// so the seek bar jumped from where the user paused to the last second. True when a stopped queue's position jumps
-    /// to the end of the same item it was stopped well before; the caller keeps the known position instead.
-    /// A track that really finished was playing, not stopped, a moment before, and is not affected.
-    /// </summary>
-    private static bool FalseEnd(PlayerQueue known, QueueItem? item, string state, double elapsed)
-        => state is "paused" or "idle"
-        && known.State is "paused" or "idle"
-        && item is { Duration: > 0 } && item.QueueItemId == known.CurrentItem?.QueueItemId
-        && elapsed >= item.Duration - 1
-        && known.ElapsedTime < item.Duration - 3;
 
     /// <summary>
     /// Replace the server's elapsed-time timestamp with this PC's clock at arrival. The server stamps with its own clock
