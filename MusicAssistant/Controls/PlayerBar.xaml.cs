@@ -54,6 +54,11 @@ public sealed partial class PlayerBar : UserControl
 
         ProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => isSeeking = true), true);
 
+        // Seek thumb starts hidden and animates its size from the center whenever it shows or hides
+        SeekThumb.CenterPoint     = new System.Numerics.Vector3((float)SeekThumbSize / 2, (float)SeekThumbSize / 2, 0);
+        SeekThumb.ScaleTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(150) };
+        SetThumbVisible(false);
+
         // Plain icon buttons have no disabled visual state of their own; dim them when they cannot be used
         foreach (var button in new Control[] { LikeButton, ShuffleButton, PreviousButton, NextButton, RepeatButton })
         {
@@ -229,6 +234,7 @@ public sealed partial class PlayerBar : UserControl
         // seek (the PC speaker). Locked while a resume is in flight: the position stays put, but a seek would race it.
         ProgressSlider.IsEnabled = !resuming && duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
         SetThumbVisible(ProgressSlider.IsEnabled && progressHovered);   // re-applied every tick: the bar can lock while the pointer rests on it
+        PositionThumb();   // a new maximum moves the thumb without a value change
 
         var shown = duration > 0 ? Math.Min(elapsed, duration) : elapsed;
         ElapsedText.Text  = showTimeLeft && duration > 0 ? "-" + Format.Duration(Math.Max(0, duration - shown)) : Format.Duration(shown);
@@ -245,11 +251,21 @@ public sealed partial class PlayerBar : UserControl
 
     // Seek Bar Thumb
 
-    private Thumb? progressThumb;
-    private bool   progressHovered;
+    private const double SeekThumbSize = 18;
 
-    /// <summary>The template's thumb, hidden until the pointer is over a seekable bar. Opacity keeps it grabbable while hidden.</summary>
-    private void OnProgressLoaded(object sender, RoutedEventArgs e) => SetThumbVisible(false);
+    private bool   progressHovered;
+    private Thumb? templateThumb;
+
+    private static T? FindNamed<T>(DependencyObject root, string name) where T : FrameworkElement
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match && match.Name == name) return match;
+            if (FindNamed<T>(child, name) is { } found) return found;
+        }
+        return null;
+    }
 
     private void OnProgressPointerEntered(object sender, PointerRoutedEventArgs e)
     {
@@ -263,29 +279,29 @@ public sealed partial class PlayerBar : UserControl
         if (!isSeeking) SetThumbVisible(false);
     }
 
+    /// <summary>Grow the drawn thumb in from its center, or shrink it away; the scale transition animates both.</summary>
     private void SetThumbVisible(bool visible)
-    {
-        // The slider applies its template lazily, so the thumb may not exist yet at Loaded; keep looking until it does
-        progressThumb ??= FindNamed<Thumb>(ProgressSlider, "HorizontalThumb");
-        if (progressThumb is null)
-        {
-            if (!thumbMissingLogged && ProgressSlider.ActualWidth > 0) { thumbMissingLogged = true; App.Log("Seek bar thumb not found in the slider template"); }
-            return;
-        }
-        progressThumb.Opacity = visible ? 1 : 0;
-    }
+        => SeekThumb.Scale = visible ? System.Numerics.Vector3.One : new System.Numerics.Vector3(0, 0, 1);
 
-    private bool thumbMissingLogged;
+    private void OnProgressValueChanged(object sender, RangeBaseValueChangedEventArgs e) => PositionThumb();
 
-    private static T? FindNamed<T>(DependencyObject root, string name) where T : FrameworkElement
+    private void OnProgressSizeChanged(object sender, SizeChangedEventArgs e) => PositionThumb();
+
+    /// <summary>Center the drawn thumb on the value. With a zero-width template thumb the value maps across the full slider width.</summary>
+    private void PositionThumb()
     {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        // The zero-size template thumb still draws its border as a dot at the value; hide it. The template is applied
+        // lazily, so look for it until it exists
+        if (templateThumb is null && FindNamed<Thumb>(ProgressSlider, "HorizontalThumb") is { } thumb)
         {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match && match.Name == name) return match;
-            if (FindNamed<T>(child, name) is { } found) return found;
+            templateThumb         = thumb;
+            templateThumb.Opacity = 0;
         }
-        return null;
+
+        var range   = ProgressSlider.Maximum - ProgressSlider.Minimum;
+        var percent = range > 0 ? (ProgressSlider.Value - ProgressSlider.Minimum) / range : 0;
+        Canvas.SetLeft(SeekThumb, percent * ProgressSlider.ActualWidth - SeekThumbSize / 2);
+        Canvas.SetTop(SeekThumb, (ProgressSlider.ActualHeight - SeekThumbSize) / 2);
     }
 
     private static Brush AccentBrush  => (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];

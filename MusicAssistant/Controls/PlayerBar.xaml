@@ -124,7 +124,22 @@
                     </Button.Template>
                     <TextBlock x:Name="ElapsedText" Text="0:00" Style="{StaticResource CaptionTextBlockStyle}" />
                 </Button>
-                <Slider x:Name="ProgressSlider" Grid.Column="1" Minimum="0" Maximum="1" StepFrequency="1" IsThumbToolTipEnabled="False" PointerCaptureLost="OnSeekCommitted" Loaded="OnProgressLoaded" PointerEntered="OnProgressPointerEntered" PointerExited="OnProgressPointerExited" />
+                <Grid Grid.Column="1">
+                    <!-- The template's own thumb is zero width so the filled track runs exactly to the value (at full length it
+                         used to stop one thumb short). A drawn thumb centered on the value grows in on hover instead -->
+                    <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" StepFrequency="1" IsThumbToolTipEnabled="False" PointerCaptureLost="OnSeekCommitted" PointerEntered="OnProgressPointerEntered" PointerExited="OnProgressPointerExited" ValueChanged="OnProgressValueChanged" SizeChanged="OnProgressSizeChanged">
+                        <Slider.Resources>
+                            <x:Double x:Key="SliderHorizontalThumbWidth">0</x:Double>
+                            <x:Double x:Key="SliderHorizontalThumbHeight">0</x:Double>
+                        </Slider.Resources>
+                    </Slider>
+                    <Canvas IsHitTestVisible="False">
+                        <Grid x:Name="SeekThumb" Width="18" Height="18">
+                            <Ellipse Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" Stroke="{ThemeResource ControlStrokeColorDefaultBrush}" StrokeThickness="1" />
+                            <Ellipse Width="12" Height="12" Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+                        </Grid>
+                    </Canvas>
+                </Grid>
                 <TextBlock x:Name="DurationText" Grid.Column="2" Text="0:00" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
             </Grid>
             <!-- /Seek Bar -->
