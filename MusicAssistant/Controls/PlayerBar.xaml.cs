@@ -22,6 +22,7 @@ public sealed partial class PlayerBar : UserControl
     private readonly DispatcherQueueTimer volumeTipTimer;
 
     private bool    isSeeking;
+    private bool    showTimeLeft;
     private bool    suppressVolume;
     private int     pendingVolume;
     private string? lastImageUrl;
@@ -53,10 +54,18 @@ public sealed partial class PlayerBar : UserControl
 
         ProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => isSeeking = true), true);
 
+        // Plain icon buttons have no disabled visual state of their own; dim them when they cannot be used
+        foreach (var button in new Control[] { LikeButton, ShuffleButton, PreviousButton, NextButton, RepeatButton })
+        {
+            button.IsEnabledChanged += (s, _) => DimWhenDisabled((Control)s);
+            DimWhenDisabled(button);
+        }
 
         App.StateChanged += Refresh;
         Refresh();
     }
+
+    private static void DimWhenDisabled(Control control) => control.Opacity = control.IsEnabled ? 1 : 0.4;
 
     private static Player? Player => App.ActivePlayer;
 
@@ -220,6 +229,18 @@ public sealed partial class PlayerBar : UserControl
         // seek (the PC speaker). Locked while a resume is in flight: the position stays put, but a seek would race it.
         ProgressSlider.IsEnabled = !resuming && duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
         if (!ProgressSlider.IsEnabled) SetThumbVisible(false);   // the bar can lock while the pointer rests on it
+
+        var shown = duration > 0 ? Math.Min(elapsed, duration) : elapsed;
+        ElapsedText.Text  = showTimeLeft && duration > 0 ? "-" + Format.Duration(Math.Max(0, duration - shown)) : Format.Duration(shown);
+        DurationText.Text = duration > 0 ? Format.Duration(duration) : "--:--";
+    }
+
+    /// <summary>Clicking the elapsed time flips it between time played and time left (shown as a negative), as the web app does.</summary>
+    private void OnElapsedClick(object sender, RoutedEventArgs e)
+    {
+        showTimeLeft = !showTimeLeft;
+        ToolTipService.SetToolTip(ElapsedButton, showTimeLeft ? "Show time played" : "Show time left");
+        UpdateProgress();
     }
 
     // Seek Bar Thumb

@@ -6,6 +6,23 @@
     xmlns:controls="using:MusicAssistant.Controls"
     xmlns:local="using:MusicAssistant">
 
+    <UserControl.Resources>
+        <!-- Plain Icon Button: no hover or press background, just the icon. Same padding everywhere keeps the transport row symmetric
+             around play. Disabled buttons are dimmed in code (PlayerBar constructor); no visual states in the template -->
+        <Style x:Key="PlainIconButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter Padding="{TemplateBinding Padding}" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Grid
         x:Name="BarRoot"
         Height="96"
@@ -55,22 +72,17 @@
         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
                 <!-- Plain icon: no hover chrome, no tooltip; the heart fill is the only state. Same width as the queue button at the other end, so play stays centered -->
-                <Button x:Name="LikeButton" VerticalAlignment="Center" Padding="10,8" Click="OnLike" AutomationProperties.Name="Favorite">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <ContentPresenter Padding="{TemplateBinding Padding}" Content="{TemplateBinding Content}" />
-                        </ControlTemplate>
-                    </Button.Template>
+                <Button x:Name="LikeButton" Style="{StaticResource PlainIconButtonStyle}" Click="OnLike" AutomationProperties.Name="Favorite">
                     <FontIcon x:Name="LikeIcon" Glyph="&#xEB51;" FontSize="16" RenderTransformOrigin="0.5,0.5">
                         <FontIcon.RenderTransform>
                             <ScaleTransform x:Name="LikeScale" />
                         </FontIcon.RenderTransform>
                     </FontIcon>
                 </Button>
-                <Button x:Name="ShuffleButton" Style="{StaticResource SubtleButtonStyle}" Click="OnShuffle" ToolTipService.ToolTip="Shuffle" AutomationProperties.Name="Shuffle">
+                <Button x:Name="ShuffleButton" Style="{StaticResource PlainIconButtonStyle}" Click="OnShuffle" ToolTipService.ToolTip="Shuffle" AutomationProperties.Name="Shuffle">
                     <FontIcon Glyph="&#xE8B1;" FontSize="14" />
                 </Button>
-                <Button x:Name="PreviousButton" Style="{StaticResource SubtleButtonStyle}" Click="OnPrevious" ToolTipService.ToolTip="Previous" AutomationProperties.Name="Previous">
+                <Button x:Name="PreviousButton" Style="{StaticResource PlainIconButtonStyle}" Click="OnPrevious" ToolTipService.ToolTip="Previous" AutomationProperties.Name="Previous">
                     <FontIcon Glyph="&#xE892;" FontSize="16" />
                 </Button>
                 <Button x:Name="PlayPauseButton" Style="{StaticResource AccentButtonStyle}" Width="40" Height="40" CornerRadius="20" Padding="0" Click="OnPlayPause" ToolTipService.ToolTip="Play / Pause" AutomationProperties.Name="Play or pause">
@@ -80,10 +92,10 @@
                         <ProgressRing x:Name="PlayPauseRing" Width="18" Height="18" IsActive="False" Visibility="Collapsed" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                     </Grid>
                 </Button>
-                <Button x:Name="NextButton" Style="{StaticResource SubtleButtonStyle}" Click="OnNext" ToolTipService.ToolTip="Next" AutomationProperties.Name="Next">
+                <Button x:Name="NextButton" Style="{StaticResource PlainIconButtonStyle}" Click="OnNext" ToolTipService.ToolTip="Next" AutomationProperties.Name="Next">
                     <FontIcon Glyph="&#xE893;" FontSize="16" />
                 </Button>
-                <Button x:Name="RepeatButton" Style="{StaticResource SubtleButtonStyle}" Click="OnRepeat" ToolTipService.ToolTip="Repeat" AutomationProperties.Name="Repeat">
+                <Button x:Name="RepeatButton" Style="{StaticResource PlainIconButtonStyle}" Click="OnRepeat" ToolTipService.ToolTip="Repeat" AutomationProperties.Name="Repeat">
                     <FontIcon x:Name="RepeatIcon" Glyph="&#xE8EE;" FontSize="14" />
                 </Button>
                 <!-- Plain icon like the heart: no hover chrome; accent-colored icon while the queue is open -->
@@ -97,36 +109,24 @@
                 </ToggleButton>
             </StackPanel>
 
-            <!-- Seek Bar: drawn like the Music Assistant web player's timeline. A thin track at 30% of the text color with a
-                 solid filled part, no time labels, and the thumb shown only while hovering a seekable bar or dragging -->
-            <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" StepFrequency="1" IsThumbToolTipEnabled="False" PointerCaptureLost="OnSeekCommitted" Loaded="OnProgressLoaded" PointerEntered="OnProgressPointerEntered" PointerExited="OnProgressPointerExited">
-                <Slider.Resources>
-                    <ResourceDictionary>
-                        <ResourceDictionary.ThemeDictionaries>
-                            <ResourceDictionary x:Key="Default">
-                                <SolidColorBrush x:Key="SliderTrackFill" Color="White" Opacity="0.3" />
-                                <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="White" Opacity="0.3" />
-                                <SolidColorBrush x:Key="SliderTrackFillPressed" Color="White" Opacity="0.3" />
-                                <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="White" Opacity="0.3" />
-                                <SolidColorBrush x:Key="SliderTrackValueFill" Color="White" />
-                                <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="White" />
-                                <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="White" />
-                                <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="White" />
-                            </ResourceDictionary>
-                            <ResourceDictionary x:Key="Light">
-                                <SolidColorBrush x:Key="SliderTrackFill" Color="Black" Opacity="0.3" />
-                                <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="Black" Opacity="0.3" />
-                                <SolidColorBrush x:Key="SliderTrackFillPressed" Color="Black" Opacity="0.3" />
-                                <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="Black" Opacity="0.3" />
-                                <SolidColorBrush x:Key="SliderTrackValueFill" Color="Black" />
-                                <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="Black" />
-                                <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="Black" />
-                                <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="Black" />
-                            </ResourceDictionary>
-                        </ResourceDictionary.ThemeDictionaries>
-                    </ResourceDictionary>
-                </Slider.Resources>
-            </Slider>
+            <!-- Seek Bar: the thumb only shows while hovering a seekable bar or dragging. Clicking the elapsed time switches it to the time left -->
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="44" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="ElapsedButton" HorizontalAlignment="Right" VerticalAlignment="Center" Click="OnElapsedClick" ToolTipService.ToolTip="Show time left" AutomationProperties.Name="Elapsed time">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <ContentPresenter Content="{TemplateBinding Content}" />
+                        </ControlTemplate>
+                    </Button.Template>
+                    <TextBlock x:Name="ElapsedText" Text="0:00" Style="{StaticResource CaptionTextBlockStyle}" />
+                </Button>
+                <Slider x:Name="ProgressSlider" Grid.Column="1" Minimum="0" Maximum="1" StepFrequency="1" IsThumbToolTipEnabled="False" PointerCaptureLost="OnSeekCommitted" Loaded="OnProgressLoaded" PointerEntered="OnProgressPointerEntered" PointerExited="OnProgressPointerExited" />
+                <TextBlock x:Name="DurationText" Grid.Column="2" Text="0:00" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+            </Grid>
             <!-- /Seek Bar -->
         </StackPanel>
         <!-- /Transport -->
