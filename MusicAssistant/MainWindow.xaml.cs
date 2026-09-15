@@ -21,7 +21,6 @@ public sealed partial class MainWindow : Window
     private static readonly Dictionary<string, Type> NavPages = new()
     {
         ["home"]      = typeof(HomePage),
-        ["search"]    = typeof(SearchPage),
         ["browse"]    = typeof(BrowsePage),
         ["artists"]   = typeof(LibraryPage),
         ["albums"]    = typeof(LibraryPage),
@@ -53,8 +52,8 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
         {
-            // Standard 32px caption buttons to match the 32px custom title bar.
-            AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
+            // Tall (48px) caption buttons: the Windows size for a custom title bar, and some breathing room around the logo and title.
+            AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
         }
         RestorePlacement();
         SyncTitleBarHeight();
@@ -253,9 +252,9 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// The caption buttons are laid out from the window's top edge, but in a normal window XAML content starts one
-    /// physical pixel lower, below the window's top border line. A fixed 32px row therefore sat a pixel below the
-    /// buttons' center. Size the row to the caption height minus that border (none while maximized) and bottom-align
-    /// the 32px content in it, level with the buttons. Measured at 125% in both states.
+    /// physical pixel lower, below the window's top border line. A fixed-height row therefore sat a pixel below the
+    /// buttons' center. Size the row to the caption height minus that border (none while maximized) and center the
+    /// content in it, level with the buttons. Measured at 125% in both states.
     /// </summary>
     private void SyncTitleBarHeight()
     {
@@ -546,6 +545,8 @@ public sealed partial class MainWindow : Window
     {
         Nav.Visibility        = Visibility.Collapsed;
         Player.Visibility     = Visibility.Collapsed;
+        TitleSearchHost.Visibility = Visibility.Collapsed;
+        UpdateTitleSearchPassthrough();
         LoginFrame.Visibility = Visibility.Visible;
         LoginFrame.Navigate(typeof(LoginPage), message);
     }
@@ -556,6 +557,7 @@ public sealed partial class MainWindow : Window
         LoginFrame.Visibility = Visibility.Collapsed;
         Nav.Visibility        = Visibility.Visible;
         Player.Visibility     = Visibility.Visible;
+        TitleSearchHost.Visibility = Visibility.Visible;
         ContentFrame.BackStack.Clear();
         Nav.SelectedItem = Nav.MenuItems[1];
         Navigate(typeof(HomePage), null);
@@ -712,8 +714,8 @@ public sealed partial class MainWindow : Window
     private void OnQueueHostSizeChanged(object sender, SizeChangedEventArgs e)
         => QueueHost.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
 
-    /// <summary>Width of the back button's slot when shown: the 40px button plus the 4px gap before the logo.</summary>
-    private const double BackSlotWidth = 44;
+    /// <summary>Width of the back button's slot when shown: the 36px square button plus the 4px gap before the logo.</summary>
+    private const double BackSlotWidth = 40;
 
     /// <summary>How far the panel travels: the content row's height, which is valid even on the first open (the frame itself has ActualHeight 0 until laid out).</summary>
     private double QueueDistance => Math.Max(120, Nav.ActualHeight);
@@ -741,6 +743,131 @@ public sealed partial class MainWindow : Window
         storyboard.Children.Add(fade);
         if (completed is not null) storyboard.Completed += (_, _) => completed();
         storyboard.Begin();
+    }
+
+    // Title Bar Search.
+
+    /// <summary>Widest the title bar search box gets, in effective pixels.</summary>
+    private const double TitleSearchMaxWidth = 460;
+
+    /// <summary>Narrowest the title bar search box gets before it's allowed to crowd the title.</summary>
+    private const double TitleSearchMinWidth = 240;
+
+    /// <summary>Pause after the last keystroke before the title bar search runs, so a search doesn't go out per letter.</summary>
+    private static readonly TimeSpan TitleSearchDelay = TimeSpan.FromMilliseconds(450);
+
+    /// <summary>Runs the search once typing pauses; restarted by every change to the text.</summary>
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? titleSearchTimer;
+
+    /// <summary>Searches as the user types, once they pause, the way Task Manager's search box filters.</summary>
+    /// <param name="sender">The title bar search box.</param>
+    /// <param name="e">Unused.</param>
+    private void OnTitleSearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (titleSearchTimer is null)
+        {
+            titleSearchTimer             = DispatcherQueue.CreateTimer();
+            titleSearchTimer.Interval    = TitleSearchDelay;
+            titleSearchTimer.IsRepeating = false;
+            titleSearchTimer.Tick       += (_, _) => RunTitleSearch();
+        }
+        titleSearchTimer.Stop();
+        titleSearchTimer.Start();
+    }
+
+    /// <summary>Runs the search right away when Enter is pressed in the title bar search box.</summary>
+    /// <param name="sender">The title bar search box.</param>
+    /// <param name="e">The key that was pressed.</param>
+    private void OnTitleSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Enter)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        titleSearchTimer?.Stop();
+        RunTitleSearch();
+    }
+
+    /// <summary>
+    /// Shows results for the search box text: updates the search page in place while it's open, or opens it. Queries
+    /// shorter than two characters are ignored, like the server does.
+    /// </summary>
+    private void RunTitleSearch()
+    {
+        string query = TitleSearch.Text.Trim();
+        if (query.Length < 2)
+        {
+            return;
+        }
+
+        if (ContentFrame.Content is SearchPage page)
+        {
+            CloseQueue();
+            page.ShowResults(query);
+            return;
+        }
+
+        Navigate(typeof(SearchPage), query);
+    }
+
+    /// <summary>Ctrl+F puts keyboard focus in the title bar search box, with its text selected for a new search.</summary>
+    /// <param name="sender">The accelerator.</param>
+    /// <param name="args">Marked handled when the search box took focus.</param>
+    private void OnFindShortcut(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (TitleSearchHost.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        args.Handled = true;
+        TitleSearch.Focus(FocusState.Keyboard);
+        TitleSearch.SelectAll();
+    }
+
+    /// <summary>
+    /// Keeps the search box centered in the window without running into the title on the left or the caption buttons
+    /// on the right.
+    /// </summary>
+    /// <param name="sender">The title bar row.</param>
+    /// <param name="e">The row's new size.</param>
+    private void OnTitleBarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        double scale      = TitleBarRow.XamlRoot?.RasterizationScale ?? 1;
+        double rightInset = AppWindow.TitleBar.RightInset / scale;
+
+        // The title's right edge, with the back button shown: its slot, the row padding, the logo, and the app name.
+        double leftInset = BackSlotWidth + 4 + AppTitleBar.Padding.Left + 16 + AppTitleBar.ColumnSpacing + AppTitleContent.ActualWidth;
+        double side      = Math.Max(leftInset, rightInset) + 16;
+        TitleSearchHost.Width = Math.Clamp(e.NewSize.Width - (2 * side), TitleSearchMinWidth, TitleSearchMaxWidth);
+        UpdateTitleSearchPassthrough();
+    }
+
+    private void OnTitleSearchSizeChanged(object sender, SizeChangedEventArgs e) => UpdateTitleSearchPassthrough();
+
+    /// <summary>
+    /// Marks the search box as a pass-through region of the title bar. The title bar element around it is a drag region,
+    /// which would otherwise take the clicks meant for the box.
+    /// </summary>
+    private void UpdateTitleSearchPassthrough()
+    {
+        var source = Microsoft.UI.Input.InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+        if ((TitleSearchHost.Visibility != Visibility.Visible) || (TitleSearchHost.XamlRoot is null))
+        {
+            source.ClearRegionRects(Microsoft.UI.Input.NonClientRegionKind.Passthrough);
+            return;
+        }
+
+        double scale = TitleSearchHost.XamlRoot.RasterizationScale;
+        Windows.Foundation.Rect bounds = TitleSearchHost.TransformToVisual(null).TransformBounds(new Windows.Foundation.Rect(0, 0, TitleSearchHost.ActualWidth, TitleSearchHost.ActualHeight));
+        var rect = new Windows.Graphics.RectInt32(
+            (int)Math.Round(bounds.X * scale),
+            (int)Math.Round(bounds.Y * scale),
+            (int)Math.Round(bounds.Width * scale),
+            (int)Math.Round(bounds.Height * scale));
+        source.SetRegionRects(Microsoft.UI.Input.NonClientRegionKind.Passthrough, [rect]);
     }
 
     /// <summary>

@@ -12,6 +12,7 @@
     <Grid x:Name="Root" KeyboardAcceleratorPlacementMode="Hidden">
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Space" Invoked="OnSpace" />
+            <KeyboardAccelerator Modifiers="Control" Key="F" Invoked="OnFindShortcut" />
         </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -20,17 +21,18 @@
         </Grid.RowDefinitions>
 
         <!-- Title Bar: back button stays interactive, the rest is the drag region. The row is sized to the system caption
-             area at runtime (SyncTitleBarHeight) and the 32px content sits at its bottom, level with the caption buttons -->
-        <Grid x:Name="TitleBarRow">
-            <Grid Height="32" VerticalAlignment="Bottom" Padding="4,0,0,0">
+             area at runtime (SyncTitleBarHeight), which uses the tall caption buttons for some breathing room, and the
+             content is centered in it, level with the caption buttons -->
+        <Grid x:Name="TitleBarRow" SizeChanged="OnTitleBarSizeChanged">
+            <Grid Padding="4,0,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <!-- Back Button: only there while there is a page to go back to. The slot's width (button plus its 4px gap)
+                <!-- Back Button: a 36px square, only there while there is a page to go back to. The slot's width (button plus its 4px gap)
                      animates open and closed so the logo slides over with it; starts closed on the first page -->
                 <Grid x:Name="BackSlot" Width="0" HorizontalAlignment="Left">
-                    <Button x:Name="BackButton" Style="{StaticResource SubtleButtonStyle}" Width="40" Height="28" Padding="0" Opacity="0" IsEnabled="False" HorizontalAlignment="Left" VerticalAlignment="Center" Click="OnBackClick" ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
+                    <Button x:Name="BackButton" Style="{StaticResource SubtleButtonStyle}" Width="36" Height="36" Padding="0" Opacity="0" IsEnabled="False" HorizontalAlignment="Left" VerticalAlignment="Center" Click="OnBackClick" ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
                         <Button.RenderTransform>
                             <TranslateTransform x:Name="BackButtonShift" X="-12" />
                         </Button.RenderTransform>
@@ -43,11 +45,34 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <!-- App mark: the Music Assistant house logo redrawn as a one-color outline so it matches the Segoe Fluent icons -->
-                    <Viewbox Width="16" Height="16" VerticalAlignment="Center">
-                        <PathIcon Data="F0 M100.51,3.21L184.51,75.21C186.72,77.11 188,79.88 188,82.8L188,184.8C188,190.32 183.52,194.8 178,194.8L10,194.8C4.48,194.8 0,190.32 0,184.8L0,82.8C0,79.88 1.28,77.11 3.49,75.21L87.49,3.21C91.24,-0 96.76,-0 100.51,3.21Z M94,15.3L176,85.6L176,182.8L12,182.8L12,85.6Z M31.6,113.2C31.6,109.67 34.47,106.8 38,106.8C41.53,106.8 44.4,109.67 44.4,113.2L44.4,159.6C44.4,163.13 41.53,166 38,166C34.47,166 31.6,163.13 31.6,159.6L31.6,113.2ZM54,113.2C54,109.67 56.87,106.8 60.4,106.8C63.93,106.8 66.8,109.67 66.8,113.2L66.8,159.6C66.8,163.13 63.93,166 60.4,166C56.87,166 54,163.13 54,159.6L54,113.2ZM76.4,113.2C76.4,109.67 79.27,106.8 82.8,106.8C86.33,106.8 89.2,109.67 89.2,113.2L89.2,159.6C89.2,163.13 86.33,166 82.8,166C79.27,166 76.4,163.13 76.4,159.6L76.4,113.2ZM112.97,161.3C112.03,164.71 108.5,166.71 105.1,165.77C101.69,164.83 99.69,161.3 100.63,157.9L113.43,111.5C114.37,108.09 117.9,106.09 121.3,107.03C124.71,107.97 126.71,111.5 125.77,114.9L112.97,161.3ZM131.03,114.9C130.09,111.5 132.09,107.97 135.5,107.03C138.9,106.09 142.43,108.09 143.37,111.5L156.17,157.9C157.11,161.3 155.11,164.83 151.7,165.77C148.3,166.71 144.77,164.71 143.83,161.3L131.03,114.9Z" />
+                    <!-- App mark: the Music Assistant logo (music-assistant-fluent.svg) as vector paths, so it stays sharp at every scale -->
+                    <Viewbox Width="16" Height="16" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw">
+                        <Grid Width="256" Height="256">
+                            <Path Data="M134.508,34.407L218.508,106.407C220.724,108.307 222,111.081 222,114L222,216C222,221.523 217.523,226 212,226L44,226C38.477,226 34,221.523 34,216L34,114C34,111.081 35.276,108.307 37.492,106.407L121.492,34.407C125.237,31.198 130.763,31.198 134.508,34.407Z">
+                                <Path.RenderTransform>
+                                    <MatrixTransform Matrix="1.319588,0,0,1.319588,-40.907216,-42.226804" />
+                                </Path.RenderTransform>
+                                <Path.Fill>
+                                    <LinearGradientBrush MappingMode="Absolute" StartPoint="128,40" EndPoint="128,220">
+                                        <GradientStop Color="#3FCBFF" Offset="0" />
+                                        <GradientStop Color="#0E8FE0" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Path.Fill>
+                            </Path>
+                            <Path Data="M50,138C50,133.585 53.585,130 58,130C62.415,130 66,133.585 66,138L66,196C66,200.415 62.415,204 58,204C53.585,204 50,200.415 50,196L50,138ZM78,138C78,133.585 81.585,130 86,130C90.415,130 94,133.585 94,138L94,196C94,200.415 90.415,204 86,204C81.585,204 78,200.415 78,196L78,138ZM106,138C106,133.585 109.585,130 114,130C118.415,130 122,133.585 122,138L122,196C122,200.415 118.415,204 114,204C109.585,204 106,200.415 106,196L106,138ZM151.712,198.127C150.538,202.384 146.129,204.886 141.873,203.712C137.616,202.538 135.114,198.129 136.288,193.873L152.288,135.873C153.462,131.616 157.871,129.114 162.127,130.288C166.384,131.462 168.886,135.871 167.712,140.127L151.712,198.127ZM174.288,140.127C173.114,135.871 175.616,131.462 179.873,130.288C184.129,129.114 188.538,131.616 189.712,135.873L205.712,193.873C206.886,198.129 204.384,202.538 200.127,203.712C195.871,204.886 191.462,202.384 190.288,198.127L174.288,140.127Z">
+                                <Path.RenderTransform>
+                                    <MatrixTransform Matrix="1.319588,0,0,1.319588,-40.907216,-42.226804" />
+                                </Path.RenderTransform>
+                                <Path.Fill>
+                                    <LinearGradientBrush MappingMode="Absolute" StartPoint="0,132" EndPoint="0,198">
+                                        <GradientStop Color="#FFFFFF" Offset="0" />
+                                        <GradientStop Color="#DCF3FF" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Path.Fill>
+                            </Path>
+                        </Grid>
                     </Viewbox>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <StackPanel x:Name="AppTitleContent" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <TextBlock Text="Music Assistant" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" />
                         <!-- Shown while connected through Music Assistant remote access -->
                         <Border x:Name="RemoteBadge" Padding="6,1" CornerRadius="8" Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="Collapsed" ToolTipService.ToolTip="Connected remotely through the Music Assistant relay">
@@ -56,6 +81,29 @@
                     </StackPanel>
                 </Grid>
             </Grid>
+
+            <!-- Search: centered in the title bar, Task Manager style, with the magnifier inside its left edge. No border
+                 at rest; focused, the box shows the accent underline. Its width follows the window (OnTitleBarSizeChanged)
+                 and it's a pass-through region, so clicks reach it instead of dragging the window -->
+            <Grid x:Name="TitleSearchHost" HorizontalAlignment="Center" VerticalAlignment="Center" Width="460" Visibility="Collapsed" SizeChanged="OnTitleSearchSizeChanged">
+                <TextBox
+                    x:Name="TitleSearch"
+                    PlaceholderText="Search artists, albums, tracks, playlists, radio"
+                    Padding="40,7,10,7"
+                    MinHeight="36"
+                    VerticalContentAlignment="Center"
+                    TextChanged="OnTitleSearchTextChanged"
+                    KeyDown="OnTitleSearchKeyDown"
+                    AutomationProperties.Name="Search">
+                    <TextBox.Resources>
+                        <SolidColorBrush x:Key="TextControlElevationBorderBrush" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                    </TextBox.Resources>
+                </TextBox>
+                <FontIcon Glyph="&#xE721;" FontSize="14" Margin="14,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False" />
+            </Grid>
+            <!-- /Search -->
         </Grid>
         <!-- /Title Bar -->
 
@@ -78,7 +126,6 @@
                         <PathIcon Data="F0 M0.5,8 A7.5,7.5 0 1 1 15.5,8 A7.5,7.5 0 1 1 0.5,8 Z M1.5,8 A6.5,6.5 0 1 1 14.5,8 A6.5,6.5 0 1 1 1.5,8 Z M11.5,4.5 L9.6,9.6 L4.5,11.5 L6.4,6.4 Z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Search" Tag="search" Icon="Find" />
                 <NavigationViewItem Content="Browse" Tag="browse" Icon="Folder" />
                 <NavigationViewItemHeader Content="Library" />
                 <NavigationViewItem Content="Artists" Tag="artists" Icon="Contact" />
