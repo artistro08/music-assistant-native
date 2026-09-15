@@ -28,7 +28,7 @@ I hate web apps. Native feels better and uses less ram. Also <a href="https://ha
 
 You need a Music Assistant server already running on your network. If you don't have one, set it up first: https://www.music-assistant.io/
 
-1. Go to the [Releases](../../releases) page and download two files: `MusicAssistant_1.2.0.0_x64.msix` and `MusicAssistant-TestSigning.cer`.
+1. Go to the [Releases](../../releases) page and download two files: `MusicAssistant_1.2.1.0_x64.msix` and `MusicAssistant-TestSigning.cer`.
 
 2. Windows only installs apps it trusts, and this one is signed with a test certificate, so you tell Windows to trust it once. Open PowerShell **as Administrator** and run:
 
@@ -36,7 +36,7 @@ You need a Music Assistant server already running on your network. If you don't 
    Import-Certificate -FilePath .\MusicAssistant-TestSigning.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
    ```
 
-3. Double-click `MusicAssistant_1.2.0.0_x64.msix` and click **Install**.
+3. Double-click `MusicAssistant_1.2.1.0_x64.msix` and click **Install**.
 
 4. Open the app, enter your server address (for example `http://192.168.1.10:8095`), and sign in.
 
