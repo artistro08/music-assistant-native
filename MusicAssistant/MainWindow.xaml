@@ -137,8 +137,12 @@
         <!-- /Navigation -->
 
         <!-- Now Playing / Queue: slides up from the player bar and covers sidebar and content, sits above the player bar.
-             The slide is driven entirely by SlideQueue in code-behind; no Frame transition, which would fight it on first open. -->
-        <Frame x:Name="QueueFrame" Grid.Row="1" Visibility="Collapsed" />
+             The slide is driven entirely by SlideQueue in code-behind; no Frame transition, which would fight it on first open.
+             The host is clipped to its row (OnQueueHostSizeChanged) so the sliding panel never shows through the translucent
+             player bar; it has no background, so clicks pass through it while the queue is closed. -->
+        <Grid x:Name="QueueHost" Grid.Row="1" SizeChanged="OnQueueHostSizeChanged">
+            <Frame x:Name="QueueFrame" Visibility="Collapsed" />
+        </Grid>
         <!-- /Now Playing / Queue -->
 
         <!-- Login (shown instead of Navigation when signed out) -->

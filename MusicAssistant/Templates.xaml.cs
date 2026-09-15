@@ -264,9 +264,7 @@ public sealed partial class Templates : ResourceDictionary
 
     private async void OnQueuePlayHere(object sender, RoutedEventArgs e)
     {
-        if (QueueItemOf(sender) is not { } item) return;
-        try { await App.Client.QueueCommandAsync(item.QueueId, "play_index", new { index = item.QueueItemId }); }
-        catch (Exception ex) { App.Window.ShowMessage(ex.Message); }
+        if (QueueItemOf(sender) is { } item) await App.PlayQueueItemAsync(item);
     }
 
     private void OnQueuePlayNext(object sender, RoutedEventArgs e)

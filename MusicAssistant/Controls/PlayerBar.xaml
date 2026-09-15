@@ -39,33 +39,35 @@
             <ColumnDefinition x:Name="RightColumn" Width="240" />
         </Grid.ColumnDefinitions>
 
-        <!-- Now Playing -->
-        <Grid ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <!-- Star column so the text shrinks on narrow windows instead of overflowing the column -->
-                <ColumnDefinition Width="*" MaxWidth="280" />
-            </Grid.ColumnDefinitions>
-            <Grid Width="64" Height="64" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                <FontIcon Glyph="&#xEC4F;" FontSize="24" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                <Image x:Name="ArtImage" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
-                <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed">
-                    <ProgressRing x:Name="LoadingRing" IsActive="False" Foreground="White" Width="28" Height="28" />
+        <!-- Now Playing: the whole block is a plain button that opens and closes the queue, like the queue button -->
+        <Button Style="{StaticResource PlainIconButtonStyle}" Padding="0" HorizontalAlignment="Stretch" Click="OnQueue" AutomationProperties.Name="Show queue">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Star column so the text shrinks on narrow windows instead of overflowing the column -->
+                    <ColumnDefinition Width="*" MaxWidth="280" />
+                </Grid.ColumnDefinitions>
+                <Grid Width="64" Height="64" CornerRadius="4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <FontIcon Glyph="&#xEC4F;" FontSize="24" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    <Image x:Name="ArtImage" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
+                    <Grid x:Name="LoadingOverlay" Background="#80000000" Visibility="Collapsed">
+                        <ProgressRing x:Name="LoadingRing" IsActive="False" Foreground="White" Width="28" Height="28" />
+                    </Grid>
                 </Grid>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <!-- Trimmed text gets its full value as a tooltip (see TrimTip) -->
+                    <TextBlock x:Name="TitleText" Text="Nothing playing" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" IsTextTrimmedChanged="OnTextTrimmedChanged" />
+                    <TextBlock x:Name="SubtitleText" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextTrimmedChanged="OnTextTrimmedChanged" />
+                    <!-- Quality Chip: its own line under the artist so it never competes with the title for width -->
+                    <Border x:Name="QualityChip" Padding="6,1" Margin="0,2,0,0" CornerRadius="8" Background="{ThemeResource ControlFillColorSecondaryBrush}" HorizontalAlignment="Left" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Ellipse x:Name="QualityDot" Width="7" Height="7" VerticalAlignment="Center" />
+                            <TextBlock x:Name="QualityText" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </Grid>
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                <!-- Trimmed text gets its full value as a tooltip (see TrimTip) -->
-                <TextBlock x:Name="TitleText" Text="Nothing playing" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource BodyStrongTextBlockStyle}" IsTextTrimmedChanged="OnTextTrimmedChanged" />
-                <TextBlock x:Name="SubtitleText" TextTrimming="CharacterEllipsis" MaxLines="1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextTrimmedChanged="OnTextTrimmedChanged" />
-                <!-- Quality Chip: its own line under the artist so it never competes with the title for width -->
-                <Border x:Name="QualityChip" Padding="6,1" Margin="0,2,0,0" CornerRadius="8" Background="{ThemeResource ControlFillColorSecondaryBrush}" HorizontalAlignment="Left" Visibility="Collapsed">
-                    <StackPanel Orientation="Horizontal" Spacing="5">
-                        <Ellipse x:Name="QualityDot" Width="7" Height="7" VerticalAlignment="Center" />
-                        <TextBlock x:Name="QualityText" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </Grid>
+        </Button>
         <!-- /Now Playing -->
 
         <!-- Transport: heart and queue bookend the transport row -->
@@ -110,7 +112,7 @@
             </StackPanel>
 
             <!-- Seek Bar: the thumb only shows while hovering a seekable bar or dragging. Clicking the elapsed time switches it to the time left -->
-            <!-- 16px gaps: the thumb is centered on the value, so at either end it reaches 9px past the track toward the times -->
+            <!-- 16px gaps: the thumb is centered on the value, so at either end it reaches 11px past the track toward the times -->
             <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="44" />
@@ -125,19 +127,29 @@
                     </Button.Template>
                     <TextBlock x:Name="ElapsedText" Text="0:00" Style="{StaticResource CaptionTextBlockStyle}" />
                 </Button>
-                <Grid Grid.Column="1">
+                <Grid x:Name="SeekArea" Grid.Column="1" Background="Transparent">
                     <!-- The template's own thumb is zero width so the filled track runs exactly to the value (at full length it
-                         used to stop one thumb short). A drawn thumb centered on the value grows in on hover instead -->
-                    <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" StepFrequency="1" IsThumbToolTipEnabled="False" PointerCaptureLost="OnSeekCommitted" PointerEntered="OnProgressPointerEntered" PointerExited="OnProgressPointerExited" ValueChanged="OnProgressValueChanged" SizeChanged="OnProgressSizeChanged">
+                         used to stop one thumb short). A drawn thumb centered on the value grows in on hover instead.
+                         Hover is tracked on this Grid (wired in code with handledEventsToo): the Slider handles its own pointer exits -->
+                    <Slider x:Name="ProgressSlider" Minimum="0" Maximum="1" StepFrequency="1" IsThumbToolTipEnabled="False" PointerCaptureLost="OnSeekCommitted" ValueChanged="OnProgressValueChanged" SizeChanged="OnProgressSizeChanged">
                         <Slider.Resources>
                             <x:Double x:Key="SliderHorizontalThumbWidth">0</x:Double>
                             <x:Double x:Key="SliderHorizontalThumbHeight">0</x:Double>
                         </Slider.Resources>
                     </Slider>
                     <Canvas IsHitTestVisible="False">
-                        <Grid x:Name="SeekThumb" Width="18" Height="18">
-                            <Ellipse Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" Stroke="{ThemeResource ControlStrokeColorDefaultBrush}" StrokeThickness="1" />
-                            <Ellipse Width="12" Height="12" Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <!-- Same build as the Fluent slider thumb: 22px outer circle with the elevation border, 12px accent dot
+                             at 86% normally, 117% while the pointer is over the thumb, 71% while pressed -->
+                        <Grid x:Name="SeekThumb" Width="22" Height="22" RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="SeekThumbScale" ScaleX="0" ScaleY="0" />
+                            </Grid.RenderTransform>
+                            <Ellipse Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" Stroke="{ThemeResource ControlElevationBorderBrush}" StrokeThickness="1" />
+                            <Ellipse Width="12" Height="12" Fill="{ThemeResource AccentFillColorDefaultBrush}" RenderTransformOrigin="0.5,0.5">
+                                <Ellipse.RenderTransform>
+                                    <ScaleTransform x:Name="SeekInnerScale" ScaleX="0.86" ScaleY="0.86" />
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
                         </Grid>
                     </Canvas>
                 </Grid>
@@ -242,9 +254,7 @@
                         <Setter Target="VolumeSlider.Visibility" Value="Collapsed" />
                         <Setter Target="MuteButton.Visibility" Value="Collapsed" />
                         <Setter Target="VolumeFlyoutButton.Visibility" Value="Visible" />
-                        <Setter Target="QualityChip.Visibility" Value="Collapsed" />
                         <Setter Target="PlayerNameText.Visibility" Value="Collapsed" />
-                        <Setter Target="SubtitleText.Visibility" Value="Collapsed" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>

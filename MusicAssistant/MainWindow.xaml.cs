@@ -602,6 +602,10 @@ public sealed partial class MainWindow : Window
 
     private bool queueClosing;
 
+    /// <summary>Keep the sliding queue inside its row: a clip on the host, which does not move, cuts off whatever of the panel is still below it.</summary>
+    private void OnQueueHostSizeChanged(object sender, SizeChangedEventArgs e)
+        => QueueHost.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
+
     /// <summary>Now Playing slides up from the player bar on open and back down on close, with a fade.</summary>
     /// <summary>How far the panel travels: the content row's height, which is valid even on the first open (the frame itself has ActualHeight 0 until laid out).</summary>
     private double QueueDistance => Math.Max(120, Nav.ActualHeight);

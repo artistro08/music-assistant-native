@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 using MusicAssistant.Api;
 
@@ -52,12 +53,12 @@ public sealed partial class PlayerBar : UserControl
         volumeTipTimer.IsRepeating = false;
         volumeTipTimer.Tick += (_, _) => HideVolumeTip();
 
-        ProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => isSeeking = true), true);
+        ProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler(OnProgressPointerPressed), true);
 
-        // Seek thumb starts hidden and animates its size from the center whenever it shows or hides
-        SeekThumb.CenterPoint     = new System.Numerics.Vector3((float)SeekThumbSize / 2, (float)SeekThumbSize / 2, 0);
-        SeekThumb.ScaleTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(150) };
-        SetThumbVisible(false);
+        // Seek thumb starts hidden (scale 0 in XAML) and grows or shrinks from its center on hover
+        SeekArea.AddHandler(PointerEnteredEvent, new PointerEventHandler(OnProgressPointerEntered), true);
+        SeekArea.AddHandler(PointerMovedEvent,   new PointerEventHandler(OnProgressPointerMoved), true);
+        SeekArea.AddHandler(PointerExitedEvent,  new PointerEventHandler(OnProgressPointerExited), true);
 
         // Plain icon buttons have no disabled visual state of their own; dim them when they cannot be used
         foreach (var button in new Control[] { LikeButton, ShuffleButton, PreviousButton, NextButton, RepeatButton })
@@ -77,7 +78,7 @@ public sealed partial class PlayerBar : UserControl
     private static PlayerQueue? Queue
         => Player is { } p && App.Client.Queues.TryGetValue(App.Client.QueueIdFor(p), out var q) ? q : null;
 
-    private static bool Resuming => Player is { } p && App.IsResuming(p);
+    private static bool Starting => Player is { } p && App.IsStarting(p);
 
     // =========================================================================
     // RENDER
@@ -129,7 +130,7 @@ public sealed partial class PlayerBar : UserControl
         var format   = item?.Streamdetails?.AudioFormat ?? player?.ActiveSourceAudio?.InputFormat;
         if (fidelity is { Label.Length: > 0 })
         {
-            QualityChip.Visibility = Visibility.Visible;   // the Narrow visual state overrides this when the window is small
+            QualityChip.Visibility = Visibility.Visible;
             QualityText.Text       = fidelity.Label;
             QualityDot.Fill        = new SolidColorBrush(ParseColor(fidelity.Color));
             ToolTipService.SetToolTip(QualityChip, format?.Text is { Length: > 0 } text ? text : fidelity.Quality);
@@ -206,12 +207,12 @@ public sealed partial class PlayerBar : UserControl
     private void UpdateProgress()
     {
         var queue    = Queue;
-        var resuming = Resuming;
+        var starting = Starting;
 
-        // Spinner in the play button while a resume waits for the player; on the 1 s tick so it also clears when the wait runs out
-        PlayPauseIcon.Visibility = resuming ? Visibility.Collapsed : Visibility.Visible;
-        PlayPauseRing.Visibility = resuming ? Visibility.Visible : Visibility.Collapsed;
-        PlayPauseRing.IsActive   = resuming;
+        // Spinner in the play button while playback is loading; on the 1 s tick so it also clears when the wait runs out
+        PlayPauseIcon.Visibility = starting ? Visibility.Collapsed : Visibility.Visible;
+        PlayPauseRing.Visibility = starting ? Visibility.Visible : Visibility.Collapsed;
+        PlayPauseRing.IsActive   = starting;
 
         if (isSeeking) return;
 
@@ -231,9 +232,11 @@ public sealed partial class PlayerBar : UserControl
         ProgressSlider.Maximum   = Math.Max(1, duration);
         ProgressSlider.Value     = Math.Min(elapsed, ProgressSlider.Maximum);
         // Queue playback seeks on the server by restarting the stream, so it works even for players without a native
-        // seek (the PC speaker). Locked while a resume is in flight: the position stays put, but a seek would race it.
-        ProgressSlider.IsEnabled = !resuming && duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
-        SetThumbVisible(ProgressSlider.IsEnabled && progressHovered);   // re-applied every tick: the bar can lock while the pointer rests on it
+        // seek (the PC speaker). Locked while playback is loading: the position stays put, but a seek would race it.
+        // Locked by ignoring input rather than disabling, which would flash the fill gray and back.
+        ProgressSlider.IsEnabled        = duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
+        ProgressSlider.IsHitTestVisible = !starting;
+        SetThumbVisible(CanSeekNow && progressHovered);   // re-applied every tick: the bar can lock while the pointer rests on it
         PositionThumb();   // a new maximum moves the thumb without a value change
 
         var shown = duration > 0 ? Math.Min(elapsed, duration) : elapsed;
@@ -251,10 +254,27 @@ public sealed partial class PlayerBar : UserControl
 
     // Seek Bar Thumb
 
-    private const double SeekThumbSize = 18;
+    private const double SeekThumbSize     = 22;
+    private const double InnerScaleNormal  = 0.86;    // Fluent slider thumb dot: 12px drawn at 86%
+    private const double InnerScaleOver    = 1.167;   // grows to 14px while the pointer is over the thumb
+    private const double InnerScalePressed = 0.71;    // shrinks to 10px while pressed
 
     private bool   progressHovered;
+    private bool   thumbShown;
+    private double innerScale   = InnerScaleNormal;
+    private double lastPointerX = double.NaN;   // pointer position over the slider, to tell whether it rests on the thumb
     private Thumb? templateThumb;
+
+    private bool CanSeekNow => ProgressSlider.IsEnabled && ProgressSlider.IsHitTestVisible;
+
+    private double ThumbCenterX
+    {
+        get
+        {
+            var range = ProgressSlider.Maximum - ProgressSlider.Minimum;
+            return range > 0 ? (ProgressSlider.Value - ProgressSlider.Minimum) / range * ProgressSlider.ActualWidth : 0;
+        }
+    }
 
     private static T? FindNamed<T>(DependencyObject root, string name) where T : FrameworkElement
     {
@@ -267,21 +287,79 @@ public sealed partial class PlayerBar : UserControl
         return null;
     }
 
+    /// <summary>Only a press that drags the slider (left button, touch, pen) starts a seek; a right-click or the back button must not freeze the bar.</summary>
+    private void OnProgressPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(ProgressSlider);
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse && !point.Properties.IsLeftButtonPressed) return;
+        isSeeking = true;
+        UpdateInnerThumb();
+    }
+
     private void OnProgressPointerEntered(object sender, PointerRoutedEventArgs e)
     {
         progressHovered = true;
-        SetThumbVisible(ProgressSlider.IsEnabled);
+        SetThumbVisible(CanSeekNow);
+    }
+
+    private void OnProgressPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        lastPointerX = e.GetCurrentPoint(ProgressSlider).Position.X;
+        UpdateInnerThumb();
     }
 
     private void OnProgressPointerExited(object sender, PointerRoutedEventArgs e)
     {
         progressHovered = false;
+        lastPointerX    = double.NaN;
+        UpdateInnerThumb();
         if (!isSeeking) SetThumbVisible(false);
     }
 
-    /// <summary>Grow the drawn thumb in from its center, or shrink it away; the scale transition animates both.</summary>
+    /// <summary>
+    /// Grow the drawn thumb in from its center, or shrink it away, over 150 ms. An explicit storyboard rather than an
+    /// implicit scale transition, which jumped straight to zero on the way out. Only starts on an actual change: the
+    /// progress tick re-applies this every second and restarting would stutter.
+    /// </summary>
     private void SetThumbVisible(bool visible)
-        => SeekThumb.Scale = visible ? System.Numerics.Vector3.One : new System.Numerics.Vector3(0, 0, 1);
+    {
+        if (visible == thumbShown) return;
+        thumbShown = visible;
+        AnimateScale(SeekThumbScale, visible ? 1 : 0, 150, visible ? EasingMode.EaseOut : EasingMode.EaseIn);
+    }
+
+    /// <summary>The thumb's dot follows the Fluent slider: bigger while the pointer rests on the thumb, smaller while pressed.</summary>
+    private void UpdateInnerThumb()
+    {
+        var overThumb = !double.IsNaN(lastPointerX) && Math.Abs(lastPointerX - ThumbCenterX) <= SeekThumbSize / 2;
+        var target    = isSeeking ? InnerScalePressed : overThumb ? InnerScaleOver : InnerScaleNormal;
+        if (target == innerScale) return;
+        innerScale = target;
+        AnimateScale(SeekInnerScale, target, target == InnerScaleNormal ? 167 : 250, EasingMode.EaseOut);   // Fluent's fast and normal control durations
+    }
+
+    /// <summary>Ease a scale transform to a uniform size from wherever it is now, taking over any animation still running on it.</summary>
+    private static void AnimateScale(ScaleTransform target, double to, int milliseconds, EasingMode easing)
+        => AnimateBothAxes(target, () => new DoubleAnimation
+        {
+            To             = to,
+            Duration       = TimeSpan.FromMilliseconds(milliseconds),
+            EasingFunction = new CubicEase { EasingMode = easing },
+        });
+
+    /// <summary>Run one animation on both axes of a scale transform; <paramref name="make"/> builds the timeline for each axis.</summary>
+    private static void AnimateBothAxes(ScaleTransform target, Func<Timeline> make)
+    {
+        var storyboard = new Storyboard();
+        foreach (var property in new[] { "ScaleX", "ScaleY" })
+        {
+            var timeline = make();
+            Storyboard.SetTarget(timeline, target);
+            Storyboard.SetTargetProperty(timeline, property);
+            storyboard.Children.Add(timeline);
+        }
+        storyboard.Begin();
+    }
 
     private void OnProgressValueChanged(object sender, RangeBaseValueChangedEventArgs e) => PositionThumb();
 
@@ -298,10 +376,9 @@ public sealed partial class PlayerBar : UserControl
             templateThumb.Opacity = 0;
         }
 
-        var range   = ProgressSlider.Maximum - ProgressSlider.Minimum;
-        var percent = range > 0 ? (ProgressSlider.Value - ProgressSlider.Minimum) / range : 0;
-        Canvas.SetLeft(SeekThumb, percent * ProgressSlider.ActualWidth - SeekThumbSize / 2);
+        Canvas.SetLeft(SeekThumb, ThumbCenterX - SeekThumbSize / 2);
         Canvas.SetTop(SeekThumb, (ProgressSlider.ActualHeight - SeekThumbSize) / 2);
+        UpdateInnerThumb();   // playback can move the thumb under a resting pointer
     }
 
     private static Brush AccentBrush  => (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
@@ -375,21 +452,14 @@ public sealed partial class PlayerBar : UserControl
     }
 
     /// <summary>Quick 1.0 → 1.35 → 1.0 scale bounce.</summary>
-    private static void Pop(ScaleTransform scale)
+    private static void Pop(ScaleTransform scale) => AnimateBothAxes(scale, () =>
     {
-        var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-        foreach (var property in new[] { "ScaleX", "ScaleY" })
-        {
-            var frames = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimationUsingKeyFrames();
-            frames.KeyFrames.Add(new Microsoft.UI.Xaml.Media.Animation.EasingDoubleKeyFrame { KeyTime = TimeSpan.FromMilliseconds(0),   Value = 1.0 });
-            frames.KeyFrames.Add(new Microsoft.UI.Xaml.Media.Animation.EasingDoubleKeyFrame { KeyTime = TimeSpan.FromMilliseconds(110), Value = 1.35, EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut } });
-            frames.KeyFrames.Add(new Microsoft.UI.Xaml.Media.Animation.EasingDoubleKeyFrame { KeyTime = TimeSpan.FromMilliseconds(260), Value = 1.0,  EasingFunction = new Microsoft.UI.Xaml.Media.Animation.ElasticEase { Oscillations = 1, Springiness = 6, EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut } });
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(frames, scale);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(frames, property);
-            storyboard.Children.Add(frames);
-        }
-        storyboard.Begin();
-    }
+        var frames = new DoubleAnimationUsingKeyFrames();
+        frames.KeyFrames.Add(new EasingDoubleKeyFrame { KeyTime = TimeSpan.FromMilliseconds(0),   Value = 1.0 });
+        frames.KeyFrames.Add(new EasingDoubleKeyFrame { KeyTime = TimeSpan.FromMilliseconds(110), Value = 1.35, EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        frames.KeyFrames.Add(new EasingDoubleKeyFrame { KeyTime = TimeSpan.FromMilliseconds(260), Value = 1.0,  EasingFunction = new ElasticEase { Oscillations = 1, Springiness = 6, EasingMode = EasingMode.EaseOut } });
+        return frames;
+    });
 
     private void OnMute(object sender, RoutedEventArgs e)
         => _ = RunAsync(() => App.Client.PlayerCommandAsync(Player!.PlayerId, "volume_mute", new { muted = Player!.VolumeMuted != true }));
@@ -404,7 +474,8 @@ public sealed partial class PlayerBar : UserControl
         // every time the window was resized.
         if (!isSeeking) return;
         isSeeking = false;
-        if (!progressHovered) SetThumbVisible(false);   // released outside the bar
+        UpdateInnerThumb();
+        SetThumbVisible(progressHovered && CanSeekNow);   // released outside the bar: shrink now
         if (Player is not { } player) return;
         var position = (int)ProgressSlider.Value;
         _ = Queue?.CurrentItem is not null

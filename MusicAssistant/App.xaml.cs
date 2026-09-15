@@ -150,46 +150,76 @@ public partial class App : Application
     /// <summary>The item currently being started, or null. Drives the loading overlay on the player bar.</summary>
     public static MediaItem? PendingItem { get; private set; }
 
-    // A play sent to a paused or idle player can take many seconds to turn into "playing" (the WiiM restarts its
-    // stream); the bar shows a spinner in the play button and locks the seek bar until the player reports playing,
-    // the command fails, or the wait runs out.
-    private static string?  resumingPlayerId;
-    private static DateTime resumeUntil;
-    private static readonly TimeSpan ResumeWait = TimeSpan.FromSeconds(20);
+    // Starting playback that takes a while: a player coming out of idle (the WiiM has to open a new stream) or a jump to
+    // another queue item. The bar shows a spinner in the play button and locks the seek bar until the player is playing
+    // (the target item, for a jump), the command fails, or the wait runs out. Play from paused is instant and skips it.
+    private static string?  startingPlayerId;
+    private static string?  startingItemId;   // the queue item the player has to be on, for a jump within the queue
+    private static DateTime startingUntil;
+    private static readonly TimeSpan StartingWait = TimeSpan.FromSeconds(20);
 
     /// <summary>
     /// Send a transport command to a player from any control: the player bar, the Space key, the tray menu or the
-    /// media keys. A play or play_pause to a player that is not playing starts the resume state; a failed command
-    /// ends it and shows the error. UI thread.
+    /// media keys. A play or play_pause to a player that is neither playing nor paused shows the loading state; a
+    /// failed command ends it and shows the error. UI thread.
     /// </summary>
     public static void SendPlayerCommand(Player player, string command)
     {
-        var resumes = command is "play" or "play_pause" && !player.IsPlaying;
-        if (resumes)
-        {
-            resumingPlayerId = player.PlayerId;
-            resumeUntil      = DateTime.UtcNow + ResumeWait;
-            StateChanged?.Invoke();
-        }
+        var starts = command is "play" or "play_pause" && player.PlaybackState is not ("playing" or "paused");
+        if (starts) MarkStarting(player, null);
 
         _ = Client.PlayerCommandAsync(player.PlayerId, command).ContinueWith(t => Dispatcher.TryEnqueue(() =>
         {
-            if (resumes && resumingPlayerId == player.PlayerId)
-            {
-                resumingPlayerId = null;
-                StateChanged?.Invoke();
-            }
+            if (starts) ClearStarting(player.PlayerId);
             Window.ShowMessage(t.Exception!.InnerException?.Message ?? "Command failed");
         }), TaskContinuationOptions.OnlyOnFaulted);
     }
 
-    /// <summary>True while a resume sent to this player is still waiting for it to report playing. Clears itself once it is over. UI thread.</summary>
-    public static bool IsResuming(Player player)
+    /// <summary>Jump to another item in a queue (a click in the queue, or Play here). Shows the loading state until the player plays that item. UI thread.</summary>
+    public static async Task PlayQueueItemAsync(QueueItem item)
     {
-        if (resumingPlayerId != player.PlayerId) return false;
-        if (!player.IsPlaying && DateTime.UtcNow < resumeUntil) return true;
+        // Every member of a synced group maps to the leader's queue; mark the player the bar shows, so its spinner and seek lock apply
+        var player = ActivePlayer is { } active && Client.QueueIdFor(active) == item.QueueId
+            ? active
+            : Client.Players.Values.FirstOrDefault(p => Client.QueueIdFor(p) == item.QueueId);
+        if (player is not null) MarkStarting(player, item.QueueItemId);
 
-        resumingPlayerId = null;   // playing now, or gave up: a later pause must not bring the spinner back
+        try
+        {
+            await Client.QueueCommandAsync(item.QueueId, "play_index", new { index = item.QueueItemId });
+        }
+        catch (Exception ex)
+        {
+            if (player is not null) ClearStarting(player.PlayerId);
+            Window.ShowMessage(ex.Message);
+        }
+    }
+
+    private static void MarkStarting(Player player, string? queueItemId)
+    {
+        startingPlayerId = player.PlayerId;
+        startingItemId   = queueItemId;
+        startingUntil    = DateTime.UtcNow + StartingWait;
+        StateChanged?.Invoke();
+    }
+
+    private static void ClearStarting(string playerId)
+    {
+        if (startingPlayerId != playerId) return;
+        startingPlayerId = null;
+        StateChanged?.Invoke();
+    }
+
+    /// <summary>True while playback started on this player is still loading. Clears itself once it plays or the wait runs out. UI thread.</summary>
+    public static bool IsStarting(Player player)
+    {
+        if (startingPlayerId != player.PlayerId) return false;
+
+        var current = Client.Queues.GetValueOrDefault(Client.QueueIdFor(player))?.CurrentItem?.QueueItemId;
+        var started = player.IsPlaying && (startingItemId is null || startingItemId == current);
+        if (!started && DateTime.UtcNow < startingUntil) return true;
+
+        startingPlayerId = null;   // playing now, or gave up: a later pause must not bring the spinner back
         return false;
     }
 

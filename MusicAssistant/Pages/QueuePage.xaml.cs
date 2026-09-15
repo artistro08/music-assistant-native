@@ -185,8 +185,7 @@ public sealed partial class QueuePage : Page
 
     private void OnItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not QueueItem item || Queue is not { } queue) return;
-        _ = Run(() => App.Client.QueueCommandAsync(queue.QueueId, "play_index", new { index = item.QueueItemId }));
+        if (e.ClickedItem is QueueItem item) _ = App.PlayQueueItemAsync(item);
     }
 
     private void OnClear(object sender, RoutedEventArgs e)
