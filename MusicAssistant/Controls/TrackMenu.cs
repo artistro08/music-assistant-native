@@ -21,7 +21,7 @@ namespace MusicAssistant.Controls;
 /// </remarks>
 public static class TrackMenu
 {
-    // Labels are the web app's English strings (src/translations/en.json)
+    /// <summary>Labels are the web app's English strings (src/translations/en.json).</summary>
     private static readonly (string Option, string Label, string Glyph)[] EnqueueOptions =
     [
         ("play",         "Play now (keep queue)",     ""),
@@ -32,19 +32,22 @@ public static class TrackMenu
     ];
 
     /// <summary>Fill the menu for one track. <paramref name="parent"/> is the album, playlist or other item whose page the row is on, if any.</summary>
+    /// <param name="menu">The row's menu flyout, cleared and refilled.</param>
+    /// <param name="track">The track, episode or folder the row shows.</param>
+    /// <param name="parent">The item whose page the row is on, or null.</param>
     public static void Populate(MenuFlyout menu, MediaItem track, MediaItem? parent)
     {
         menu.Items.Clear();
         Player? player  = App.ActivePlayer;
         bool canPlay = track.IsPlayable && track.IsAvailableNow;
 
-        // Primary play action: on an album, playlist or podcast page the whole list from this track, else the track alone
-        bool fromHere = parent is { MediaType: "album" or "playlist" or "podcast" } && parent.Uri != track.Uri;
+        // Primary play action: on an album, playlist or podcast page the whole list from this track, else the track alone.
+        bool fromHere = parent is { MediaType: "album" or "playlist" or "podcast" } && (parent.Uri != track.Uri);
         Func<Task> playPrimary = fromHere
             ? () => App.PlayAsync(parent!, startItem: track.ItemId, loadingItem: track)
             : () => App.PlayAsync(track);
 
-        // Play On: start that play action on the chosen speaker, which also becomes the active player
+        // Play On: start that play action on the chosen speaker, which also becomes the active player.
         if (canPlay)
         {
             var playOn = new MenuFlyoutSubItem { Text = $"Play on: {player?.DisplayName ?? "No player selected"}", Icon = Glyph("\uE7F5") };
@@ -61,7 +64,7 @@ public static class TrackMenu
             menu.Items.Add(new MenuFlyoutSeparator());
         }
 
-        // Playback: needs a player to play on
+        // Playback: needs a player to play on.
         if (player is not null && canPlay)
         {
             string label = parent?.MediaType switch { "album" => "Play Album from here", "playlist" => "Play Playlist from here", _ => "Play from here to latest" };
@@ -72,7 +75,7 @@ public static class TrackMenu
             foreach ((string option, string text, string glyph) in EnqueueOptions) Add(enqueue, text, glyph, () => App.PlayAsync(track, option));
             menu.Items.Add(enqueue);
         }
-        // Navigation: artist (only when there is exactly one, like the web app), album, endless mix
+        // Navigation: artist (only when there is exactly one, like the web app), album, endless mix.
         if (track.IsAvailableNow && track.Artists is [var artist])
         {
             Add(menu, $"View artist {artist.Name}", "", () => App.OpenAsync(artist));
@@ -82,7 +85,7 @@ public static class TrackMenu
             Add(menu, $"View album {album.Name}", "", () => App.OpenAsync(album));
         }
 
-        // Track-only entries: the browse and podcast lists use the same row for folders and episodes
+        // Track-only entries: the browse and podcast lists use the same row for folders and episodes.
         bool isTrack = track.MediaType == "track";
         if (isTrack && track.IsAvailableNow)
         {
@@ -90,17 +93,17 @@ public static class TrackMenu
             _ = CheckEndlessMixAsync(mix, track);
         }
 
-        // Library membership: a library track knows it; a streaming track is looked up
+        // Library membership: a library track knows it; a streaming track is looked up.
         if (isTrack)
         {
-            MenuFlyoutItem library = Add(menu, track.Provider == "library" && track.IsInLibrary ? "Remove from library" : "Add to library", "", () => Task.CompletedTask);
+            MenuFlyoutItem library = Add(menu, (track.Provider == "library") && track.IsInLibrary ? "Remove from library" : "Add to library", "", () => Task.CompletedTask);
             _ = WireLibraryAsync(library, track);
         }
 
-        // Favorites (not for browse folders, which the server cannot favorite)
+        // Favorites (not for browse folders, which the server cannot favorite).
         if (track.MediaType != "folder") Add(menu, track.Favorite ? "Remove from favorites" : "Add to favorites", track.Favorite ? "" : "", () => App.ToggleFavoriteAsync(track));
 
-        // Add to playlist
+        // Add to playlist.
         if (isTrack) Add(menu, "Add to playlist...", "", () => ShowAddToPlaylistAsync(track, parent));
     }
 
@@ -131,12 +134,13 @@ public static class TrackMenu
             bool Similar(string instanceId) => providers.TryGetValue(instanceId, out ProviderInstance? provider) && provider.Supports("similar_tracks");
 
             bool supported = track.ProviderMappings is { Count: > 0 } mappings ? mappings.Any(m => Similar(m.ProviderInstance)) : Similar(track.Provider);
-            if (!supported && track.Provider == "library") supported = providers.Values.Any(p => p.Supports("similar_tracks"));
+            if (!supported && (track.Provider == "library")) supported = providers.Values.Any(p => p.Supports("similar_tracks"));
             entry.IsEnabled = supported;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            App.Debug("Track menu: provider lookup failed: " + ex.Message);   // leave the entry enabled; opening the mix reports its own error
+            // Leave the entry enabled; opening the mix reports its own error.
+            App.Debug($"Track menu: provider lookup failed: {ex.Message}");
         }
     }
 
@@ -156,9 +160,9 @@ public static class TrackMenu
         {
             libraryItem = track.Provider == "library" ? track : await App.Client.GetLibraryItemAsync(track.MediaType, track.ItemId, track.Provider);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            App.Debug("Track menu: library lookup failed: " + ex.Message);
+            App.Debug($"Track menu: library lookup failed: {ex.Message}");
             return;
         }
 
@@ -177,11 +181,13 @@ public static class TrackMenu
                 else if (await ConfirmRemoveAsync())
                 {
                     await App.Client.RemoveFromLibraryAsync(libraryItem!.MediaType, libraryItem.ItemId);
-                    track.Favorite = false;   // a favorite is always in the library, so leaving it clears that too
+
+                    // A favorite is always in the library, so leaving it clears that too.
+                    track.Favorite = false;
                     App.Window.ShowMessage($"Removed {track.Name} from the library", InfoBarSeverity.Success);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
             {
                 App.Window.ShowMessage(ex.Message);
             }
@@ -220,8 +226,12 @@ public static class TrackMenu
             ItemTemplate       = (DataTemplate)Application.Current.Resources["PlaylistPickRowTemplate"],
             ItemContainerStyle = (Style)Application.Current.Resources["TrackListItemStyle"],
         };
-        var create  = new StackPanel { Spacing = 4 };   // "Create new playlist on ..." buttons, one per provider that can make one
-        var content = new StackPanel { Spacing = 12, Width = 440 };   // fixed: long names realized while scrolling would widen the dialog
+
+        // "Create new playlist on ..." buttons, one per provider that can make one.
+        var create  = new StackPanel { Spacing = 4 };
+
+        // Fixed: long names realized while scrolling would widen the dialog.
+        var content = new StackPanel { Spacing = 12, Width = 440 };
         content.Children.Add(filter);
         content.Children.Add(busy);
         content.Children.Add(empty);
@@ -238,7 +248,11 @@ public static class TrackMenu
 
         MediaItem?        chosen   = null;
         ProviderInstance? createOn = null;
-        list.ItemClick += (_, e) => { chosen = e.ClickedItem as MediaItem; dialog.Hide(); };
+        list.ItemClick += (_, e) =>
+        {
+            chosen = e.ClickedItem as MediaItem;
+            dialog.Hide();
+        };
 
         Windows.Foundation.IAsyncOperation<ContentDialogResult> shown = dialog.ShowAsync();
         List<MediaItem>        targets  = [];
@@ -247,7 +261,7 @@ public static class TrackMenu
         {
             (targets, creators) = await PlaylistTargetsAsync(track, parent);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             empty.Text = ex.Message;
         }
@@ -265,13 +279,17 @@ public static class TrackMenu
         foreach (ProviderInstance provider in creators)
         {
             var button = new Button { Content = $"Create new playlist on {provider.Name}", HorizontalAlignment = HorizontalAlignment.Stretch };
-            button.Click += (_, _) => { createOn = provider; dialog.Hide(); };
+            button.Click += (_, _) =>
+            {
+                createOn = provider;
+                dialog.Hide();
+            };
             create.Children.Add(button);
         }
 
         await shown;
 
-        // New playlist: ask for a name, create it, then add to it
+        // New playlist: ask for a name, create it, then add to it.
         if (createOn is not null)
         {
             string? name = await AskPlaylistNameAsync();
@@ -280,7 +298,7 @@ public static class TrackMenu
             {
                 chosen = await App.Client.CreatePlaylistAsync(name, createOn.InstanceId, CreateMediaTypes(createOn, track));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
             {
                 App.Window.ShowMessage(ex.Message);
                 return;
@@ -293,7 +311,7 @@ public static class TrackMenu
             await App.Client.AddPlaylistTracksAsync(chosen.ItemId, [track.Uri]);
             App.Window.ShowMessage($"Added {track.Name} to {chosen.Name}", InfoBarSeverity.Success);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             App.Window.ShowMessage($"Could not add {track.Name} to {chosen.Name}: {ex.Message}");
         }
@@ -346,16 +364,16 @@ public static class TrackMenu
         var providers = (await App.Client.GetProvidersCachedAsync()).ToDictionary(p => p.InstanceId);
         List<MediaItem> playlists = await App.Client.GetAllLibraryPlaylistsAsync();
 
-        bool Fits(ProviderInstance provider) => provider.Domain == "builtin"
-            || provider.IsStreamingProvider == true
-            || reference.ProviderMappings?.Any(m => m.ProviderInstance == provider.InstanceId) == true;
+        bool Fits(ProviderInstance provider) => (provider.Domain == "builtin")
+            || (provider.IsStreamingProvider == true)
+            || (reference.ProviderMappings?.Any(m => m.ProviderInstance == provider.InstanceId) == true);
 
         var result = new List<MediaItem>();
         foreach (MediaItem playlist in playlists)
         {
             if (playlist.ProviderMappings is not { Count: > 0 } mappings || !mappings.Any(m => m.Available == true)) continue;
             if (!CanEditPlaylistItems(playlist)) continue;
-            if (parent is { MediaType: "playlist" } && parent.ItemId == playlist.ItemId) continue;
+            if (parent is { MediaType: "playlist" } && (parent.ItemId == playlist.ItemId)) continue;
 
             List<string> types = playlist.SupportedMediatypes ?? ["track"];
             if (types.Contains("track")) types = [.. types, "album"];
@@ -370,6 +388,7 @@ public static class TrackMenu
             .ToList();
         return (result, creators);
     }
+
     /// <summary>
     /// Editable, and either without an access record (every provider playlist, and every playlist on servers that
     /// predate access control), managed by an admin, or owned by the signed-in user.
@@ -380,7 +399,7 @@ public static class TrackMenu
         if (playlist.Access is not { ValueKind: JsonValueKind.Object } access) return true;
         if (App.Client.CurrentUser is not { } user) return false;
         if (user.Role == "admin") return true;
-        return access.TryGetProperty("owner", out JsonElement owner) && owner.ValueKind == JsonValueKind.String && owner.GetString() == user.UserId;
+        return access.TryGetProperty("owner", out JsonElement owner) && (owner.ValueKind == JsonValueKind.String) && (owner.GetString() == user.UserId);
     }
 
     // =========================================================================
@@ -394,8 +413,14 @@ public static class TrackMenu
         var item = new MenuFlyoutItem { Text = text, Icon = Glyph(glyph) };
         item.Click += async (_, _) =>
         {
-            try { await action(); }
-            catch (Exception ex) { App.Window.ShowMessage(ex.Message); }
+            try
+            {
+                await action();
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                App.Window.ShowMessage(ex.Message);
+            }
         };
         items.Add(item);
         return item;

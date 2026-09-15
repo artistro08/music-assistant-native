@@ -23,19 +23,31 @@ public sealed class Speaker
     private CancellationTokenSource? loop;
     private int attempt;
 
+    /// <summary>Whether the user has turned the speaker feature on in Settings.</summary>
     public bool   Enabled   => App.Settings.SpeakerEnabled;
+
+    /// <summary>Whether the connect-and-reconnect loop is running.</summary>
     public bool   Running   => loop is not null;
+
+    /// <summary>Whether the current player has an encrypted session with the server.</summary>
     public bool   Connected => player?.Connected == true;
+
+    /// <summary>Whether the current player is receiving a stream.</summary>
     public bool   Playing   => player?.Playing == true;
+
+    /// <summary>This PC's Sendspin client_id, the player id the server lists it under.</summary>
     public string ClientId  => identity.ClientId;
+
+    /// <summary>Short status text for Settings, such as "Off", "Connecting…" or "Playing".</summary>
     public string Status    { get; private set; } = "Off";
 
     /// <summary>Raised on the UI thread whenever the speaker state changes.</summary>
     public event Action? Changed;
 
+    /// <summary>Loads the Sendspin identity and records its client_id as this app's own player id.</summary>
     public Speaker()
     {
-        // The identity is the player id the server lists this PC under
+        // The identity is the player id the server lists this PC under.
         if (App.Settings.SpeakerClientId != identity.ClientId)
         {
             App.Settings.SpeakerClientId = identity.ClientId;
@@ -45,6 +57,7 @@ public sealed class Speaker
     }
 
     /// <summary>(Re)start the speaker for the current server connection, or stop it when the feature is off.</summary>
+    /// <returns>A completed task; the connection loop keeps running in the background.</returns>
     public Task SyncAsync()
     {
         Stop(notify: false);
@@ -58,17 +71,26 @@ public sealed class Speaker
         return Task.CompletedTask;
     }
 
+    /// <summary>Stops the connection loop, disconnects the player and reports the speaker as off.</summary>
     public void Stop() => Stop(notify: true);
 
     private void Stop(bool notify)
     {
         loop?.Cancel();
         loop = null;
-        // Exchange so only one caller ever disposes: Stop and the reconnect loop can both run at a session drop
+        // Exchange so only one caller ever disposes: Stop and the reconnect loop can both run at a session drop.
         SendspinPlayer? current = Interlocked.Exchange(ref player, null);
         if (current is not null)
         {
-            try { current.Disconnect("user_request"); current.Dispose(); } catch (Exception ex) { App.Debug("Speaker stop: " + ex.Message); }
+            try
+            {
+                current.Disconnect("user_request");
+                current.Dispose();
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                App.Debug($"Speaker stop: {ex.Message}");
+            }
         }
         attempt = 0;
         if (notify) SetStatus("Off");
@@ -86,10 +108,14 @@ public sealed class Speaker
                 SetStatus("Connecting…");
                 ISendspinSocket socket = CreateSocket();
                 var session = new SendspinPlayer(identity, socket, Environment.MachineName, App.Client.IsRemote);
-                // Only a drop after the session was up counts: StateChanged also fires mid-handshake, before Connected is set
+                // Only a drop after the session was up counts: StateChanged also fires mid-handshake, before Connected is set.
                 session.StateChanged += () =>
                 {
-                    if (connectedOnce && !session.Connected) { App.Debug("Speaker: session dropped: " + (session.LastError ?? "closed")); closed.TrySetResult(); }
+                    if (connectedOnce && !session.Connected)
+                    {
+                        App.Debug($"Speaker: session dropped: {session.LastError ?? "closed"}");
+                        closed.TrySetResult();
+                    }
                     SetStatus(Describe(session));
                 };
                 player = session;
@@ -103,26 +129,45 @@ public sealed class Speaker
                 attempt = 0;
                 await PairAsync(session);
 
-                // ConnectAsync may have completed just as the session dropped; if so, react now
+                // ConnectAsync may have completed just as the session dropped; if so, react now.
                 if (!session.Connected) closed.TrySetResult();
-                await closed.Task.WaitAsync(ct);   // runs until the session drops
+                // Runs until the session drops.
+                await closed.Task.WaitAsync(ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 return;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
             {
-                App.Debug("Speaker: " + ex.Message);
+                App.Debug($"Speaker: {ex.Message}");
                 SetStatus(ex.Message);
             }
 
-            try { Interlocked.Exchange(ref player, null)?.Dispose(); } catch (Exception ex) { App.Debug("Speaker cleanup: " + ex.Message); }
-            if (ct.IsCancellationRequested || !App.Client.IsConnected) { SetStatus("Off"); return; }
+            try
+            {
+                Interlocked.Exchange(ref player, null)?.Dispose();
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                App.Debug($"Speaker cleanup: {ex.Message}");
+            }
+            if (ct.IsCancellationRequested || !App.Client.IsConnected)
+            {
+                SetStatus("Off");
+                return;
+            }
 
             TimeSpan delay = Backoff[Math.Min(attempt++, Backoff.Length - 1)];
             SetStatus($"Reconnecting in {delay.TotalSeconds:0}s…");
-            try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { return; }
+            try
+            {
+                await Task.Delay(delay, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
     }
 
@@ -141,7 +186,7 @@ public sealed class Speaker
         }
         catch (ApiException ex)
         {
-            App.Log("Speaker pairing: " + ex.Message);
+            App.Log($"Speaker pairing: {ex.Message}");
         }
     }
 
@@ -159,4 +204,3 @@ public sealed class Speaker
         App.Dispatcher.TryEnqueue(() => Changed?.Invoke());
     }
 }
-

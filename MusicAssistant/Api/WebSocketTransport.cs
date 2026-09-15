@@ -13,18 +13,26 @@ public sealed class WebSocketTransport : IMassTransport
     private ClientWebSocket?         socket;
     private CancellationTokenSource? readCts;
 
+    /// <inheritdoc/>
     public string HttpBaseUrl { get; }
+
+    /// <inheritdoc/>
     public bool   IsRemote    => false;
 
+    /// <inheritdoc/>
     public event Action<string>?     MessageReceived;
+
+    /// <inheritdoc/>
     public event Action<Exception?>? Closed;
 
     /// <summary>Accepts http(s):// or ws(s):// addresses, with or without a trailing /ws.</summary>
+    /// <param name="serverAddress">The server address as the user typed it.</param>
     public WebSocketTransport(string serverAddress)
     {
         (HttpBaseUrl, wsUrl) = NormalizeAddress(serverAddress);
     }
 
+    /// <inheritdoc/>
     public async Task ConnectAsync(CancellationToken ct)
     {
         socket = new ClientWebSocket();
@@ -35,26 +43,42 @@ public sealed class WebSocketTransport : IMassTransport
         _ = Task.Run(() => ReadLoopAsync(readCts.Token));
     }
 
+    /// <inheritdoc/>
     public async Task SendAsync(string message)
     {
         if (socket is not { State: WebSocketState.Open }) throw new ApiException(0, "Not connected");
         byte[] bytes = Encoding.UTF8.GetBytes(message);
         await sendLock.WaitAsync();
-        try { await socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None); }
-        finally { sendLock.Release(); }
+        try
+        {
+            await socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+        finally
+        {
+            sendLock.Release();
+        }
     }
 
+    /// <inheritdoc/>
     public async Task CloseAsync()
     {
         readCts?.Cancel();
         if (socket is { State: WebSocketState.Open })
         {
-            try { await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None); } catch { }
+            try
+            {
+                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None);
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                // Best-effort goodbye; the socket is disposed below either way.
+            }
         }
         socket?.Dispose();
         socket = null;
     }
 
+    /// <summary>Start closing the socket without waiting for it to finish.</summary>
     public void Dispose() => _ = CloseAsync();
 
     private async Task ReadLoopAsync(CancellationToken ct)
@@ -78,8 +102,14 @@ public sealed class WebSocketTransport : IMassTransport
                 MessageReceived?.Invoke(Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length));
             }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { error = ex; }
+        catch (OperationCanceledException)
+        {
+            // Closed on purpose; CloseAsync cancelled the read.
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            error = ex;
+        }
 
         if (!ct.IsCancellationRequested) Closed?.Invoke(error);
     }
@@ -87,7 +117,7 @@ public sealed class WebSocketTransport : IMassTransport
     private static (string httpBase, Uri wsUrl) NormalizeAddress(string address)
     {
         address = address.Trim().TrimEnd('/');
-        if (!address.Contains("://")) address = "http://" + address;
+        if (!address.Contains("://")) address = $"http://{address}";
 
         var uri = new Uri(address, UriKind.Absolute);
         (string httpScheme, string wsScheme) = uri.Scheme switch

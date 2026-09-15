@@ -27,7 +27,8 @@ public static partial class RemoteId
     {
         string text = remoteId.Trim().ToUpperInvariant().Replace('9', '2');
         var output = new List<byte>(16);
-        int value = 0, bits = 0;
+        int value = 0;
+        int bits  = 0;
         foreach (char ch in text)
         {
             int index = Alphabet.IndexOf(ch);
@@ -51,8 +52,8 @@ public static partial class RemoteId
     public static string VerifyAndSanitizeSdp(string? sdp, string remoteId)
     {
         if (string.IsNullOrEmpty(sdp)) throw new InvalidOperationException("No SDP in answer");
-        byte[] expected  = Decode(remoteId);
-        string sanitized = WeakFingerprintLine().Replace(sdp, "");
+        byte[]          expected  = Decode(remoteId);
+        string          sanitized = WeakFingerprintLine().Replace(sdp, "");
         MatchCollection matches   = Sha256Fingerprint().Matches(sanitized);
         if (matches.Count == 0) throw new InvalidOperationException("No SHA-256 fingerprint in answer");
 

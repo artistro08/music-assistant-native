@@ -31,12 +31,16 @@ public sealed class TimeFilter
     private double offsetDriftCovariance;
     private double driftCovariance;
 
-    // Snapshot read by the conversion functions
+    // Snapshot read by the conversion functions.
     private long   elementLastUpdate;
     private double elementOffset;
     private double elementDrift;
     private bool   elementUseDrift;
 
+    /// <summary>Creates a filter with the given process noise and forgetting factor.</summary>
+    /// <param name="processStdDev">Standard deviation of the offset process noise, in microseconds.</param>
+    /// <param name="forgetFactor">How much the covariance is inflated when a measurement lands far outside the expected error.</param>
+    /// <param name="driftProcessStdDev">Standard deviation of the drift process noise.</param>
     public TimeFilter(double processStdDev = 0.0, double forgetFactor = 2.0, double driftProcessStdDev = 1e-11)
     {
         processVariance      = processStdDev * processStdDev;
@@ -44,13 +48,52 @@ public sealed class TimeFilter
         forgetVarianceFactor = forgetFactor * forgetFactor;
     }
 
-    public int    Count          { get { lock (gate) return count; } }
-    public bool   IsSynchronized { get { lock (gate) return count >= 2 && !double.IsInfinity(offsetCovariance); } }
-    public double Offset         { get { lock (gate) return offset; } }
-    public double Drift          { get { lock (gate) return drift; } }
-    /// <summary>Standard deviation of the offset estimate, in microseconds.</summary>
-    public double Error          { get { lock (gate) return Math.Sqrt(offsetCovariance); } }
+    /// <summary>Number of measurements the filter has taken in, capped at 100.</summary>
+    public int Count
+    {
+        get
+        {
+            lock (gate) return count;
+        }
+    }
 
+    /// <summary>Whether the filter has enough measurements to convert between the clocks.</summary>
+    public bool IsSynchronized
+    {
+        get
+        {
+            lock (gate) return (count >= 2) && !double.IsInfinity(offsetCovariance);
+        }
+    }
+
+    /// <summary>Estimated server clock minus client clock, in microseconds.</summary>
+    public double Offset
+    {
+        get
+        {
+            lock (gate) return offset;
+        }
+    }
+
+    /// <summary>Estimated rate at which the offset changes, in microseconds per microsecond.</summary>
+    public double Drift
+    {
+        get
+        {
+            lock (gate) return drift;
+        }
+    }
+
+    /// <summary>Standard deviation of the offset estimate, in microseconds.</summary>
+    public double Error
+    {
+        get
+        {
+            lock (gate) return Math.Sqrt(offsetCovariance);
+        }
+    }
+
+    /// <summary>Corrects the estimate with one NTP-style measurement.</summary>
     /// <param name="measurement">((T2 - T1) + (T3 - T4)) / 2</param>
     /// <param name="maxError">((T4 - T1) - (T3 - T2)) / 2, half the round trip</param>
     /// <param name="timeAdded">client time the sample was taken (T4)</param>
@@ -87,7 +130,7 @@ public sealed class TimeFilter
                 return;
             }
 
-            // Predict
+            // Predict.
             double predictedOffset = offset + drift * dt;
             double dtSquared       = dt * dt;
             double newDriftCovariance       = driftCovariance + dt * driftProcessVariance;
@@ -96,7 +139,7 @@ public sealed class TimeFilter
 
             double residual = measurement - predictedOffset;
 
-            // Adaptive forgetting once there is history
+            // Adaptive forgetting once there is history.
             if (count < 100)
             {
                 count++;
@@ -108,7 +151,7 @@ public sealed class TimeFilter
                 newOffsetCovariance      *= forgetVarianceFactor;
             }
 
-            // Correct
+            // Correct.
             double uncertainty = 1.0 / Math.Max(newOffsetCovariance + measurementVariance, 1e-9);
             double offsetGain  = newOffsetCovariance * uncertainty;
             double driftGain   = newOffsetDriftCovariance * uncertainty;
@@ -132,14 +175,18 @@ public sealed class TimeFilter
         elementUseDrift   = useDrift;
     }
 
-    // Real clocks drift far under this; a larger fitted value is relay-jitter noise. Both transforms use the
-    // capped value AND anchor the drift term at the last update (drift * elapsed, never drift * absolute clock),
-    // so offset and drift stay a consistent inverse pair regardless of the cap.
+    /// <summary>
+    /// Real clocks drift far under this; a larger fitted value is relay-jitter noise. Both transforms use the
+    /// capped value AND anchor the drift term at the last update (drift * elapsed, never drift * absolute clock),
+    /// so offset and drift stay a consistent inverse pair regardless of the cap.
+    /// </summary>
     private const double MaxDrift = 150e-6;
 
     private double EffectiveDrift => elementUseDrift ? Math.Clamp(elementDrift, -MaxDrift, MaxDrift) : 0.0;
 
     /// <summary>T_server = T_client + offset + drift * (T_client - T_last_update).</summary>
+    /// <param name="clientTime">A local clock time in microseconds.</param>
+    /// <returns>The matching server clock time in microseconds.</returns>
     public long ComputeServerTime(long clientTime)
     {
         lock (gate)
@@ -150,6 +197,8 @@ public sealed class TimeFilter
     }
 
     /// <summary>Inverse of ComputeServerTime, with the drift term anchored at the last update.</summary>
+    /// <param name="serverTime">A server clock time in microseconds.</param>
+    /// <returns>The matching local clock time in microseconds.</returns>
     public long ComputeClientTime(long serverTime)
     {
         lock (gate)
@@ -162,6 +211,7 @@ public sealed class TimeFilter
         }
     }
 
+    /// <summary>Forgets every measurement so the next one starts the estimate over.</summary>
     public void Reset()
     {
         lock (gate)

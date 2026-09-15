@@ -19,8 +19,11 @@ public sealed partial class LibraryPage : Page
     private readonly ObservableCollection<MediaItem> items = [];
     private string mediaType = "albums";
     private int    offset;
-    private int    loadVersion;   // bumped per reload so a slow page for the previous listing cannot land in this one
 
+    /// <summary>Bumped per reload so a slow page for the previous listing cannot land in this one.</summary>
+    private int    loadVersion;
+
+    /// <summary>Creates the library page with the card grid and track list sharing one item collection.</summary>
     public LibraryPage()
     {
         InitializeComponent();
@@ -28,20 +31,21 @@ public sealed partial class LibraryPage : Page
         List.ItemsSource = items;
     }
 
+    /// <inheritdoc/>
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         string requested = e.Parameter as string ?? "albums";
 
-        // Coming back to the same listing: keep items and scroll position
-        if (requested == mediaType && items.Count > 0) return;
+        // Coming back to the same listing: keep items and scroll position.
+        if ((requested == mediaType) && (items.Count > 0)) return;
 
         mediaType = requested;
         TitleText.Text = mediaType switch
         {
-            "artists"   => "Artists",
-            "albums"    => "Albums",
-            "tracks"    => "Tracks",
-            "playlists" => "Playlists",
+            "artists"    => "Artists",
+            "albums"     => "Albums",
+            "tracks"     => "Tracks",
+            "playlists"  => "Playlists",
             "radios"     => "Radio",
             "audiobooks" => "Audiobooks",
             "podcasts"   => "Podcasts",
@@ -54,11 +58,12 @@ public sealed partial class LibraryPage : Page
         CardGrid.Visibility = asList ? Visibility.Collapsed : Visibility.Visible;
 
         // The footer element can only live in one list at a time: detach it from wherever it is before attaching it,
-        // or switching between Albums and Tracks (same cached page) throws and the navigation fails half-done
+        // or switching between Albums and Tracks (same cached page) throws and the navigation fails half-done.
         ((Grid)Content).Children.Remove(Footer);
         List.Footer     = null;
         CardGrid.Footer = null;
-        if (asList) List.Footer = Footer; else CardGrid.Footer = Footer;
+        if (asList) List.Footer = Footer;
+        else CardGrid.Footer = Footer;
 
         _ = ReloadAsync();
     }
@@ -75,12 +80,15 @@ public sealed partial class LibraryPage : Page
     private async Task LoadPageAsync()
     {
         int version = loadVersion;
-        Busy.IsActive = true; Busy.Visibility = Visibility.Visible;
+        Busy.IsActive = true;
+        Busy.Visibility = Visibility.Visible;
         MoreButton.Visibility = Visibility.Collapsed;
         try
         {
             List<MediaItem> page = await App.Client.GetLibraryItemsAsync(mediaType, SearchBox.Text, FavoritesToggle.IsChecked == true, PageSize, offset);
-            if (version != loadVersion) return;   // listing, filter or favorites changed while this page loaded
+
+            // Listing, filter or favorites changed while this page loaded.
+            if (version != loadVersion) return;
             foreach (MediaItem item in page) items.Add(item);
             offset += page.Count;
             MoreButton.Visibility = page.Count == PageSize ? Visibility.Visible : Visibility.Collapsed;
@@ -92,7 +100,11 @@ public sealed partial class LibraryPage : Page
         }
         finally
         {
-            if (version == loadVersion) { Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed; }
+            if (version == loadVersion)
+            {
+                Busy.IsActive = false;
+                Busy.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
@@ -125,17 +137,28 @@ public sealed partial class LibraryPage : Page
     private void OnGridSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (CardGrid.ItemsPanelRoot is not ItemsWrapGrid panel) return;
-        const int columns = 6, bleed = 14, gap = 12, textBlock = 60;   // gap = BareGridViewItemStyle margin, bleed = gap/2 + card padding
+        const int columns = 6;
+
+        // Bleed = gap/2 + card padding.
+        const int bleed = 14;
+
+        // Gap = BareGridViewItemStyle margin.
+        const int gap = 12;
+        const int textBlock = 60;
 
         double content   = Math.Min(e.NewSize.Width - CardGrid.Padding.Left - CardGrid.Padding.Right, (double)Application.Current.Resources["ContentMaxWidth"]);
         double available = content + 2 * bleed;
-        double cell      = Math.Max(48, Math.Floor((available - 1) / columns));   // 1px slack so rounding can never push a card to the next row
-        if (Math.Abs(panel.ItemWidth - cell) < 0.5 && Math.Abs(panel.Width - cell * columns) < 0.5) return;
+
+        // 1px slack so rounding can never push a card to the next row.
+        double cell      = Math.Max(48, Math.Floor((available - 1) / columns));
+        if ((Math.Abs(panel.ItemWidth - cell) < 0.5) && (Math.Abs(panel.Width - cell * columns) < 0.5)) return;
 
         panel.HorizontalAlignment = HorizontalAlignment.Center;
         panel.Width      = cell * columns;
         panel.ItemWidth  = cell;
-        panel.ItemHeight = cell - gap + textBlock;   // art is (cell - gap - padding) square, plus padding and text
+
+        // Art is (cell - gap - padding) square, plus padding and text.
+        panel.ItemHeight = cell - gap + textBlock;
     }
 
     private void OnFilterChanged(object sender, RoutedEventArgs e) => _ = ReloadAsync();

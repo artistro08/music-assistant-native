@@ -23,6 +23,8 @@ public sealed class LocalImageProxy : IDisposable
     /// <summary>Base URL to substitute for the server's own base URL.</summary>
     public string BaseUrl { get; }
 
+    /// <summary>Creates the proxy on a free loopback port for the given peer; it serves nothing until <see cref="Start"/>.</summary>
+    /// <param name="peer">The remote connection whose HTTP proxy channel carries the image requests.</param>
     public LocalImageProxy(RemotePeer peer)
     {
         this.peer = peer;
@@ -36,6 +38,7 @@ public sealed class LocalImageProxy : IDisposable
         listener.Prefixes.Add($"http://127.0.0.1:{port}/{nonce}/");
     }
 
+    /// <summary>Starts listening and serving image requests in the background; does nothing if it is already listening.</summary>
     public void Start()
     {
         if (listener.IsListening) return;
@@ -44,12 +47,14 @@ public sealed class LocalImageProxy : IDisposable
         _ = Task.Run(() => ServeAsync(cts.Token));
     }
 
+    /// <summary>Stops accepting requests and cancels the ones in progress.</summary>
     public void Stop()
     {
         cts?.Cancel();
         if (listener.IsListening) listener.Stop();
     }
 
+    /// <summary>Stops the proxy and releases the HTTP listener.</summary>
     public void Dispose()
     {
         Stop();
@@ -61,9 +66,18 @@ public sealed class LocalImageProxy : IDisposable
         while (!ct.IsCancellationRequested)
         {
             HttpListenerContext context;
-            try { context = await listener.GetContextAsync(); }
-            catch (Exception) when (ct.IsCancellationRequested || !listener.IsListening) { return; }
-            catch (Exception) { continue; }
+            try
+            {
+                context = await listener.GetContextAsync();
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex) && (ct.IsCancellationRequested || !listener.IsListening))
+            {
+                return;
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                continue;
+            }
 
             _ = Task.Run(() => HandleAsync(context, ct), ct);
         }
@@ -74,11 +88,11 @@ public sealed class LocalImageProxy : IDisposable
         HttpListenerResponse response = context.Response;
         try
         {
-            // Strip the nonce prefix; refuse anything that is not an allowed GET
+            // Strip the nonce prefix; refuse anything that is not an allowed GET.
             string path = context.Request.Url?.PathAndQuery ?? "";
             path = path.StartsWith($"/{nonce}", StringComparison.Ordinal) ? path[(nonce.Length + 1)..] : "";
 
-            if (context.Request.HttpMethod != "GET" || !AllowedPrefixes.Any(p => path.StartsWith(p, StringComparison.Ordinal)))
+            if ((context.Request.HttpMethod != "GET") || !AllowedPrefixes.Any(p => path.StartsWith(p, StringComparison.Ordinal)))
             {
                 response.StatusCode = 404;
                 response.Close();
@@ -93,9 +107,16 @@ public sealed class LocalImageProxy : IDisposable
             await response.OutputStream.WriteAsync(reply.Body, ct);
             response.Close();
         }
-        catch (Exception)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            try { response.StatusCode = 502; response.Close(); } catch { }
+            try
+            {
+                response.StatusCode = 502;
+                response.Close();
+            }
+            catch (Exception cleanupEx) when (ExceptionFilters.IsRecoverable(cleanupEx))
+            {
+            }
         }
     }
 }

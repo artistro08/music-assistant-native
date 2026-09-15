@@ -22,10 +22,17 @@ public sealed partial class QueuePage : Page
     private int     currentIndex = -1;
     private string? lastImageUrl;
     private int     dragFromPosition = -1;
-    private bool    reordering;   // from drag start until the server confirmed the move; periodic reloads would undo the drop
-    private int     loadVersion;  // bumped per fetch and per drag, so an older or overlapping fetch cannot repaint over newer state
-    private int     inFlight;     // fetches running; a periodic reload waits for the fetch in flight; on a slow connection each tick would otherwise supersede the last and none would land
 
+    /// <summary>From drag start until the server confirmed the move; periodic reloads would undo the drop.</summary>
+    private bool    reordering;
+
+    /// <summary>Bumped per fetch and per drag, so an older or overlapping fetch cannot repaint over newer state.</summary>
+    private int     loadVersion;
+
+    /// <summary>Fetches running; a periodic reload waits for the fetch in flight; on a slow connection each tick would otherwise supersede the last and none would land.</summary>
+    private int     inFlight;
+
+    /// <summary>Creates the Now Playing page and follows app state changes while the page is in the visual tree.</summary>
     public QueuePage()
     {
         InitializeComponent();
@@ -33,7 +40,11 @@ public sealed partial class QueuePage : Page
         // Subscribed for the page's time in the tree, not per navigation: the window closes the panel by clearing
         // the frame's content, which raises Unloaded but never OnNavigatedFrom, and a leaked subscription would
         // keep an invisible page refetching the queue once a second.
-        Loaded   += (_, _) => { App.StateChanged += OnStateChanged; _ = LoadAsync(force: true); };
+        Loaded   += (_, _) =>
+        {
+            App.StateChanged += OnStateChanged;
+            _ = LoadAsync(force: true);
+        };
         Unloaded += (_, _) => App.StateChanged -= OnStateChanged;
     }
 
@@ -70,43 +81,50 @@ public sealed partial class QueuePage : Page
         {
             PlayedList.ItemsSource = NowPlayingList.ItemsSource = UpNextList.ItemsSource = null;
             NowPlayingSection.Visibility = UpNextHeader.Visibility = Visibility.Collapsed;
-            Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
+            Busy.IsActive = false;
+            Busy.Visibility = Visibility.Collapsed;
             EmptyText.Visibility = Visibility.Visible;
             return;
         }
 
-        // Pause/play toggles the level bars without changing the queue, so refresh them every state change
+        // Pause/play toggles the level bars without changing the queue, so refresh them every state change.
         UpdateNowPlaying();
 
-        // A reorder in flight owns the list until the server has answered; reloading now would snap the row back
+        // A reorder in flight owns the list until the server has answered; reloading now would snap the row back.
         if (reordering && !force) return;
 
-        // Refetch items only when the queue identity, length or position changed, or something else reordered it
-        bool changed = force || queue.QueueId != loadedQueueId || queue.Items != loadedCount || (queue.CurrentIndex ?? -1) != currentIndex
-            || queue.NextItem?.QueueItemId != upNext.FirstOrDefault()?.QueueItemId;
-        if (!changed || (inFlight > 0 && !force)) return;   // the next state change re-checks once this fetch has landed
+        // Refetch items only when the queue identity, length or position changed, or something else reordered it.
+        bool changed = force || (queue.QueueId != loadedQueueId) || (queue.Items != loadedCount) || ((queue.CurrentIndex ?? -1) != currentIndex)
+            || (queue.NextItem?.QueueItemId != upNext.FirstOrDefault()?.QueueItemId);
+
+        // The next state change re-checks once this fetch has landed.
+        if (!changed || ((inFlight > 0) && !force)) return;
 
         int version = ++loadVersion;
         inFlight++;
         try
         {
             List<QueueItem> items = await App.Client.GetQueueItemsAsync(queue.QueueId);
-            if (version != loadVersion) return;   // a newer fetch or a drag started meanwhile
+
+            // A newer fetch or a drag started meanwhile.
+            if (version != loadVersion) return;
             loadedQueueId = queue.QueueId;
             loadedCount   = queue.Items;
             currentIndex  = queue.CurrentIndex ?? -1;
             allItems      = items;
 
-            bool playing = currentIndex >= 0 && currentIndex < items.Count;
+            bool playing = (currentIndex >= 0) && (currentIndex < items.Count);
             QueueItem? current = playing ? items[currentIndex] : null;
             upNext = new ObservableCollection<QueueItem>(playing ? items.Skip(currentIndex + 1) : items);
 
             PlayedList.ItemsSource     = playing ? items.Take(currentIndex).ToList() : null;
             NowPlayingList.ItemsSource = current is null ? null : new List<QueueItem> { current };
             UpNextList.ItemsSource     = upNext;
-            if (current is not null) NowPlayingList.SelectedIndex = 0;   // selection draws the accent line on the current track
 
-            PlayedList.Visibility        = playing && currentIndex > 0 ? Visibility.Visible : Visibility.Collapsed;
+            // Selection draws the accent line on the current track.
+            if (current is not null) NowPlayingList.SelectedIndex = 0;
+
+            PlayedList.Visibility        = playing && (currentIndex > 0) ? Visibility.Visible : Visibility.Collapsed;
             NowPlayingSection.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
             UpNextHeader.Visibility      = upNext.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             UpNextText.Text              = $"UP NEXT   {upNext.Count}";
@@ -114,7 +132,7 @@ public sealed partial class QueuePage : Page
             UpdateNowPlaying();
 
             // Open with the current track at the top; earlier tracks are above it. The new lists have to be laid out
-            // first, or the header has no position yet and the request scrolls nowhere
+            // first, or the header has no position yet and the request scrolls nowhere.
             if (playing)
             {
                 UpNextList.UpdateLayout();
@@ -128,7 +146,11 @@ public sealed partial class QueuePage : Page
         finally
         {
             inFlight--;
-            if (version == loadVersion) { Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed; }
+            if (version == loadVersion)
+            {
+                Busy.IsActive = false;
+                Busy.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
@@ -138,7 +160,7 @@ public sealed partial class QueuePage : Page
         bool playing = App.ActivePlayer?.IsPlaying == true;
         foreach (QueueItem item in allItems)
         {
-            item.IsNowPlaying = playing && item.SortIndex == currentIndex;
+            item.IsNowPlaying = playing && (item.SortIndex == currentIndex);
         }
     }
 
@@ -148,9 +170,15 @@ public sealed partial class QueuePage : Page
 
     private void OnDragStarting(object sender, DragItemsStartingEventArgs e)
     {
-        if (e.Items.FirstOrDefault() is not QueueItem item) { e.Cancel = true; return; }
+        if (e.Items.FirstOrDefault() is not QueueItem item)
+        {
+            e.Cancel = true;
+            return;
+        }
         reordering       = true;
-        loadVersion++;   // drop any fetch already in flight so it cannot replace the list under the drag
+
+        // Drop any fetch already in flight so it cannot replace the list under the drag.
+        loadVersion++;
         dragFromPosition = upNext.IndexOf(item);
     }
 
@@ -158,13 +186,13 @@ public sealed partial class QueuePage : Page
     {
         try
         {
-            if (args.Items.FirstOrDefault() is not QueueItem item || dragFromPosition < 0 || Queue is not { } queue) return;
+            if (args.Items.FirstOrDefault() is not QueueItem item || (dragFromPosition < 0) || Queue is not { } queue) return;
 
-            // Up Next holds only tracks after the current one, so a shift inside it is the same shift in the whole queue
+            // Up Next holds only tracks after the current one, so a shift inside it is the same shift in the whole queue.
             int shift = upNext.IndexOf(item) - dragFromPosition;
             if (shift == 0) return;
 
-            // The server owns the order; ask it to move and reload from its answer
+            // The server owns the order; ask it to move and reload from its answer.
             await Run(() => App.Client.QueueCommandAsync(queue.QueueId, "move_item", new { queue_item_id = item.QueueItemId, pos_shift = shift }));
             await LoadAsync(force: true);
         }
@@ -206,8 +234,14 @@ public sealed partial class QueuePage : Page
 
     private static async Task Run(Func<Task> action)
     {
-        try { await action(); }
-        catch (Exception ex) { App.Window.ShowMessage(ex.Message); }
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            App.Window.ShowMessage(ex.Message);
+        }
     }
 
     private void OnImageOpened(object sender, RoutedEventArgs e) => Templates.FadeIn((UIElement)sender);

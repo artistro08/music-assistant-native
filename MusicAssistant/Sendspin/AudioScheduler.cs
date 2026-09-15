@@ -17,9 +17,15 @@ namespace MusicAssistant.Sendspin;
 /// </remarks>
 public sealed class AudioScheduler
 {
+    /// <summary>A decoded audio chunk waiting for its play time.</summary>
+    /// <param name="Samples">Interleaved float samples in the output device's channel layout.</param>
+    /// <param name="Frames">Number of frames in <paramref name="Samples"/>.</param>
+    /// <param name="ServerTimeUs">Server clock time the first frame must play, in microseconds.</param>
+    /// <param name="Generation">The scheduler generation the chunk was decoded in; stale generations are ignored.</param>
     public sealed record Chunk(float[] Samples, int Frames, long ServerTimeUs, int Generation);
 
-    private const int   CorrectionSpacing = 200;    // frames between one-frame corrections: 0.5% max speed change
+    /// <summary>Frames between one-frame corrections: 0.5% max speed change.</summary>
+    private const int   CorrectionSpacing = 200;
     private const float GainTimeConstantMs = 15f;
 
     // Below the deadband the audio is left untouched (LAN: sub-ms for lock-step; relay: wide, so a solo speaker
@@ -32,7 +38,9 @@ public sealed class AudioScheduler
     private readonly PriorityQueue<Chunk, long> queue = new();
 
     private Chunk? current;
-    private int    offset;              // frames already consumed from `current`
+
+    /// <summary>Frames already consumed from `current`.</summary>
+    private int    offset;
     private int    framesSinceCorrection;
     private int    generation;
     private float  gain = 1f;
@@ -41,9 +49,17 @@ public sealed class AudioScheduler
     private int    droppedLate;
     private int    resyncs;
 
+    /// <summary>Sample rate of the output device the scheduler renders for.</summary>
     public int SampleRate { get; }
+
+    /// <summary>Channel count of the output device the scheduler renders for.</summary>
     public int Channels   { get; }
 
+    /// <summary>Creates a scheduler for one output device, tuned for the LAN or the remote relay.</summary>
+    /// <param name="timeFilter">The clock filter that maps server timestamps to local time.</param>
+    /// <param name="sampleRate">The output device's sample rate.</param>
+    /// <param name="channels">The output device's channel count.</param>
+    /// <param name="remote">Whether audio arrives over the remote relay instead of the local network.</param>
     public AudioScheduler(TimeFilter timeFilter, int sampleRate, int channels, bool remote)
     {
         this.timeFilter = timeFilter;
@@ -61,12 +77,28 @@ public sealed class AudioScheduler
 
     /// <summary>Last measured error between the output timeline and the target, microseconds (positive = late).</summary>
     public long SyncErrorUs => Interlocked.Read(ref syncErrorUs);
-    public int  Resyncs     => resyncs;
-    public int  DroppedLateChunks => droppedLate;
-    public bool HasAudio { get { lock (gate) return current is not null || queue.Count > 0; } }
 
+    /// <summary>Number of one-shot resyncs that skipped late audio.</summary>
+    public int  Resyncs     => resyncs;
+
+    /// <summary>Number of chunks dropped whole because they were already past their play time.</summary>
+    public int  DroppedLateChunks => droppedLate;
+
+    /// <summary>Whether a chunk is playing or waiting in the queue.</summary>
+    public bool HasAudio
+    {
+        get
+        {
+            lock (gate) return current is not null || (queue.Count > 0);
+        }
+    }
+
+    /// <summary>Sets the volume the output ramps toward.</summary>
+    /// <param name="linear">Linear amplitude from 0 to 1; values outside are clamped.</param>
     public void SetGain(float linear) => targetGain = Math.Clamp(linear, 0f, 1f);
 
+    /// <summary>Queues a chunk by its server timestamp, ignoring it when it belongs to a cleared generation.</summary>
+    /// <param name="chunk">The decoded chunk.</param>
     public void Enqueue(Chunk chunk)
     {
         lock (gate)
@@ -89,9 +121,19 @@ public sealed class AudioScheduler
         }
     }
 
-    public int CurrentGeneration { get { lock (gate) return generation; } }
+    /// <summary>The generation new chunks must carry to be accepted; it advances on every <see cref="Clear"/>.</summary>
+    public int CurrentGeneration
+    {
+        get
+        {
+            lock (gate) return generation;
+        }
+    }
 
     /// <summary>Render callback: fill `frames` frames whose first frame plays at `firstFrameTimeUs`.</summary>
+    /// <param name="buffer">The pre-cleared interleaved output buffer.</param>
+    /// <param name="frames">Number of frames to fill.</param>
+    /// <param name="firstFrameTimeUs">Local time the first frame leaves the device, in microseconds.</param>
     public void Render(Span<float> buffer, int frames, long firstFrameTimeUs)
     {
         int written = 0;
@@ -99,7 +141,11 @@ public sealed class AudioScheduler
 
         lock (gate)
         {
-            if (!timeFilter.IsSynchronized) { ApplyGain(buffer, frames); return; }
+            if (!timeFilter.IsSynchronized)
+            {
+                ApplyGain(buffer, frames);
+                return;
+            }
 
             while (written < frames)
             {
@@ -111,39 +157,51 @@ public sealed class AudioScheduler
 
                 long slotTime   = firstFrameTimeUs + (long)(written * frameUs);
                 long targetTime = timeFilter.ComputeClientTime(current.ServerTimeUs) + OutputDelayUs + (long)(offset * frameUs);
-                long error      = slotTime - targetTime;   // > 0: this sample is overdue
+                // Greater than 0: this sample is overdue.
+                long error      = slotTime - targetTime;
                 Interlocked.Exchange(ref syncErrorUs, error);
 
                 if (error > snapThresholdUs)
                 {
-                    // Late: skip what has already passed (one-shot resync)
+                    // Late: skip what has already passed (one-shot resync).
                     int skip = (int)(error / frameUs);
                     resyncs++;
-                    if (offset + skip >= current.Frames) { droppedLate++; current = null; continue; }
+                    if (offset + skip >= current.Frames)
+                    {
+                        droppedLate++;
+                        current = null;
+                        continue;
+                    }
                     offset += skip;
                     continue;
                 }
                 if (error < -snapThresholdUs)
                 {
-                    // Early: silence until the chunk is due
+                    // Early: silence until the chunk is due.
                     int wait = (int)Math.Min(frames - written, (-error) / frameUs);
                     if (wait <= 0) wait = 1;
-                    written += wait;   // buffer is pre-cleared
+                    // Buffer is pre-cleared.
+                    written += wait;
                     continue;
                 }
 
-                // Steady state: whole-frame nudges, spaced so the speed change stays under 0.5%
-                if (Math.Abs(error) > softDeadbandUs && framesSinceCorrection >= CorrectionSpacing)
+                // Steady state: whole-frame nudges, spaced so the speed change stays under 0.5%.
+                if ((Math.Abs(error) > softDeadbandUs) && (framesSinceCorrection >= CorrectionSpacing))
                 {
                     framesSinceCorrection = 0;
                     if (error > 0)
                     {
-                        offset++;   // running late: drop one frame
-                        if (offset >= current.Frames) { current = null; continue; }
+                        // Running late: drop one frame.
+                        offset++;
+                        if (offset >= current.Frames)
+                        {
+                            current = null;
+                            continue;
+                        }
                     }
                     else
                     {
-                        // running early: repeat one frame
+                        // Running early: repeat one frame.
                         current.Samples.AsSpan(offset * Channels, Channels).CopyTo(buffer.Slice(written * Channels, Channels));
                         written++;
                         if (written >= frames) break;
@@ -165,6 +223,7 @@ public sealed class AudioScheduler
     private float peak;
 
     /// <summary>Largest sample magnitude rendered since the last read (diagnostics).</summary>
+    /// <returns>The peak magnitude, after which the peak resets to 0.</returns>
     public float TakePeak() => Interlocked.Exchange(ref peak, 0f);
 
     /// <summary>Volume ramps toward its target with a short time constant so changes never click.</summary>
@@ -187,5 +246,3 @@ public sealed class AudioScheduler
         if (max > peak) peak = max;
     }
 }
-
-

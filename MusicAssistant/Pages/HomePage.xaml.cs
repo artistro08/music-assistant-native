@@ -15,6 +15,7 @@ public sealed partial class HomePage : Page
     private string playersSignature = "";
     private bool   loaded;
 
+    /// <summary>Creates the home page with its greeting and loads the players and recommendation rows the first time it appears.</summary>
     public HomePage()
     {
         InitializeComponent();
@@ -22,11 +23,21 @@ public sealed partial class HomePage : Page
 
         PlayersRow.ItemTemplate = (DataTemplate)Application.Current.Resources["PlayerCardTemplate"];
 
-        // The page is cached for back/forward, so load only once
-        Loaded += (_, _) => { if (!loaded) { loaded = true; _ = LoadAsync(); } };
+        // The page is cached for back/forward, so load only once.
+        Loaded += (_, _) =>
+        {
+            if (!loaded)
+            {
+                loaded = true;
+                _ = LoadAsync();
+            }
+        };
     }
 
+    /// <inheritdoc/>
     protected override void OnNavigatedTo(NavigationEventArgs e) => App.StateChanged += RefreshPlayers;
+
+    /// <inheritdoc/>
     protected override void OnNavigatedFrom(NavigationEventArgs e) => App.StateChanged -= RefreshPlayers;
 
     private static string Greeting()
@@ -36,16 +47,16 @@ public sealed partial class HomePage : Page
         return string.IsNullOrEmpty(name) ? part : $"{part}, {name}";
     }
 
-    // Players
+    // Players.
 
     /// <summary>Rebuild the players row only when something visible changed; player events arrive every second while playing.</summary>
     private void RefreshPlayers()
     {
-        // Fixed order (this PC first, then by name) so a player does not jump to another page when it pauses
+        // Fixed order (this PC first, then by name) so a player does not jump to another page when it pauses.
         var players = App.Client.Players.Values.Where(p => p.IsVisible)
             .OrderByDescending(p => p.PlayerId == Player.OwnPlayerId).ThenBy(p => p.Name).ToList();
 
-        string signature = string.Join("|", players.Select(p => $"{p.PlayerId}:{p.PlaybackState}:{p.NowPlayingText}")) + "#" + App.Settings.ActivePlayerId;
+        string signature = $"{string.Join("|", players.Select(p => $"{p.PlayerId}:{p.PlaybackState}:{p.NowPlayingText}"))}#{App.Settings.ActivePlayerId}";
         if (signature == playersSignature) return;
         playersSignature = signature;
 
@@ -55,7 +66,7 @@ public sealed partial class HomePage : Page
         PlayersRow.Visibility = players.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // Recommendations
+    // Recommendations.
 
     private async Task LoadAsync()
     {
@@ -77,7 +88,7 @@ public sealed partial class HomePage : Page
             AddRow("Recently played", "Pick up where you left off", recentTask.Result);
             foreach ((MediaItem folder, List<MediaItem> items) in rows) AddRow(folder.Name, folder.Subtitle, items);
 
-            // Second pass, after the page is up: fill in album cards the server sent without a cover
+            // Second pass, after the page is up: fill in album cards the server sent without a cover.
             if (await FillMissingAlbumArtAsync(recentTask.Result.Concat(rows.SelectMany(r => r.items))))
             {
                 foreach (MediaRow row in Rows.Children.OfType<MediaRow>()) row.Rebind();
@@ -90,8 +101,9 @@ public sealed partial class HomePage : Page
         }
         finally
         {
-            Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
-            EmptyText.Visibility = Rows.Children.Count == 0 && Picks.Visibility == Visibility.Collapsed ? Visibility.Visible : Visibility.Collapsed;
+            Busy.IsActive = false;
+            Busy.Visibility = Visibility.Collapsed;
+            EmptyText.Visibility = (Rows.Children.Count == 0) && (Picks.Visibility == Visibility.Collapsed) ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -99,8 +111,14 @@ public sealed partial class HomePage : Page
     {
         // Folders may already carry items; otherwise fetch the row on its own so one slow provider cannot block the page.
         if (folder.Items is { Count: > 0 }) return folder.Items;
-        try { return await App.Client.GetRecommendationItemsAsync(folder.Provider, folder.ItemId); }
-        catch (ApiException) { return []; }
+        try
+        {
+            return await App.Client.GetRecommendationItemsAsync(folder.Provider, folder.ItemId);
+        }
+        catch (ApiException)
+        {
+            return [];
+        }
     }
 
     /// <summary>
@@ -111,14 +129,17 @@ public sealed partial class HomePage : Page
     private static async Task<bool> FillMissingAlbumArtAsync(IEnumerable<MediaItem> items)
     {
         bool filled = false;
-        foreach (MediaItem? album in items.Where(i => i.MediaType == "album" && i.Uri.Length > 0 && i.FindImage() is null).DistinctBy(i => i.Uri))
+        foreach (MediaItem? album in items.Where(i => (i.MediaType == "album") && (i.Uri.Length > 0) && i.FindImage() is null).DistinctBy(i => i.Uri))
         {
             try
             {
                 await App.Client.GetAlbumTracksAsync(album.ItemId, album.Provider, album.Uri);
                 filled |= album.FindImage() is not null;
             }
-            catch (ApiException) { }   // no cover is not worth an error bar
+            catch (ApiException)
+            {
+                // No cover is not worth an error bar.
+            }
         }
         return filled;
     }

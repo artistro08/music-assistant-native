@@ -19,8 +19,12 @@ public static class MediaControls
 {
     private static SystemMediaTransportControls? controls;
     private static string  displaySignature = "";
-    private static string? lastTargetId;   // the player the keys last controlled or last saw playing
 
+    /// <summary>The player the keys last controlled or last saw playing.</summary>
+    private static string? lastTargetId;
+
+    /// <summary>Connects the window to Windows' media controls and keeps them in sync with the app's player state.</summary>
+    /// <param name="window">The main window whose handle the media session is registered for.</param>
     public static void Attach(Microsoft.UI.Xaml.Window window)
     {
         RegisterAppIdentity();
@@ -46,7 +50,8 @@ public static class MediaControls
     /// </summary>
     private static void RegisterAppIdentity()
     {
-        if (Packaging.IsPackaged) return;   // package identity covers name, icon and AppUserModelID
+        // Package identity covers name, icon and AppUserModelID.
+        if (Packaging.IsPackaged) return;
         string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
         try
         {
@@ -55,9 +60,9 @@ public static class MediaControls
             key?.SetValue("IconUri", iconPath);
             key?.SetValue("IconBackgroundColor", "FF0E8FE0");
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException)
         {
-            // Registry not writable: the overlay just shows a generic name
+            // Registry not writable: the overlay just shows a generic name.
         }
     }
 
@@ -73,7 +78,7 @@ public static class MediaControls
         Player? local    = Player.OwnPlayerId is { } id && App.Client.Players.GetValueOrDefault(id) is { IsVisible: true } p ? p : null;
 
         Player? target;
-        if (local is null || local.PlayerId == selected?.PlayerId || selected?.PlaybackState is "playing" or "paused") target = selected;
+        if (local is null || (local.PlayerId == selected?.PlayerId) || selected?.PlaybackState is "playing" or "paused") target = selected;
         else if (local.IsPlaying) target = local;
         // Both idle: the selected player, unless the keys last drove this PC's speaker. A paused WiiM goes idle after
         // 30 s, and an old queue left on this PC's speaker must not steal the next Play from it.
@@ -83,7 +88,7 @@ public static class MediaControls
         return target;
     }
 
-    // Windows → Music Assistant
+    // Windows → Music Assistant.
 
     private static void OnButtonPressed(SystemMediaTransportControls sender, SystemMediaTransportControlsButtonPressedEventArgs args)
     {
@@ -101,11 +106,15 @@ public static class MediaControls
         if (command is null) return;
 
         lastTargetId = player.PlayerId;
-        App.Log($"SMTC button {args.Button} -> {player.Name}");   // an external media key, headset or app press shows up here as the source
-        App.Dispatcher.TryEnqueue(() => App.SendPlayerCommand(player, command));   // this event arrives off the UI thread
+
+        // An external media key, headset or app press shows up here as the source.
+        App.Log($"SMTC button {args.Button} -> {player.Name}");
+
+        // This event arrives off the UI thread.
+        App.Dispatcher.TryEnqueue(() => App.SendPlayerCommand(player, command));
     }
 
-    // Music Assistant → Windows
+    // Music Assistant → Windows.
 
     /// <summary>
     /// Overlay art from the app's own art cache, so it gets the same retries and reuses the file the player bar
@@ -117,13 +126,13 @@ public static class MediaControls
         {
             if (await Templates.ArtFileAsync(imageUrl) is not { } path) return;
             StorageFile file = await StorageFile.GetFileFromPathAsync(path);
-            if (controls is null || signature != displaySignature) return;
+            if (controls is null || (signature != displaySignature)) return;
             controls.DisplayUpdater.Thumbnail = RandomAccessStreamReference.CreateFromFile(file);
             controls.DisplayUpdater.Update();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            App.Debug("SMTC thumbnail: " + ex.Message);
+            App.Debug($"SMTC thumbnail: {ex.Message}");
         }
     }
 
@@ -149,7 +158,7 @@ public static class MediaControls
         string album    = item?.MediaItem?.Album?.Name ?? media?.Album ?? "";
         string? imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 512) : media?.ImageUrl;
 
-        // Only push display metadata when it changed, to avoid re-fetching artwork every second
+        // Only push display metadata when it changed, to avoid re-fetching artwork every second.
         string signature = $"{title}|{artist}|{album}|{imageUrl}";
         if (signature != displaySignature)
         {
@@ -164,9 +173,9 @@ public static class MediaControls
             _ = ShowThumbnailAsync(signature, imageUrl);
         }
 
-        // Timeline for the overlay's progress bar
+        // Timeline for the overlay's progress bar.
         double duration = item?.Duration ?? media?.Duration ?? 0;
-        if (duration > 0 && queue is not null)
+        if ((duration > 0) && queue is not null)
         {
             double elapsed = queue.ElapsedNow;
             controls.UpdateTimelineProperties(new SystemMediaTransportControlsTimelineProperties

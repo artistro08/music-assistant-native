@@ -14,6 +14,7 @@ public sealed partial class LoginPage : Page
 {
     private CancellationTokenSource? oauthCts;
 
+    /// <summary>Creates the sign-in page, prefilled with the saved server address and Remote ID.</summary>
     public LoginPage()
     {
         InitializeComponent();
@@ -22,11 +23,13 @@ public sealed partial class LoginPage : Page
         OnTargetChanged(this, null!);
     }
 
+    /// <inheritdoc/>
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        if (e.Parameter is string message && message.Length > 0) ShowError(message);
+        if (e.Parameter is string message && (message.Length > 0)) ShowError(message);
     }
 
+    /// <inheritdoc/>
     protected override void OnNavigatedFrom(NavigationEventArgs e) => oauthCts?.Cancel();
 
     // =========================================================================
@@ -45,23 +48,23 @@ public sealed partial class LoginPage : Page
         string username = UsernameBox.Text.Trim();
         string password = PasswordBox.Password;
 
-        if (RemoteIdBox.Text.Trim().Length > 0 && remoteId is null)
+        if ((RemoteIdBox.Text.Trim().Length > 0) && remoteId is null)
         {
             ShowError("That Remote ID does not look right. It has 26 letters and digits, shown as 8-5-5-8 groups.");
             return;
         }
-        if ((server.Length == 0 && remoteId is null) || username.Length == 0 || password.Length == 0)
+        if (((server.Length == 0) && remoteId is null) || (username.Length == 0) || (password.Length == 0))
         {
             ShowError("A server address or Remote ID, plus username and password, are required.");
             return;
         }
 
-        SetBusy(true, remoteId is not null && server.Length == 0 ? "Connecting through Music Assistant remote access…" : "Signing in…");
+        SetBusy(true, remoteId is not null && (server.Length == 0) ? "Connecting through Music Assistant remote access…" : "Signing in…");
         try
         {
             await App.Window.LoginAsync(server, remoteId, username, password);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             ShowError(Describe(ex, server));
         }
@@ -96,7 +99,7 @@ public sealed partial class LoginPage : Page
         {
             ShowError("Home Assistant sign-in was canceled or timed out.");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             ShowError(Describe(ex, server));
         }
@@ -138,7 +141,7 @@ public sealed partial class LoginPage : Page
     private void SetBusy(bool busy, string? status = null)
     {
         SignInButton.IsEnabled          = !busy;
-        HomeAssistantButton.IsEnabled   = !busy && ServerBox.Text.Trim().Length > 0;
+        HomeAssistantButton.IsEnabled   = !busy && (ServerBox.Text.Trim().Length > 0);
         RemoteIdBox.IsEnabled           = !busy;
         ServerBox.IsEnabled             = !busy;
         Busy.Visibility                 = busy ? Visibility.Visible : Visibility.Collapsed;

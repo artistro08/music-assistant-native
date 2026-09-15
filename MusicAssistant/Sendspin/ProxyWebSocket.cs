@@ -19,22 +19,37 @@ public sealed class ProxyWebSocket : ISendspinSocket
     private readonly ClientWebSocket socket = new();
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim sendLock = new(1, 1);
-    private const int MaxMessage = 128 * 1024;   // hard cap on one inbound WebSocket message from the proxy
+
+    /// <summary>Hard cap on one inbound WebSocket message from the proxy.</summary>
+    private const int MaxMessage = 128 * 1024;
     private bool closedRaised;
 
+    /// <inheritdoc/>
     public event Action<string>? TextReceived;
+
+    /// <inheritdoc/>
     public event Action<byte[]>? BinaryReceived;
+
+    /// <inheritdoc/>
     public event Action<string>? Closed;
 
+    /// <summary>Prepares a socket to the server's /sendspin proxy; nothing connects until <see cref="OpenAsync"/>.</summary>
+    /// <param name="baseUrl">The Music Assistant server's http or https base URL.</param>
+    /// <param name="token">The signed-in user's access token, sent in the auth message.</param>
+    /// <param name="clientId">This player's Sendspin client_id.</param>
     public ProxyWebSocket(string baseUrl, string token, string clientId)
     {
         string ws = baseUrl.Replace("https://", "wss://", StringComparison.OrdinalIgnoreCase).Replace("http://", "ws://", StringComparison.OrdinalIgnoreCase).TrimEnd('/');
-        uri = new Uri(ws + "/sendspin");
+        uri = new Uri($"{ws}/sendspin");
         this.token    = token;
         this.clientId = clientId;
         socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
     }
 
+    /// <summary>Connects, authenticates with the proxy and starts the read loop.</summary>
+    /// <param name="ct">Cancels the connect and authentication.</param>
+    /// <returns>A task that completes once the proxy accepted the session.</returns>
+    /// <exception cref="InvalidOperationException">The proxy refused the session or the authentication.</exception>
     public async Task OpenAsync(CancellationToken ct)
     {
         await socket.ConnectAsync(uri, ct);
@@ -42,12 +57,12 @@ public sealed class ProxyWebSocket : ISendspinSocket
         string auth = JsonSerializer.Serialize(new { type = "auth", token, client_id = clientId });
         await socket.SendAsync(Encoding.UTF8.GetBytes(auth), WebSocketMessageType.Text, true, ct);
 
-        // First reply is auth_ok (or a close with a reason)
+        // First reply is auth_ok (or a close with a reason).
         byte[] buffer = new byte[4096];
         WebSocketReceiveResult result = await socket.ReceiveAsync(buffer, ct);
         if (result.MessageType != WebSocketMessageType.Text) throw new InvalidOperationException("Speaker proxy refused the session");
         using var reply = JsonDocument.Parse(buffer.AsMemory(0, result.Count));
-        if (reply.RootElement.TryGetProperty("type", out JsonElement type) && type.GetString() != "auth_ok")
+        if (reply.RootElement.TryGetProperty("type", out JsonElement type) && (type.GetString() != "auth_ok"))
         {
             throw new InvalidOperationException("Speaker proxy authentication failed");
         }
@@ -55,7 +70,10 @@ public sealed class ProxyWebSocket : ISendspinSocket
         _ = Task.Run(() => ReadLoopAsync(lifetime.Token));
     }
 
+    /// <inheritdoc/>
     public void SendText(string text)     => _ = SendAsync(Encoding.UTF8.GetBytes(text), WebSocketMessageType.Text);
+
+    /// <inheritdoc/>
     public void SendBinary(byte[] data)   => _ = SendAsync(data, WebSocketMessageType.Binary);
 
     private async Task SendAsync(byte[] data, WebSocketMessageType type)
@@ -82,16 +100,24 @@ public sealed class ProxyWebSocket : ISendspinSocket
         using var message = new MemoryStream();
         try
         {
-            while (!ct.IsCancellationRequested && socket.State == WebSocketState.Open)
+            while (!ct.IsCancellationRequested && (socket.State == WebSocketState.Open))
             {
                 message.SetLength(0);
                 WebSocketReceiveResult result;
                 do
                 {
                     result = await socket.ReceiveAsync(buffer, ct);
-                    if (result.MessageType == WebSocketMessageType.Close) { RaiseClosed("Speaker connection closed by server"); return; }
-                    // A Noise transport frame is at most 65535 bytes and control messages are small; cap well above that so no single message drives unbounded allocation
-                    if (message.Length + result.Count > MaxMessage) { RaiseClosed("Speaker message too large"); return; }
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        RaiseClosed("Speaker connection closed by server");
+                        return;
+                    }
+                    // A Noise transport frame is at most 65535 bytes and control messages are small; cap well above that so no single message drives unbounded allocation.
+                    if (message.Length + result.Count > MaxMessage)
+                    {
+                        RaiseClosed("Speaker message too large");
+                        return;
+                    }
                     message.Write(buffer, 0, result.Count);
                 }
                 while (!result.EndOfMessage);
@@ -105,19 +131,26 @@ public sealed class ProxyWebSocket : ISendspinSocket
         {
             RaiseClosed("Closed");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             // Any other escape (socket fault, or an unexpected error from a receive callback) must fail the connection
             // so Speaker's reconnect loop notices, rather than the read loop dying silently and hanging the session.
-            App.Log("Speaker read loop stopped: " + ex.Message);
+            App.Log($"Speaker read loop stopped: {ex.Message}");
             RaiseClosed("Speaker connection lost");
         }
     }
 
+    /// <inheritdoc/>
     public void Close()
     {
         lifetime.Cancel();
-        try { socket.Abort(); } catch (Exception) { }
+        try
+        {
+            socket.Abort();
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+        }
         RaiseClosed("Closed");
     }
 
@@ -128,6 +161,7 @@ public sealed class ProxyWebSocket : ISendspinSocket
         Closed?.Invoke(reason);
     }
 
+    /// <summary>Closes the socket and releases it.</summary>
     public void Dispose()
     {
         Close();

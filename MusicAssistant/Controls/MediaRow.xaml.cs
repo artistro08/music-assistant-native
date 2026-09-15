@@ -22,6 +22,10 @@ public sealed partial class MediaRow : UserControl
     private IList<object> items = [];
     private int page;
 
+    /// <summary>
+    /// Creates the row with the shared media card template and re-renders its cards whenever the image cache is dropped
+    /// while the row is in the visual tree.
+    /// </summary>
     public MediaRow()
     {
         InitializeComponent();
@@ -29,7 +33,12 @@ public sealed partial class MediaRow : UserControl
 
         // Re-render the visible page when the image cache is dropped (transport switch) so the cards re-resolve their
         // art against the new base URL. Subscribed only while in the tree, so a paged-away row does not leak.
-        Loaded   += (_, _) => { BuildSlots(); Templates.ImagesInvalidated -= Rebind; Templates.ImagesInvalidated += Rebind; };
+        Loaded   += (_, _) =>
+        {
+            BuildSlots();
+            Templates.ImagesInvalidated -= Rebind;
+            Templates.ImagesInvalidated += Rebind;
+        };
         Unloaded += (_, _) => Templates.ImagesInvalidated -= Rebind;
     }
 
@@ -48,12 +57,14 @@ public sealed partial class MediaRow : UserControl
         }
     }
 
+    /// <summary>Heading text shown above the row.</summary>
     public string Title
     {
         get => TitleText.Text;
         set => TitleText.Text = value;
     }
 
+    /// <summary>Secondary line under the heading; null or empty hides it.</summary>
     public string? Subtitle
     {
         get => SubtitleText.Text;
@@ -75,11 +86,13 @@ public sealed partial class MediaRow : UserControl
         }
     }
 
+    /// <summary>Template each slot renders its item with; defaults to the shared media card template.</summary>
     public DataTemplate ItemTemplate { get; set; }
 
     /// <summary>Show every item at once, wrapping into rows of five, instead of paging. No pager is shown.</summary>
     public bool ShowAll { get; set; }
 
+    /// <summary>Media items or players to show; setting it goes back to the first page and re-renders the slots.</summary>
     public IEnumerable<object> Items
     {
         get => items;
@@ -92,7 +105,7 @@ public sealed partial class MediaRow : UserControl
         }
     }
 
-    // Slots
+    // Slots.
 
     /// <summary>Slots to keep: one page, or enough full rows for every item when showing all.</summary>
     private int SlotsNeeded => ShowAll ? Math.Max(SlotCount, (int)Math.Ceiling(items.Count / (double)SlotCount) * SlotCount) : SlotCount;
@@ -100,12 +113,14 @@ public sealed partial class MediaRow : UserControl
     private void BuildSlots()
     {
         int needed = SlotsNeeded;
-        if (slots.Count >= needed) return;   // ponytail: slots only grow; a shrinking list leaves collapsed slots behind
+
+        // ponytail: slots only grow; a shrinking list leaves collapsed slots behind.
+        if (slots.Count >= needed) return;
 
         while (Slots.ColumnDefinitions.Count < SlotCount)
             Slots.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        // Card grids (players) have no hover bleed, so the gap is the real gap
+        // Card grids (players) have no hover bleed, so the gap is the real gap.
         if (ShowAll) Slots.ColumnSpacing = Slots.RowSpacing = 12;
 
         for (int i = slots.Count; i < needed; i++)
@@ -113,7 +128,7 @@ public sealed partial class MediaRow : UserControl
             int row = i / SlotCount;
             if (Slots.RowDefinitions.Count <= row) Slots.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            // A subtle button gives the hover/press surface around image and text, plus keyboard and narrator support for free
+            // A subtle button gives the hover/press surface around image and text, plus keyboard and narrator support for free.
             var slot = new Button
             {
                 Style                      = (Style)Application.Current.Resources["SubtleButtonStyle"],
@@ -185,12 +200,13 @@ public sealed partial class MediaRow : UserControl
     }
 
     private void OnPrev(object sender, RoutedEventArgs e) => TurnPage(-1);
+
     private void OnNext(object sender, RoutedEventArgs e) => TurnPage(+1);
 
     private void TurnPage(int direction)
     {
         int target = page + direction;
-        if (target < 0 || target >= PageCount) return;
+        if ((target < 0) || (target >= PageCount)) return;
         page = target;
         Render();
         Paging.Slide(Slots, direction);
@@ -205,14 +221,18 @@ public sealed partial class MediaRow : UserControl
         TurnPage(step);
     }
 
-    // Activation
+    // Activation.
 
     private void OnSlotClick(object sender, RoutedEventArgs e)
     {
         switch (((Button)sender).Content)
         {
-            case MediaItem item: _ = App.OpenAsync(item); break;
-            case Player player:  App.SetActivePlayer(player.PlayerId); break;
+            case MediaItem item:
+                _ = App.OpenAsync(item);
+                break;
+            case Player player:
+                App.SetActivePlayer(player.PlayerId);
+                break;
         }
     }
 }

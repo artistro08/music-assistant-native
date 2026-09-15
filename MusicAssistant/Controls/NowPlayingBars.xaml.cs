@@ -11,18 +11,22 @@ namespace MusicAssistant.Controls;
 /// </summary>
 public sealed partial class NowPlayingBars : UserControl
 {
+    /// <summary>
+    /// Creates the indicator and keeps its pulse animation in step with the control being loaded and visible.
+    /// </summary>
     public NowPlayingBars()
     {
         InitializeComponent();
         Loaded   += (_, _) => Sync();
         Unloaded += (_, _) => Pulse.Stop();
-        // A collapsed instance (a row that is not the current track) must not keep animating in the background
+
+        // A collapsed instance (a row that is not the current track) must not keep animating in the background.
         RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => Sync());
     }
 
     private void Sync()
     {
-        if (IsLoaded && Visibility == Microsoft.UI.Xaml.Visibility.Visible) Pulse.Begin();
+        if (IsLoaded && (Visibility == Microsoft.UI.Xaml.Visibility.Visible)) Pulse.Begin();
         else Pulse.Stop();
     }
 }

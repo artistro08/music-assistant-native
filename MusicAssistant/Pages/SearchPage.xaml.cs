@@ -8,6 +8,7 @@ namespace MusicAssistant.Pages;
 /// <summary>Global search across the library and all providers.</summary>
 public sealed partial class SearchPage : Page
 {
+    /// <summary>Creates the search page and puts keyboard focus in the query box once it loads.</summary>
     public SearchPage()
     {
         InitializeComponent();
@@ -19,7 +20,8 @@ public sealed partial class SearchPage : Page
         string query = args.QueryText.Trim();
         if (query.Length < 2) return;
 
-        Busy.IsActive = true; Busy.Visibility = Visibility.Visible;
+        Busy.IsActive = true;
+        Busy.Visibility = Visibility.Visible;
         EmptyText.Visibility = Visibility.Collapsed;
         try
         {
@@ -42,7 +44,8 @@ public sealed partial class SearchPage : Page
         }
         finally
         {
-            Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
+            Busy.IsActive = false;
+            Busy.Visibility = Visibility.Collapsed;
         }
     }
 

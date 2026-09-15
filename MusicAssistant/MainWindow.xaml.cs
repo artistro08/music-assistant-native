@@ -35,10 +35,17 @@ public sealed partial class MainWindow : Window
 
     private readonly TrayIcon tray;
     private int  reconnectAttempt;
-    private bool exiting;        // ordered teardown started (ExitApp)
-    private bool closeAllowed;   // teardown done; the next Closing may pass
-    private CancellationTokenSource? reconnectCts;   // one reconnect loop at a time; canceled by sign-out and manual sign-in
 
+    /// <summary>Ordered teardown started (ExitApp).</summary>
+    private bool exiting;
+
+    /// <summary>Teardown done; the next Closing may pass.</summary>
+    private bool closeAllowed;
+
+    /// <summary>One reconnect loop at a time; canceled by sign-out and manual sign-in.</summary>
+    private CancellationTokenSource? reconnectCts;
+
+    /// <summary>Builds the shell, restores the window placement, sets up the tray icon and close behavior, and starts connecting.</summary>
     public MainWindow()
     {
         InitializeComponent();
@@ -46,14 +53,16 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
         {
-            // Standard 32px caption buttons to match the 32px custom title bar
+            // Standard 32px caption buttons to match the 32px custom title bar.
             AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
         }
         RestorePlacement();
         SyncTitleBarHeight();
-        AppWindow.Changed += (_, _) => SyncTitleBarHeight();   // DPI or caption height changes
 
-        // App icon in the title bar / taskbar, and the tray icon with its menu
+        // DPI or caption height changes.
+        AppWindow.Changed += (_, _) => SyncTitleBarHeight();
+
+        // App icon in the title bar / taskbar, and the tray icon with its menu.
         string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
         AppWindow.SetIcon(iconPath);
         tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), iconPath, ShowFromTray, ExitApp, App.Settings.ShowTrayIcon);
@@ -63,9 +72,14 @@ public sealed partial class MainWindow : Window
         // Closing the window keeps the app running in the background (hidden) when that setting is on; otherwise it quits.
         AppWindow.Closing += (_, args) =>
         {
-            if (closeAllowed) return;   // ExitApp's own Close() after the ordered teardown
-            args.Cancel = true;         // every other close request is decided here, never by the default close
-            if (exiting) return;        // teardown already running; extra clicks on X must not close a window it still uses
+            // ExitApp's own Close() after the ordered teardown.
+            if (closeAllowed) return;
+
+            // Every other close request is decided here, never by the default close.
+            args.Cancel = true;
+
+            // Teardown already running; extra clicks on X must not close a window it still uses.
+            if (exiting) return;
             if (App.Settings.RunInBackground)
             {
                 SavePlacement();
@@ -73,14 +87,21 @@ public sealed partial class MainWindow : Window
             }
             else
             {
-                DispatcherQueue.TryEnqueue(ExitApp);   // off the Closing callback, so Close() is not re-entered from inside it
+                // Off the Closing callback, so Close() is not re-entered from inside it.
+                DispatcherQueue.TryEnqueue(ExitApp);
             }
         };
 
         App.Client.Disconnected += error => DispatcherQueue.TryEnqueue(() => OnDisconnected(error));
-        Closed += (_, _) => { SavePlacement(); speaker?.Stop(); tray.Dispose(); App.Client.Dispose(); };
+        Closed += (_, _) =>
+        {
+            SavePlacement();
+            speaker?.Stop();
+            tray.Dispose();
+            App.Client.Dispose();
+        };
 
-        // Mouse back/forward buttons navigate the content frame (handledEventsToo so child controls cannot swallow them)
+        // Mouse back/forward buttons navigate the content frame (handledEventsToo so child controls cannot swallow them).
         Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnPointerPressed), true);
 
         Png.ScheduleSnapshot(Root);
@@ -95,7 +116,9 @@ public sealed partial class MainWindow : Window
     public void ApplyWindowSettings()
     {
         tray.SetVisible(App.Settings.ShowTrayIcon);
-        UpdateTrayTip();   // a re-added icon starts with the plain app name; give it the now-playing tip straight away
+
+        // A re-added icon starts with the plain app name; give it the now-playing tip straight away.
+        UpdateTrayTip();
         UpdateQuitItem();
     }
 
@@ -123,16 +146,17 @@ public sealed partial class MainWindow : Window
             var manager = (IVirtualDesktopManager)new VirtualDesktopManagerClass();
             try
             {
-                return manager.IsWindowOnCurrentVirtualDesktop(hwnd, out int onCurrent) == 0 && onCurrent != 0;
+                return (manager.IsWindowOnCurrentVirtualDesktop(hwnd, out int onCurrent) == 0) && (onCurrent != 0);
             }
             finally
             {
                 System.Runtime.InteropServices.Marshal.ReleaseComObject(manager);
             }
         }
-        catch (Exception)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            return true;   // no shell virtual-desktop support: leave the window where it is and just activate
+            // No shell virtual-desktop support: leave the window where it is and just activate.
+            return true;
         }
     }
 
@@ -143,19 +167,31 @@ public sealed partial class MainWindow : Window
      System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
     private interface IVirtualDesktopManager
     {
-        [System.Runtime.InteropServices.PreserveSig] int IsWindowOnCurrentVirtualDesktop(IntPtr topLevelWindow, out int onCurrentDesktop);
-        [System.Runtime.InteropServices.PreserveSig] int GetWindowDesktopId(IntPtr topLevelWindow, out Guid desktopId);
-        [System.Runtime.InteropServices.PreserveSig] int MoveWindowToDesktop(IntPtr topLevelWindow, ref Guid desktopId);
+        [System.Runtime.InteropServices.PreserveSig]
+        int IsWindowOnCurrentVirtualDesktop(IntPtr topLevelWindow, out int onCurrentDesktop);
+
+        [System.Runtime.InteropServices.PreserveSig]
+        int GetWindowDesktopId(IntPtr topLevelWindow, out Guid desktopId);
+
+        [System.Runtime.InteropServices.PreserveSig]
+        int MoveWindowToDesktop(IntPtr topLevelWindow, ref Guid desktopId);
     }
 
     private async void ExitApp()
     {
-        if (exiting) return;           // tray Exit, sidebar Quit and X can all land while the teardown below is awaiting
+        // Tray Exit, sidebar Quit and X can all land while the teardown below is awaiting.
+        if (exiting) return;
         exiting = true;
-        await StopOwnSpeakerAsync();   // the PC speaker goes away with the app, so end its playback, not leave a zombie queue
+
+        // The PC speaker goes away with the app, so end its playback, not leave a zombie queue.
+        await StopOwnSpeakerAsync();
         closeAllowed = true;
-        Close();                       // Closed handler stops the speaker, removes the tray icon and its menu window, disconnects
-        Application.Current.Exit();    // nothing else may keep the process alive
+
+        // Closed handler stops the speaker, removes the tray icon and its menu window, disconnects.
+        Close();
+
+        // Nothing else may keep the process alive.
+        Application.Current.Exit();
     }
 
     /// <summary>
@@ -168,8 +204,14 @@ public sealed partial class MainWindow : Window
         string? id = App.Settings.SpeakerClientId;
         if (!App.Settings.SpeakerEnabled || string.IsNullOrEmpty(id)) return;
         if (!App.Client.Players.TryGetValue(id, out Player? pc) || !pc.IsPlaying) return;
-        try { await App.Client.PlayerCommandAsync(id, "stop").WaitAsync(TimeSpan.FromSeconds(2)); }
-        catch (Exception ex) { App.Log("Exit stop: " + ex.Message); }
+        try
+        {
+            await App.Client.PlayerCommandAsync(id, "stop").WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            App.Log($"Exit stop: {ex.Message}");
+        }
     }
 
     private void UpdateTrayTip()
@@ -190,17 +232,17 @@ public sealed partial class MainWindow : Window
         Session s = App.Settings;
         var rect = new Windows.Graphics.RectInt32(s.WindowX, s.WindowY, s.WindowWidth, s.WindowHeight);
 
-        bool onScreen = s.WindowWidth >= 400 && s.WindowHeight >= 300
+        bool onScreen = (s.WindowWidth >= 400) && (s.WindowHeight >= 300)
             && Microsoft.UI.Windowing.DisplayArea.GetFromRect(rect, Microsoft.UI.Windowing.DisplayAreaFallback.None) is { } area
-            && rect.X < area.WorkArea.X + area.WorkArea.Width - 100
-            && rect.Y < area.WorkArea.Y + area.WorkArea.Height - 100;
+            && (rect.X < area.WorkArea.X + area.WorkArea.Width - 100)
+            && (rect.Y < area.WorkArea.Y + area.WorkArea.Height - 100);
 
         if (onScreen) AppWindow.MoveAndResize(rect);
         else AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 820));
 
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
         {
-            // Below this the player bar's Narrow state and the Home rows stop fitting; the limit is in physical pixels
+            // Below this the player bar's Narrow state and the Home rows stop fitting; the limit is in physical pixels.
             double scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
             presenter.PreferredMinimumWidth  = (int)(720 * scale);
             presenter.PreferredMinimumHeight = (int)(520 * scale);
@@ -222,7 +264,7 @@ public sealed partial class MainWindow : Window
         bool maximized = AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized };
         double scale     = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
         double logical   = (height - (maximized ? 0 : 1)) / scale;
-        if (double.IsNaN(TitleBarRow.Height) || Math.Abs(TitleBarRow.Height - logical) > 0.01) TitleBarRow.Height = logical;
+        if (double.IsNaN(TitleBarRow.Height) || (Math.Abs(TitleBarRow.Height - logical) > 0.01)) TitleBarRow.Height = logical;
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -234,8 +276,8 @@ public sealed partial class MainWindow : Window
         var presenter = AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
         s.WindowMaximized = presenter?.State == Microsoft.UI.Windowing.OverlappedPresenterState.Maximized;
 
-        // Keep the last normal bounds so un-maximizing later lands where the user left it
-        if (!s.WindowMaximized && presenter?.State != Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
+        // Keep the last normal bounds so un-maximizing later lands where the user left it.
+        if (!s.WindowMaximized && (presenter?.State != Microsoft.UI.Windowing.OverlappedPresenterState.Minimized))
         {
             s.WindowX      = AppWindow.Position.X;
             s.WindowY      = AppWindow.Position.Y;
@@ -250,6 +292,8 @@ public sealed partial class MainWindow : Window
     // =========================================================================
 
     private Speaker? speaker;
+
+    /// <summary>This PC's own Sendspin speaker, created on first use.</summary>
     public  Speaker  Speaker => speaker ??= new Speaker();
 
     /// <summary>True only when the local speaker is actually streaming; never instantiates the speaker just to ask.</summary>
@@ -275,7 +319,7 @@ public sealed partial class MainWindow : Window
             App.Settings.ClearToken();
             ShowLogin("Your session expired. Please sign in again.");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             ShowLogin($"Could not reach your server: {ex.Message}");
         }
@@ -302,8 +346,14 @@ public sealed partial class MainWindow : Window
                 SetRemote(false);
                 return;
             }
-            catch (ApiException ex) when (ex.Code == ApiException.SetupRequired) { throw; }
-            catch (Exception ex) { localError = ex; }
+            catch (ApiException ex) when (ex.Code == ApiException.SetupRequired)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                localError = ex;
+            }
         }
 
         if (!string.IsNullOrEmpty(remoteId))
@@ -316,12 +366,15 @@ public sealed partial class MainWindow : Window
         throw localError ?? new ApiException(0, "No server address or Remote ID configured.");
     }
 
-    private string? imageBaseUrl;   // base URL the cached images and resolved card URLs were built against
+    /// <summary>Base URL the cached images and resolved card URLs were built against.</summary>
+    private string? imageBaseUrl;
 
     private void SetRemote(bool remote)
     {
         RemoteBadge.Visibility = remote ? Visibility.Visible : Visibility.Collapsed;
-        Images.Resolver = App.Client.ImageUrl;   // base URL changed with the transport
+
+        // Base URL changed with the transport.
+        Images.Resolver = App.Client.ImageUrl;
 
         // Every remote connect builds a fresh loopback image proxy on a new port and nonce, so the cached bitmaps and
         // any already-resolved card URLs go stale on a remote-to-remote reconnect too, not only on a mode switch.
@@ -337,6 +390,11 @@ public sealed partial class MainWindow : Window
     /// Called by LoginPage. Connects by local address, or by Remote ID when no
     /// address is given, logs in, stores the token and shows the main UI.
     /// </summary>
+    /// <param name="address">The server's local address, or null or blank to connect by Remote ID only.</param>
+    /// <param name="remoteId">The server's Remote ID for remote access, or null.</param>
+    /// <param name="username">The Music Assistant user name.</param>
+    /// <param name="password">The Music Assistant password.</param>
+    /// <returns>A task that completes once signed in and the main UI is showing.</returns>
     public async Task LoginAsync(string? address, string? remoteId, string username, string password)
     {
         CancelReconnect();
@@ -357,6 +415,9 @@ public sealed partial class MainWindow : Window
     /// server owns the HA address). Waits for the token on a loopback listener.
     /// Local connections only: the browser must be able to reach the server.
     /// </summary>
+    /// <param name="address">The server's local address.</param>
+    /// <param name="ct">Cancels the connection attempt and the wait for the browser sign-in.</param>
+    /// <returns>A task that completes once signed in and the main UI is showing.</returns>
     public async Task LoginWithHomeAssistantAsync(string address, CancellationToken ct)
     {
         CancelReconnect();
@@ -365,7 +426,7 @@ public sealed partial class MainWindow : Window
         SetRemote(false);
 
         List<AuthProvider> providers = await App.Client.GetAuthProvidersAsync();
-        AuthProvider provider  = providers.FirstOrDefault(p => p.ProviderType == "oauth_homeassistant" || p.ProviderId == "homeassistant")
+        AuthProvider provider  = providers.FirstOrDefault(p => (p.ProviderType == "oauth_homeassistant") || (p.ProviderId == "homeassistant"))
             ?? throw new ApiException(ApiException.AuthenticationFailed, "This server has no Home Assistant sign-in configured.");
 
         using var loopback = new OAuthLoopback();
@@ -386,11 +447,21 @@ public sealed partial class MainWindow : Window
         App.Settings.SetToken(token);
         ShowMain();
     }
+
+    /// <summary>Stops the local speaker, logs out of the server, forgets the token, disconnects and shows the login page.</summary>
+    /// <returns>A task that completes once the login page is showing.</returns>
     public async Task SignOutAsync()
     {
         CancelReconnect();
         Speaker.Stop();
-        try { if (App.Client.IsConnected) await App.Client.LogoutAsync(); } catch (Exception ex) { App.Log("Logout: " + ex.Message); }
+        try
+        {
+            if (App.Client.IsConnected) await App.Client.LogoutAsync();
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            App.Log($"Logout: {ex.Message}");
+        }
         App.Settings.ClearToken();
         await App.Client.DisconnectAsync();
         ShowLogin(null);
@@ -398,8 +469,8 @@ public sealed partial class MainWindow : Window
 
     private void OnDisconnected(Exception? error)
     {
-        if (LoginFrame.Visibility == Visibility.Visible || reconnectCts is not null) return;
-        App.Log("Connection lost: " + (error?.Message ?? "closed by server"));
+        if ((LoginFrame.Visibility == Visibility.Visible) || reconnectCts is not null) return;
+        App.Log($"Connection lost: {error?.Message ?? "closed by server"}");
         ShowMessage("Connection lost. Reconnecting…", InfoBarSeverity.Warning, autoClose: false);
         reconnectCts = new CancellationTokenSource();
         _ = ReconnectAsync(reconnectCts.Token);
@@ -421,15 +492,23 @@ public sealed partial class MainWindow : Window
                 reconnectAttempt++;
                 await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, reconnectAttempt))), ct);
 
-                // The token is re-read every attempt: a sign-out in between must end the loop, not be undone by it
+                // The token is re-read every attempt: a sign-out in between must end the loop, not be undone by it.
                 string? token = App.Settings.GetToken();
-                if (token is null) { ShowLogin(null); return; }
+                if (token is null)
+                {
+                    ShowLogin(null);
+                    return;
+                }
 
                 try
                 {
                     await ConnectBestAsync(ct);
                     await App.Client.AuthenticateAsync(token);
-                    if (ct.IsCancellationRequested) { await App.Client.DisconnectAsync(); return; }
+                    if (ct.IsCancellationRequested)
+                    {
+                        await App.Client.DisconnectAsync();
+                        return;
+                    }
                     reconnectAttempt = 0;
                     MessageBar.IsOpen = false;
                     App.EnsureActivePlayer();
@@ -443,10 +522,13 @@ public sealed partial class MainWindow : Window
                     ShowLogin("Your session expired. Please sign in again.");
                     return;
                 }
-                catch (OperationCanceledException) { return; }
-                catch (Exception)
+                catch (OperationCanceledException)
                 {
-                    // keep retrying
+                    return;
+                }
+                catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+                {
+                    // Keep retrying.
                 }
             }
         }
@@ -500,15 +582,19 @@ public sealed partial class MainWindow : Window
         UserIcon.UriSource = appIcon;
         if (string.IsNullOrWhiteSpace(avatarUrl)) return;
 
-        string absolute = avatarUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? avatarUrl : App.Client.BaseUrl + "/" + avatarUrl.TrimStart('/');
+        string absolute = avatarUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? avatarUrl : $"{App.Client.BaseUrl}/{avatarUrl.TrimStart('/')}";
         if (Templates.Decode(absolute, 96) is not { } image) return;
 
         var opened = new TaskCompletionSource<bool>();
         image.ImageOpened += (_, _) => opened.TrySetResult(true);
-        image.ImageFailed += (_, e) => { App.Log($"Avatar failed to load from {absolute}: {e.ErrorMessage}"); opened.TrySetResult(false); };
+        image.ImageFailed += (_, e) =>
+        {
+            App.Log($"Avatar failed to load from {absolute}: {e.ErrorMessage}");
+            opened.TrySetResult(false);
+        };
         AvatarBrush.ImageSource = image;
 
-        // The art cache evicts an image it cannot fetch without raising ImageFailed, so do not wait on it forever
+        // The art cache evicts an image it cannot fetch without raising ImageFailed, so do not wait on it forever.
         try
         {
             if (!await opened.Task.WaitAsync(TimeSpan.FromMinutes(1))) return;
@@ -519,10 +605,14 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // Let the brush paint once, then capture the circle to a PNG (BitmapIcon only takes a file)
+        // Let the brush paint once, then capture the circle to a PNG (BitmapIcon only takes a file).
         await Task.Yield();
         string file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "avatar.png");
-        if (!await Png.SaveAsync(AvatarStamp, file, 96, 96)) { App.Log("Avatar circle render produced no pixels; keeping app icon"); return; }
+        if (!await Png.SaveAsync(AvatarStamp, file, 96, 96))
+        {
+            App.Log("Avatar circle render produced no pixels; keeping app icon");
+            return;
+        }
         UserIcon.UriSource = new Uri(file);
     }
 
@@ -533,7 +623,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private async Task RememberRemoteIdAsync()
     {
-        if (App.Client.IsRemote || App.Client.CurrentUser?.Role != "admin") return;
+        if (App.Client.IsRemote || (App.Client.CurrentUser?.Role != "admin")) return;
         try
         {
             RemoteAccessInfo info = await App.Client.GetRemoteAccessInfoAsync();
@@ -542,7 +632,9 @@ public sealed partial class MainWindow : Window
             App.Settings.RemoteId = id;
             App.Settings.Save();
         }
-        catch (ApiException) { }
+        catch (ApiException)
+        {
+        }
     }
 
     /// <summary>Show the Audiobooks and Podcasts entries only when the library has some.</summary>
@@ -553,11 +645,20 @@ public sealed partial class MainWindow : Window
 
         static async Task ShowIfAnyAsync(NavigationViewItem item, string mediaType)
         {
-            try { item.Visibility = await App.Client.GetLibraryCountAsync(mediaType) > 0 ? Visibility.Visible : Visibility.Collapsed; }
-            catch (ApiException) { item.Visibility = Visibility.Collapsed; }
+            try
+            {
+                item.Visibility = await App.Client.GetLibraryCountAsync(mediaType) > 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+            catch (ApiException)
+            {
+                item.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
+    /// <summary>Closes the queue panel and navigates the content frame to a page with a drill-in transition.</summary>
+    /// <param name="page">The page type to show.</param>
+    /// <param name="parameter">The navigation parameter passed to the page, or null.</param>
     public void Navigate(Type page, object? parameter)
     {
         CloseQueue();
@@ -569,9 +670,14 @@ public sealed partial class MainWindow : Window
 
     private bool QueueOpen => QueueFrame.Visibility == Visibility.Visible;
 
+    /// <summary>Opens the Now Playing queue panel with a slide-up animation, or closes it when it is already open.</summary>
     public void ToggleQueue()
     {
-        if (QueueOpen) { CloseQueue(); return; }
+        if (QueueOpen)
+        {
+            CloseQueue();
+            return;
+        }
         QueueFrame.Navigate(typeof(QueuePage), null);
 
         // Start offscreen and transparent so there is no flash before the slide, then animate in on the next tick.
@@ -606,10 +712,10 @@ public sealed partial class MainWindow : Window
     private void OnQueueHostSizeChanged(object sender, SizeChangedEventArgs e)
         => QueueHost.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
 
-    /// <summary>Now Playing slides up from the player bar on open and back down on close, with a fade.</summary>
     /// <summary>How far the panel travels: the content row's height, which is valid even on the first open (the frame itself has ActualHeight 0 until laid out).</summary>
     private double QueueDistance => Math.Max(120, Nav.ActualHeight);
 
+    /// <summary>Now Playing slides up from the player bar on open and back down on close, with a fade.</summary>
     private void SlideQueue(bool open, Action? completed = null)
     {
         Microsoft.UI.Xaml.Media.TranslateTransform transform = QueueFrame.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform ?? new Microsoft.UI.Xaml.Media.TranslateTransform();
@@ -642,7 +748,7 @@ public sealed partial class MainWindow : Window
     private void OnSpace(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         object focused = FocusManager.GetFocusedElement(Content.XamlRoot);
-        if (focused is TextBox or PasswordBox or AutoSuggestBox or RichEditBox || LoginFrame.Visibility == Visibility.Visible)
+        if (focused is TextBox or PasswordBox or AutoSuggestBox or RichEditBox || (LoginFrame.Visibility == Visibility.Visible))
         {
             args.Handled = false;
             return;
@@ -657,13 +763,25 @@ public sealed partial class MainWindow : Window
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         Microsoft.UI.Input.PointerPointProperties props = e.GetCurrentPoint(Root).Properties;
-        if (props.IsXButton1Pressed)      { GoBack();    e.Handled = true; }
-        else if (props.IsXButton2Pressed) { GoForward(); e.Handled = true; }
+        if (props.IsXButton1Pressed)
+        {
+            GoBack();
+            e.Handled = true;
+        }
+        else if (props.IsXButton2Pressed)
+        {
+            GoForward();
+            e.Handled = true;
+        }
     }
 
     private void GoBack()
     {
-        if (QueueOpen) { CloseQueue(); return; }
+        if (QueueOpen)
+        {
+            CloseQueue();
+            return;
+        }
         if (!ContentFrame.CanGoBack) return;
         ContentFrame.GoBack();
         BackButton.IsEnabled = ContentFrame.CanGoBack;
@@ -676,6 +794,10 @@ public sealed partial class MainWindow : Window
         BackButton.IsEnabled = ContentFrame.CanGoBack;
     }
 
+    /// <summary>Shows a message in the shell's info bar, closing it after six seconds unless told to stay open.</summary>
+    /// <param name="text">The message to show.</param>
+    /// <param name="severity">The info bar style; errors by default.</param>
+    /// <param name="autoClose">Whether the bar closes itself after six seconds.</param>
     public void ShowMessage(string text, InfoBarSeverity severity = InfoBarSeverity.Error, bool autoClose = true)
     {
         MessageBar.Message  = text;

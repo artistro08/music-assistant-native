@@ -15,18 +15,31 @@ namespace MusicAssistant.Pages;
 public sealed partial class ItemPage : Page
 {
     private MediaItem item = new();
-    private int       loadVersion;   // bumped per navigation so a slow load for the previous item cannot land on this one
+
+    /// <summary>Bumped per navigation so a slow load for the previous item cannot land on this one.</summary>
+    private int       loadVersion;
 
     /// <summary>The album, playlist, artist or other item this page shows; the track menu uses it for "Play Album from here".</summary>
     public MediaItem Item => item;
 
+    /// <summary>Creates the detail page and follows the active player and image cache while the page is in the visual tree.</summary>
     public ItemPage()
     {
         InitializeComponent();
 
-        // Live level bars follow whatever the active player is playing; subscribe for the page's time in the tree
-        Loaded   += (_, _) => { App.StateChanged += UpdateNowPlaying; UpdateNowPlaying(); Templates.ImagesInvalidated -= OnImagesInvalidated; Templates.ImagesInvalidated += OnImagesInvalidated; };
-        Unloaded += (_, _) => { App.StateChanged -= UpdateNowPlaying; Templates.ImagesInvalidated -= OnImagesInvalidated; };
+        // Live level bars follow whatever the active player is playing; subscribe for the page's time in the tree.
+        Loaded   += (_, _) =>
+        {
+            App.StateChanged += UpdateNowPlaying;
+            UpdateNowPlaying();
+            Templates.ImagesInvalidated -= OnImagesInvalidated;
+            Templates.ImagesInvalidated += OnImagesInvalidated;
+        };
+        Unloaded += (_, _) =>
+        {
+            App.StateChanged -= UpdateNowPlaying;
+            Templates.ImagesInvalidated -= OnImagesInvalidated;
+        };
     }
 
     /// <summary>Transport switched and the image cache was dropped: re-resolve the hero art and force the track rows to re-bind their thumbnails against the new base URL.</summary>
@@ -48,14 +61,17 @@ public sealed partial class ItemPage : Page
         string? playing = App.ActivePlayer?.IsPlaying == true ? App.ActivePlayer!.CurrentMedia?.Uri : null;
         foreach (MediaItem track in tracks)
         {
-            track.IsNowPlaying = playing is not null && track.Uri == playing;
+            track.IsNowPlaying = playing is not null && (track.Uri == playing);
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         if (e.Parameter is not MediaItem parameter) return;
-        if (parameter.Uri == item.Uri && TrackList.ItemsSource is not null) return;   // back/forward to the same item
+
+        // Back/forward to the same item.
+        if ((parameter.Uri == item.Uri) && TrackList.ItemsSource is not null) return;
         item = parameter;
         Clear();
         Render();
@@ -69,7 +85,9 @@ public sealed partial class ItemPage : Page
         TracksTitle.Visibility = Visibility.Collapsed;
         EmptyText.Visibility   = Visibility.Collapsed;
         AlbumsRow.Visibility   = Visibility.Collapsed;
-        HeaderRows.Children.Clear();   // genre rows from the previous item
+
+        // Genre rows from the previous item.
+        HeaderRows.Children.Clear();
         Busy.IsActive          = true;
         Busy.Visibility        = Visibility.Visible;
     }
@@ -80,8 +98,10 @@ public sealed partial class ItemPage : Page
         TypeText.Text     = item.MediaType.ToUpperInvariant();
         NameText.Text     = item.Name;
         SubtitleText.Text = item.SubtitleText;
+
+        // "Genre" / "Artist" would just repeat the type label above the name.
         SubtitleText.Visibility = string.Equals(item.SubtitleText, item.MediaType, StringComparison.OrdinalIgnoreCase)
-            ? Visibility.Collapsed : Visibility.Visible;   // "Genre" / "Artist" would just repeat the type label above the name
+            ? Visibility.Collapsed : Visibility.Visible;
         FavoriteToggle.IsChecked = item.Favorite;
 
         string? description = item.Metadata?.Description;
@@ -93,11 +113,12 @@ public sealed partial class ItemPage : Page
 
     private async Task LoadAsync(int version)
     {
-        MediaItem target = item;   // local copy: the field changes as soon as the user opens another item
+        // Local copy: the field changes as soon as the user opens another item.
+        MediaItem target = item;
         try
         {
-            // Item mappings from lists are thin; fetch the full item for metadata and favorite state
-            if (target.Metadata is null && target.MediaType != "genre")
+            // Item mappings from lists are thin; fetch the full item for metadata and favorite state.
+            if (target.Metadata is null && (target.MediaType != "genre"))
             {
                 target = await App.Client.GetItemAsync(target.MediaType, target.ItemId, target.Provider);
                 if (version != loadVersion) return;
@@ -107,7 +128,9 @@ public sealed partial class ItemPage : Page
 
             List<MediaItem>? tracks = null;
             List<MediaItem>? albums = null;
-            List<MediaItem>  rows   = [];   // genre: one row per media type
+
+            // Genre: one row per media type.
+            List<MediaItem>  rows   = [];
             string title = "Tracks";
             switch (target.MediaType)
             {
@@ -116,7 +139,7 @@ public sealed partial class ItemPage : Page
                     tracks = await App.Client.GetPodcastEpisodesAsync(target.ItemId, target.Provider);
                     break;
                 case "genre":
-                    // Overview rows (Artists, Albums, Tracks, Playlists, ...) as the web app shows them; plain track list only as a fallback
+                    // Overview rows (Artists, Albums, Tracks, Playlists, ...) as the web app shows them; plain track list only as a fallback.
                     rows = [.. (await App.Client.GetGenreOverviewAsync(target.ItemId, target.Provider)).Where(f => f.Items is { Count: > 0 })];
                     if (rows.Count == 0) tracks = await App.Client.GetGenreTracksAsync(target.ItemId);
                     break;
@@ -124,10 +147,10 @@ public sealed partial class ItemPage : Page
                     break;
                 case "album":
                     // Loading the tracks also records a track's cover for an album the server has no image for; re-render
-                    // the hero when that just gave it one (the tracks resolve it through their album link on bind)
+                    // the hero when that just gave it one (the tracks resolve it through their album link on bind).
                     bool hadCover = target.FindImage() is not null;
                     tracks = await App.Client.GetAlbumTracksAsync(target.ItemId, target.Provider, target.Uri);
-                    if (!hadCover && target.FindImage() is not null && version == loadVersion) Render();
+                    if (!hadCover && target.FindImage() is not null && (version == loadVersion)) Render();
                     break;
                 case "playlist":
                     tracks = await App.Client.GetPlaylistTracksAsync(target.ItemId, target.Provider);
@@ -141,7 +164,9 @@ public sealed partial class ItemPage : Page
                     albums = albumsTask.Result;
                     break;
             }
-            if (version != loadVersion) return;   // user moved on while we were loading
+
+            // User moved on while we were loading.
+            if (version != loadVersion) return;
 
             if (tracks is not null) ShowTracks(title, tracks);
             if (albums is not null)
@@ -160,7 +185,11 @@ public sealed partial class ItemPage : Page
         }
         finally
         {
-            if (version == loadVersion) { Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed; }
+            if (version == loadVersion)
+            {
+                Busy.IsActive = false;
+                Busy.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
@@ -174,17 +203,30 @@ public sealed partial class ItemPage : Page
         UpdateNowPlaying();
     }
 
-    // Actions
+    // Actions.
 
-    private void OnPlay(object sender, RoutedEventArgs e)       => _ = App.PlayAsync(item);   // server default: albums and playlists replace the queue
+    /// <summary>Server default: albums and playlists replace the queue.</summary>
+    private void OnPlay(object sender, RoutedEventArgs e)       => _ = App.PlayAsync(item);
+
     private void OnPlayNext(object sender, RoutedEventArgs e)   => _ = App.PlayAsync(item, "next");
+
     private void OnAddToQueue(object sender, RoutedEventArgs e) => _ = App.PlayAsync(item, "add");
 
     private async void OnShuffle(object sender, RoutedEventArgs e)
     {
-        if (App.ActivePlayer is not { } player) { App.Window.ShowMessage("Select a player first."); return; }
-        try { await App.Client.PlayMediaAsync(App.Client.QueueIdFor(player), item.Uri, "replace", shuffle: true); }
-        catch (Exception ex) { App.Window.ShowMessage(ex.Message); }
+        if (App.ActivePlayer is not { } player)
+        {
+            App.Window.ShowMessage("Select a player first.");
+            return;
+        }
+        try
+        {
+            await App.Client.PlayMediaAsync(App.Client.QueueIdFor(player), item.Uri, "replace", shuffle: true);
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            App.Window.ShowMessage(ex.Message);
+        }
     }
 
     private async void OnFavorite(object sender, RoutedEventArgs e)

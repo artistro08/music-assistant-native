@@ -20,11 +20,19 @@ namespace MusicAssistant.Sendspin;
 public sealed class SendspinConnection : IDisposable
 {
     private const int  MaxTransportPlaintext = 65535 - 16;
-    private const int  MaxTransportFrame     = 65535;   // a Noise transport message is at most 65535 bytes; reject larger before allocating
+
+    /// <summary>A Noise transport message is at most 65535 bytes; reject larger before allocating.</summary>
+    private const int  MaxTransportFrame     = 65535;
     private const int  MaxReassembly         = 4 * 1024 * 1024;
-    private const byte TypeJson = 0, TypeFragmentMore = 2, TypeFragmentEnd = 3;
+    private const byte TypeJson              = 0;
+    private const byte TypeFragmentMore      = 2;
+    private const byte TypeFragmentEnd       = 3;
     private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>What a completed handshake agreed on.</summary>
+    /// <param name="ServerId">The server's server_id from server/init.</param>
+    /// <param name="Matched">The pre-shared key the handshake used.</param>
+    /// <param name="IsRehandshake">Whether this was an in-band re-handshake rather than the first one.</param>
     public sealed record HandshakeInfo(string ServerId, Identity.PskEntry Matched, bool IsRehandshake);
 
     private enum State { Idle, AwaitServerInit, AwaitNoise1, Transport }
@@ -43,18 +51,36 @@ public sealed class SendspinConnection : IDisposable
     private byte            fragmentType;
     private bool            closed;
 
+    /// <summary>The server's server_id from server/init; empty until it arrives.</summary>
     public string  ServerId       { get; private set; } = "";
+
+    /// <summary>The handshake hash of the latest handshake, the prologue of the next re-handshake.</summary>
     public byte[]  HandshakeHash  { get; private set; } = [];
+
+    /// <summary>The pre-shared key the latest handshake used; <see langword="null"/> before the first handshake.</summary>
     public Identity.PskEntry? Matched { get; private set; }
+
+    /// <summary>Whether the session is in encrypted transport mode.</summary>
     public bool    Ready          => state == State.Transport;
+
     /// <summary>True between a re-handshake and the server/activate that ends it; periodic traffic is held back.</summary>
     public bool    Quiesced       { get; private set; }
 
+    /// <summary>Raised under the connection lock after each handshake, including re-handshakes.</summary>
     public event Action<HandshakeInfo>? HandshakeCompleted;
-    public event Action<string, JsonElement>? ControlReceived;   // type, payload
-    public event Action<byte[]>? BinaryReceived;                 // decrypted frame including its type byte
+
+    /// <summary>Raised for each decrypted control message, with its type and payload.</summary>
+    public event Action<string, JsonElement>? ControlReceived;
+
+    /// <summary>Raised for each decrypted binary frame, including its type byte.</summary>
+    public event Action<byte[]>? BinaryReceived;
+
+    /// <summary>Raised once when the session ends, with the reason.</summary>
     public event Action<string>? Closed;
 
+    /// <summary>Wraps a socket; nothing is sent until <see cref="StartAsync"/>.</summary>
+    /// <param name="socket">The wire to run the session over.</param>
+    /// <param name="identity">This PC's keys and PSKs.</param>
     public SendspinConnection(ISendspinSocket socket, Identity identity)
     {
         this.socket   = socket;
@@ -65,6 +91,8 @@ public sealed class SendspinConnection : IDisposable
     }
 
     /// <summary>Open the socket, run the handshake and return once transport mode is up.</summary>
+    /// <param name="ct">Cancels the wait for the handshake.</param>
+    /// <returns>A task that completes when the session is encrypted, or faults with the failure reason.</returns>
     public async Task StartAsync(CancellationToken ct)
     {
         established = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -85,16 +113,21 @@ public sealed class SendspinConnection : IDisposable
         }
     }
 
-    // Sending
+    // Sending.
 
+    /// <summary>Sends an encrypted control message; periodic types are dropped while the session is quiesced.</summary>
+    /// <param name="type">The message type, such as client/state.</param>
+    /// <param name="payload">The object serialized as the message payload.</param>
     public void SendControl(string type, object payload)
     {
-        if (Quiesced && type is "client/time" or "client/state" or "client/command") return;   // held back during a re-handshake
+        // Held back during a re-handshake.
+        if (Quiesced && type is "client/time" or "client/state" or "client/command") return;
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(new { type, payload });
         SendPlaintext([TypeJson, .. json]);
     }
 
     /// <summary>Send a binary frame; the first byte of data is its message type.</summary>
+    /// <param name="data">The frame, starting with its type byte.</param>
     public void SendBinary(byte[] data) => SendPlaintext(data);
 
     private void SendPlaintext(byte[] plaintext)
@@ -102,7 +135,7 @@ public sealed class SendspinConnection : IDisposable
         NoiseSession? current;
         lock (gate)
         {
-            if (state != State.Transport || session is null) return;
+            if ((state != State.Transport) || session is null) return;
             current = session;
             if (plaintext.Length <= MaxTransportPlaintext)
             {
@@ -110,7 +143,7 @@ public sealed class SendspinConnection : IDisposable
                 return;
             }
 
-            // Fragment: [2][origType][data...] then [2][data] ... [3][data]; encrypt in send order under the lock
+            // Fragment: [2][origType][data...] then [2][data] ... [3][data]; encrypt in send order under the lock.
             Span<byte> body   = plaintext.AsSpan(1);
             int first  = Math.Min(body.Length, MaxTransportPlaintext - 2);
             socket.SendBinary(current.Encrypt([TypeFragmentMore, plaintext[0], .. body[..first]]));
@@ -125,7 +158,7 @@ public sealed class SendspinConnection : IDisposable
         }
     }
 
-    // Receiving
+    // Receiving.
 
     private void OnText(string text)
     {
@@ -138,35 +171,43 @@ public sealed class SendspinConnection : IDisposable
 
             lock (gate)
             {
-                if (state == State.AwaitServerInit && type == "server/init")
+                if ((state == State.AwaitServerInit) && (type == "server/init"))
                 {
-                    if (payload.GetProperty("version").GetInt32() != 1) { Fail("Server speaks an unsupported Sendspin version"); return; }
+                    if (payload.GetProperty("version").GetInt32() != 1)
+                    {
+                        Fail("Server speaks an unsupported Sendspin version");
+                        return;
+                    }
                     ServerId = payload.GetProperty("server_id").GetString() ?? "";
-                    if (Base64Url.Decode(ServerId).Length != NoiseCrypto.KeySize) { Fail("Server sent an invalid server_id"); return; }
+                    if (Base64Url.Decode(ServerId).Length != NoiseCrypto.KeySize)
+                    {
+                        Fail("Server sent an invalid server_id");
+                        return;
+                    }
                     byte[] prologue = (byte[])[.. rawClientInit, .. Encoding.UTF8.GetBytes(text)];
                     handshake = new HandshakeState(initiator: false, prologue, identity.PrivateKey, identity.PublicKey, Base64Url.Decode(ServerId));
                     state = State.AwaitNoise1;
                     ArmHandshakeTimer();
                     return;
                 }
-                if (state == State.AwaitNoise1 && type == "noise/handshake")
+                if ((state == State.AwaitNoise1) && (type == "noise/handshake"))
                 {
                     CompleteHandshake(handshake!, Base64Url.Decode(payload.GetProperty("data").GetString() ?? ""), rehandshake: false);
                     return;
                 }
-                if (state == State.AwaitServerInit && type == "server/error")
+                if ((state == State.AwaitServerInit) && (type == "server/error"))
                 {
-                    Fail("Server rejected the connection: " + (payload.TryGetProperty("reason", out JsonElement r) ? r.GetString() : "error"));
+                    Fail($"Server rejected the connection: {(payload.TryGetProperty("reason", out JsonElement r) ? r.GetString() : "error")}");
                     return;
                 }
             }
             Fail("Unexpected message during handshake");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             // Any error handling attacker-controlled handshake input is fatal to this connection, not just the
             // known JSON/crypto types: fail cleanly with a reason instead of leaking the exception up the read loop.
-            Fail("Handshake failed: " + ex.Message);
+            Fail($"Handshake failed: {ex.Message}");
         }
     }
 
@@ -179,12 +220,22 @@ public sealed class SendspinConnection : IDisposable
         string? category = document.RootElement.TryGetProperty("psk_category", out JsonElement c) ? c.GetString() : null;
 
         Identity.PskEntry? entry = identity.Lookup(pskId);
-        if (entry is not null && category is not null && CategoryCode(entry.Category) != category) entry = null;   // held under another category: a miss
-        if (entry is { Category: Identity.PskCategory.LongTerm } && entry.ServerId != ServerId) { Fail("Pairing record belongs to another server"); return; }
+        // Held under another category: a miss.
+        if (entry is not null && category is not null && (CategoryCode(entry.Category) != category)) entry = null;
+        if (entry is { Category: Identity.PskCategory.LongTerm } && (entry.ServerId != ServerId))
+        {
+            Fail("Pairing record belongs to another server");
+            return;
+        }
         if (entry is null)
         {
-            if (rehandshake) { Fail("Server referenced an unknown key"); return; }
-            entry = identity.Lookup(Identity.PskIdOf(Identity.SentinelPsk))!;   // Sentinel fallback: the server learns we lost the record
+            if (rehandshake)
+            {
+                Fail("Server referenced an unknown key");
+                return;
+            }
+            // Sentinel fallback: the server learns we lost the record.
+            entry = identity.Lookup(Identity.PskIdOf(Identity.SentinelPsk))!;
         }
 
         hs.SetPsk(entry.Psk);
@@ -192,7 +243,7 @@ public sealed class SendspinConnection : IDisposable
         var frame = new { type = "noise/handshake", payload = new { data = message2 } };
         if (rehandshake)
         {
-            // Message 2 travels under the old keys; everything after it under the new ones
+            // Message 2 travels under the old keys; everything after it under the new ones.
             SendPlaintext([TypeJson, .. JsonSerializer.SerializeToUtf8Bytes(frame)]);
             Quiesced = true;
         }
@@ -219,19 +270,38 @@ public sealed class SendspinConnection : IDisposable
 
     private void OnBinary(byte[] frame)
     {
-        // A transport frame cannot exceed 65535 bytes; reject a larger one before Decrypt allocates for it (the socket is not fully trusted)
-        if (frame.Length > MaxTransportFrame) { Fail("Transport frame too large"); return; }
+        // A transport frame cannot exceed 65535 bytes; reject a larger one before Decrypt allocates for it (the socket is not fully trusted).
+        if (frame.Length > MaxTransportFrame)
+        {
+            Fail("Transport frame too large");
+            return;
+        }
 
         // Decrypt and reassembly both touch shared state (session counter, fragment buffer), so they run under the
         // gate; dispatch runs outside it, because it fires callbacks that may be slow or re-enter the connection.
         byte[] toDispatch;
         lock (gate)
         {
-            if (state != State.Transport || session is null) { Fail("Binary frame before the handshake finished"); return; }
+            if ((state != State.Transport) || session is null)
+            {
+                Fail("Binary frame before the handshake finished");
+                return;
+            }
             byte[] plaintext;
-            try { plaintext = session.Decrypt(frame); }
-            catch (System.Security.Cryptography.CryptographicException) { Fail("Encrypted frame failed authentication"); return; }
-            if (plaintext.Length == 0) { Fail("Empty frame"); return; }
+            try
+            {
+                plaintext = session.Decrypt(frame);
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                Fail("Encrypted frame failed authentication");
+                return;
+            }
+            if (plaintext.Length == 0)
+            {
+                Fail("Empty frame");
+                return;
+            }
 
             switch (plaintext[0])
             {
@@ -241,7 +311,11 @@ public sealed class SendspinConnection : IDisposable
                     toDispatch = whole;
                     break;
                 default:
-                    if (fragment is not null) { Fail("Frame received inside a fragmented message"); return; }
+                    if (fragment is not null)
+                    {
+                        Fail("Frame received inside a fragmented message");
+                        return;
+                    }
                     toDispatch = plaintext;
                     break;
             }
@@ -254,14 +328,23 @@ public sealed class SendspinConnection : IDisposable
         whole = [];
         if (fragment is null)
         {
-            if (plaintext[0] != TypeFragmentMore || plaintext.Length < 2 || plaintext[1] is TypeFragmentMore or TypeFragmentEnd) { Fail("Malformed fragment"); return false; }
+            if ((plaintext[0] != TypeFragmentMore) || (plaintext.Length < 2) || plaintext[1] is TypeFragmentMore or TypeFragmentEnd)
+            {
+                Fail("Malformed fragment");
+                return false;
+            }
             fragmentType = plaintext[1];
             fragment = new MemoryStream();
             fragment.Write(plaintext, 2, plaintext.Length - 2);
             return false;
         }
         fragment.Write(plaintext, 1, plaintext.Length - 1);
-        if (fragment.Length > MaxReassembly) { fragment = null; Fail("Fragmented message too large"); return false; }
+        if (fragment.Length > MaxReassembly)
+        {
+            fragment = null;
+            Fail("Fragmented message too large");
+            return false;
+        }
         if (plaintext[0] == TypeFragmentMore) return false;
 
         whole = [fragmentType, .. fragment.ToArray()];
@@ -273,9 +356,15 @@ public sealed class SendspinConnection : IDisposable
     {
         if (plaintext[0] != TypeJson)
         {
-            // Audio decode runs on peer-supplied bytes; a bad frame is dropped, never allowed to escape the receive thread
-            try { BinaryReceived?.Invoke(plaintext); }
-            catch (Exception ex) { App.Log("Sendspin: dropped audio frame: " + ex.Message); }
+            // Audio decode runs on peer-supplied bytes; a bad frame is dropped, never allowed to escape the receive thread.
+            try
+            {
+                BinaryReceived?.Invoke(plaintext);
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                App.Log($"Sendspin: dropped audio frame: {ex.Message}");
+            }
             return;
         }
 
@@ -289,7 +378,7 @@ public sealed class SendspinConnection : IDisposable
             switch (type)
             {
                 case "noise/handshake":
-                    // A re-handshake failure is fatal, not a droppable message, so it fails the connection
+                    // A re-handshake failure is fatal, not a droppable message, so it fails the connection.
                     try
                     {
                         lock (gate)
@@ -298,7 +387,10 @@ public sealed class SendspinConnection : IDisposable
                             CompleteHandshake(next, Base64Url.Decode(payload.GetProperty("data").GetString() ?? ""), rehandshake: true);
                         }
                     }
-                    catch (Exception ex) { Fail("Re-handshake failed: " + ex.Message); }
+                    catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+                    {
+                        Fail($"Re-handshake failed: {ex.Message}");
+                    }
                     return;
                 case "server/activate":
                     Quiesced = false;
@@ -316,12 +408,12 @@ public sealed class SendspinConnection : IDisposable
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or FormatException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
         {
-            // A malformed control message is dropped; the connection stays up
-            App.Log("Sendspin: dropped malformed message: " + ex.Message);
+            // A malformed control message is dropped; the connection stays up.
+            App.Log($"Sendspin: dropped malformed message: {ex.Message}");
         }
     }
 
-    // Lifecycle
+    // Lifecycle.
 
     private void ArmHandshakeTimer()
     {
@@ -337,9 +429,20 @@ public sealed class SendspinConnection : IDisposable
     }
 
     /// <summary>Send client/goodbye and close.</summary>
+    /// <param name="reason">The reason passed to <see cref="Closed"/>.</param>
+    /// <param name="goodbye">The reason sent to the server in client/goodbye.</param>
     public void Close(string reason, string goodbye = "user_request")
     {
-        if (Ready) { try { SendControl("client/goodbye", new { reason = goodbye }); } catch (Exception) { } }
+        if (Ready)
+        {
+            try
+            {
+                SendControl("client/goodbye", new { reason = goodbye });
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+            }
+        }
         Fail(reason);
     }
 
@@ -357,6 +460,7 @@ public sealed class SendspinConnection : IDisposable
         Closed?.Invoke(reason);
     }
 
+    /// <summary>Ends the session and disposes the socket.</summary>
     public void Dispose()
     {
         Fail("Disposed");

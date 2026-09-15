@@ -11,6 +11,12 @@ public static class Png
 {
     private static Microsoft.UI.Dispatching.DispatcherQueueTimer? snapshotTimer;
 
+    /// <summary>Renders an element offscreen and writes it to a PNG file, creating the folder if needed.</summary>
+    /// <param name="element">The XAML element to render.</param>
+    /// <param name="path">Full path of the PNG file to write.</param>
+    /// <param name="width">Render width in pixels, or 0 to use the element's own size.</param>
+    /// <param name="height">Render height in pixels, or 0 to use the element's own size.</param>
+    /// <returns><see langword="true"/> when the file was written; <see langword="false"/> when the render produced no pixels.</returns>
     public static async Task<bool> SaveAsync(UIElement element, string path, int width = 0, int height = 0)
     {
         var bitmap = new RenderTargetBitmap();
@@ -38,18 +44,26 @@ public static class Png
     /// to it a few seconds after launch. Lets the UI be checked on machines
     /// where screen capture is unavailable. Off unless the variable is set.
     /// </summary>
+    /// <param name="root">The window's root element to render.</param>
     public static void ScheduleSnapshot(UIElement root)
     {
         string? target = Environment.GetEnvironmentVariable("MA_SNAPSHOT");
         if (string.IsNullOrEmpty(target)) return;
 
-        snapshotTimer = root.DispatcherQueue.CreateTimer();   // held in a field so the GC cannot collect it before it fires
+        // Held in a field so the GC cannot collect it before it fires.
+        snapshotTimer = root.DispatcherQueue.CreateTimer();
         snapshotTimer.Interval    = TimeSpan.FromSeconds(8);
         snapshotTimer.IsRepeating = false;
         snapshotTimer.Tick += async (_, _) =>
         {
-            try { if (!await SaveAsync(root, target)) App.Log("Snapshot rendered no pixels"); }
-            catch (Exception ex) { App.Log($"Snapshot failed: {ex}"); }
+            try
+            {
+                if (!await SaveAsync(root, target)) App.Log("Snapshot rendered no pixels");
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                App.Log($"Snapshot failed: {ex}");
+            }
         };
         snapshotTimer.Start();
     }

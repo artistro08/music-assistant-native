@@ -9,6 +9,7 @@ public sealed partial class SettingsPage : Page
 {
     private bool loadingRemote;
 
+    /// <summary>Creates the settings page, fills in the connection and app details, and starts loading the server's remote access state.</summary>
     public SettingsPage()
     {
         InitializeComponent();
@@ -95,14 +96,16 @@ public sealed partial class SettingsPage : Page
         RemoteEnabledSwitch.IsOn     = info.Enabled;
         ServerRemoteIdText.Text      = info.Enabled ? info.RemoteIdDisplay : "";
         CopyRemoteIdButton.IsEnabled = info.Enabled;
-        RemoteStatusText.Text = !info.Enabled ? "Off. Turn it on to reach this server from anywhere."
-            : info.Connected ? (info.UsingHaCloud ? "Connected to the relay (using Home Assistant Cloud for the best route)." : "Connected to the relay.")
-            : "Enabled, waiting for the relay connection…";
+        RemoteStatusText.Text = !info.Enabled
+            ? "Off. Turn it on to reach this server from anywhere."
+            : info.Connected
+                ? (info.UsingHaCloud ? "Connected to the relay (using Home Assistant Cloud for the best route)." : "Connected to the relay.")
+                : "Enabled, waiting for the relay connection…";
         loadingRemote = false;
 
-        // Keep this PC in sync with the server so roaming works without copying
+        // Keep this PC in sync with the server so roaming works without copying.
         string? id = info.Enabled ? MassClient.NormalizeRemoteId(info.RemoteId) : null;
-        if (id is not null && id != App.Settings.RemoteId)
+        if (id is not null && (id != App.Settings.RemoteId))
         {
             App.Settings.RemoteId = id;
             App.Settings.Save();
@@ -113,8 +116,15 @@ public sealed partial class SettingsPage : Page
     private async void OnRemoteToggled(object sender, RoutedEventArgs e)
     {
         if (loadingRemote) return;
-        try { Show(await App.Client.ConfigureRemoteAccessAsync(RemoteEnabledSwitch.IsOn)); }
-        catch (ApiException ex) { App.Window.ShowMessage(ex.Message); await LoadRemoteAccessAsync(); }
+        try
+        {
+            Show(await App.Client.ConfigureRemoteAccessAsync(RemoteEnabledSwitch.IsOn));
+        }
+        catch (ApiException ex)
+        {
+            App.Window.ShowMessage(ex.Message);
+            await LoadRemoteAccessAsync();
+        }
     }
 
     private void OnCopyRemoteId(object sender, RoutedEventArgs e)
@@ -129,7 +139,7 @@ public sealed partial class SettingsPage : Page
     {
         string text = RemoteIdBox.Text.Trim();
         string? id   = MassClient.NormalizeRemoteId(text);
-        if (text.Length > 0 && id is null)
+        if ((text.Length > 0) && id is null)
         {
             App.Window.ShowMessage("That Remote ID does not look right. It has 26 letters and digits.");
             return;
