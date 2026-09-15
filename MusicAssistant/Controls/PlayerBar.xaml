@@ -110,7 +110,8 @@
             </StackPanel>
 
             <!-- Seek Bar: the thumb only shows while hovering a seekable bar or dragging. Clicking the elapsed time switches it to the time left -->
-            <Grid ColumnSpacing="8">
+            <!-- 16px gaps: the thumb is centered on the value, so at either end it reaches 9px past the track toward the times -->
+            <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="44" />
                     <ColumnDefinition Width="*" />
