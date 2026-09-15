@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using MusicAssistant.Api;
@@ -141,6 +142,9 @@ public sealed partial class MediaRow : UserControl
                 CornerRadius               = (CornerRadius)Application.Current.Resources["OverlayCornerRadius"],
             };
             slot.Click += OnSlotClick;
+
+            // Item menu on the focusable button, so right-click, Shift+F10 and the menu key all open it.
+            slot.ContextFlyout = (FlyoutBase)Application.Current.Resources["ItemMenu"];
 
             // Self-drawn cards: no hover surface behind them; a translucent overlay on top of the card tints it under
             // the pointer. Done in code rather than template visual states, which crash Microsoft.UI.Xaml on hover.

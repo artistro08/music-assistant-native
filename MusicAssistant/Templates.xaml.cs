@@ -460,15 +460,27 @@ public sealed partial class Templates : ResourceDictionary
     private static Brush PlayerBrush(string playerId, string activeKey, string idleKey)
         => (Brush)Application.Current.Resources[playerId == App.Settings.ActivePlayerId ? activeKey : idleKey];
 
-    private static MediaItem? ItemOf(object sender) => (sender as FrameworkElement)?.DataContext as MediaItem;
-
     /// <summary>
-    /// Track row menu (right-click or the "..." button): rebuilt for the row's track each time it opens. The page the row
-    /// sits on is found by walking up from the row, so an album or playlist page can offer "play from here".
+    /// Item menu (right-click, Shift+F10 or the menu key on a row or card, or a row's "..." button): rebuilt for the item
+    /// each time it opens. The page the row or card sits on is found by walking up from it, so an album or playlist page
+    /// can offer "play from here".
     /// </summary>
-    private void OnTrackMenuOpening(object sender, object e)
+    /// <param name="sender">The shared item menu.</param>
+    /// <param name="e">Unused.</param>
+    private void OnItemMenuOpening(object sender, object e)
     {
-        if (sender is not MenuFlyout menu || (menu.Target as FrameworkElement)?.DataContext is not MediaItem track) return;
+        if (sender is not MenuFlyout menu)
+        {
+            return;
+        }
+
+        // Cards and list rows carry their item as content; a row's "..." button only has it as its data context.
+        MediaItem? item = (menu.Target as ContentControl)?.Content as MediaItem ?? (menu.Target as FrameworkElement)?.DataContext as MediaItem;
+        if (item is null)
+        {
+            menu.Items.Clear();
+            return;
+        }
 
         MediaItem? parent = null;
         for (DependencyObject? node = menu.Target; node is not null; node = VisualTreeHelper.GetParent(node))
@@ -479,26 +491,6 @@ public sealed partial class Templates : ResourceDictionary
                 break;
             }
         }
-        Controls.TrackMenu.Populate(menu, track, parent);
-    }
-
-    private async void OnPlayNow(object sender, RoutedEventArgs e)
-    {
-        if (ItemOf(sender) is { } item) await App.PlayAsync(item, "play");
-    }
-
-    private async void OnPlayNext(object sender, RoutedEventArgs e)
-    {
-        if (ItemOf(sender) is { } item) await App.PlayAsync(item, "next");
-    }
-
-    private async void OnAddToQueue(object sender, RoutedEventArgs e)
-    {
-        if (ItemOf(sender) is { } item) await App.PlayAsync(item, "add");
-    }
-
-    private async void OnToggleFavorite(object sender, RoutedEventArgs e)
-    {
-        if (ItemOf(sender) is { } item) await App.ToggleFavoriteAsync(item);
+        Controls.ItemMenu.Populate(menu, item, parent);
     }
 }

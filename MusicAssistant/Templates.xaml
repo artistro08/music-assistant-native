@@ -6,6 +6,10 @@
     xmlns:controls="using:MusicAssistant.Controls"
     xmlns:local="using:MusicAssistant">
 
+    <!-- Item Menu: one menu for every track row, card and tile, opened by right-click, Shift+F10 or the menu key on the
+         focused row or card, and by a row's "..." button. Rebuilt for the item each time it opens (Controls/ItemMenu.cs) -->
+    <MenuFlyout x:Key="ItemMenu" Opening="OnItemMenuOpening" />
+
     <!-- Shared Brushes -->
     <LinearGradientBrush x:Key="HeroScrimBrush" StartPoint="0.5,0" EndPoint="0.5,1">
         <GradientStop Color="#00000000" Offset="0" />
@@ -37,17 +41,8 @@
 
     <!-- Media Card (library, search, rows) -->
     <DataTemplate x:Key="MediaCardTemplate" x:DataType="api:MediaItem">
+        <!-- The item menu sits on the focusable button or tile that shows this card, so the keyboard can open it too -->
         <StackPanel Spacing="8" AutomationProperties.Name="{x:Bind Name}">
-            <StackPanel.ContextFlyout>
-                <MenuFlyout>
-                    <MenuFlyoutItem Text="Play now" Icon="Play" Click="OnPlayNow" />
-                    <MenuFlyoutItem Text="Play next" Icon="Next" Click="OnPlayNext" />
-                    <MenuFlyoutItem Text="Add to queue" Icon="Add" Click="OnAddToQueue" />
-                    <MenuFlyoutSeparator />
-                    <MenuFlyoutItem Text="Toggle favorite" Icon="Favorite" Click="OnToggleFavorite" />
-                </MenuFlyout>
-            </StackPanel.ContextFlyout>
-
             <!-- Square art box: a Viewbox scales a fixed square to the card width in one layout pass, so resizing never re-layouts twice -->
             <Viewbox Stretch="Uniform">
                 <Grid Width="184" Height="184" CornerRadius="{StaticResource ControlCornerRadius}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
@@ -80,6 +75,7 @@
             VerticalContentAlignment="Top"
             CornerRadius="{StaticResource OverlayCornerRadius}"
             Click="OnCardClick"
+            ContextFlyout="{StaticResource ItemMenu}"
             AutomationProperties.Name="{x:Bind Name}" />
     </DataTemplate>
     <!-- /Card Button -->
@@ -148,13 +144,6 @@
     <!-- Hero Card (Top Picks collage tiles) -->
     <DataTemplate x:Key="HeroCardTemplate" x:DataType="api:MediaItem">
         <Grid CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" AutomationProperties.Name="{x:Bind Name}">
-            <Grid.ContextFlyout>
-                <MenuFlyout>
-                    <MenuFlyoutItem Text="Play now" Icon="Play" Click="OnPlayNow" />
-                    <MenuFlyoutItem Text="Play next" Icon="Next" Click="OnPlayNext" />
-                    <MenuFlyoutItem Text="Add to queue" Icon="Add" Click="OnAddToQueue" />
-                </MenuFlyout>
-            </Grid.ContextFlyout>
             <FontIcon Glyph="{x:Bind TypeGlyph}" FontSize="32" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
             <Image Source="{x:Bind local:Templates.ToLargeImage(LargeImageUrl)}" Opacity="{x:Bind local:Templates.ReadyLarge(LargeImageUrl)}" Stretch="UniformToFill" ImageOpened="OnImageOpened" />
             <Rectangle Fill="{StaticResource HeroScrimBrush}" />
@@ -182,13 +171,7 @@
     <!-- Track Row -->
     <DataTemplate x:Key="TrackRowTemplate" x:DataType="api:MediaItem">
         <Grid ColumnSpacing="12" Padding="{StaticResource RowContentPadding}" MinHeight="48" AutomationProperties.Name="{x:Bind Name}">
-            <!-- One menu for right-click and the "..." button, like the queue rows. Built each time it opens (Controls/TrackMenu.cs) -->
-            <Grid.Resources>
-                <MenuFlyout x:Key="TrackMenu" Opening="OnTrackMenuOpening" />
-            </Grid.Resources>
-            <Grid.ContextFlyout>
-                <StaticResource ResourceKey="TrackMenu" />
-            </Grid.ContextFlyout>
+            <!-- Right-click and the keyboard open the item menu from the row container (MediaListItemStyle); the "..." button opens the same menu -->
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="40" />
                 <ColumnDefinition Width="*" />
@@ -214,7 +197,7 @@
             <controls:NowPlayingBars Grid.Column="2" Width="18" Height="14" VerticalAlignment="Center" Visibility="{x:Bind local:Templates.Vis(IsNowPlaying), Mode=OneWay}" />
             <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" VerticalAlignment="Center" Margin="0,0,0,2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:Templates.VisNot(IsNowPlaying), Mode=OneWay}" />
 
-            <Button Grid.Column="3" Style="{StaticResource SubtleButtonStyle}" Padding="6" Flyout="{StaticResource TrackMenu}" AutomationProperties.Name="Track actions">
+            <Button Grid.Column="3" Style="{StaticResource SubtleButtonStyle}" Padding="6" Flyout="{StaticResource ItemMenu}" AutomationProperties.Name="Track actions">
                 <FontIcon Glyph="&#xE712;" FontSize="14" />
             </Button>
         </Grid>
@@ -295,9 +278,13 @@
     <Style x:Key="TrackListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
         <Setter Property="Padding" Value="0" />
     </Style>
+    <!-- Row container for track, album and browse lists: adds the item menu, so it opens for the focused row from the keyboard as well as by right-click -->
+    <Style x:Key="MediaListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource TrackListItemStyle}">
+        <Setter Property="ContextFlyout" Value="{StaticResource ItemMenu}" />
+    </Style>
     <Style x:Key="TrackListStyle" TargetType="ListView">
         <Setter Property="ItemTemplate" Value="{StaticResource TrackRowTemplate}" />
-        <Setter Property="ItemContainerStyle" Value="{StaticResource TrackListItemStyle}" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource MediaListItemStyle}" />
         <Setter Property="IsItemClickEnabled" Value="True" />
         <Setter Property="SelectionMode" Value="None" />
     </Style>

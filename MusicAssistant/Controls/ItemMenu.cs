@@ -6,20 +6,21 @@ using MusicAssistant.Api;
 namespace MusicAssistant.Controls;
 
 /// <summary>
-/// The menu behind a track row's right-click and "..." button, modeled on the Music Assistant web app's item menu
-/// (ItemContextMenu.vue): Play on, play from here or play now, enqueue options, go to artist, album and endless mix,
-/// library and favorites membership, and add to playlist.
+/// The menu behind a right-click (or Shift+F10 and the menu key) on a track row, album or artist card, Top Picks tile or
+/// browse folder, and behind a track row's "..." button. Modeled on the Music Assistant web app's item menu
+/// (ItemContextMenu.vue): Play on, play from here or play now, play next and enqueue options, go to artist, album and
+/// endless mix, library and favorites membership, and add to playlist.
 ///
-/// It is rebuilt every time it opens, because what it offers depends on the track (favorite, library membership,
-/// artists, album), the page it sits on (an album or playlist offers "play from here") and the active player. Anything
-/// that needs the server (library membership of a streaming track, whether an endless mix can be generated) updates
-/// its entry in place once the answer arrives.
+/// It is rebuilt every time it opens, because what it offers depends on the item (its type, favorite, library
+/// membership, artists, album), the page it sits on (an album or playlist offers "play from here") and the active
+/// player. Anything that needs the server (library membership of a streaming item, whether an endless mix can be
+/// generated) updates its entry in place once the answer arrives.
 /// </summary>
 /// <remarks>
 /// @author Devin Green (Artistro08)
 /// @link https://github.com/music-assistant/frontend/blob/main/src/layouts/default/ItemContextMenu.vue
 /// </remarks>
-public static class TrackMenu
+public static class ItemMenu
 {
     /// <summary>Labels are the web app's English strings (src/translations/en.json).</summary>
     private static readonly (string Option, string Label, string Glyph)[] EnqueueOptions =
@@ -31,30 +32,33 @@ public static class TrackMenu
         ("replace_next", "Play next (replace queue)", ""),
     ];
 
-    /// <summary>Fill the menu for one track. <paramref name="parent"/> is the album, playlist or other item whose page the row is on, if any.</summary>
-    /// <param name="menu">The row's menu flyout, cleared and refilled.</param>
-    /// <param name="track">The track, episode or folder the row shows.</param>
-    /// <param name="parent">The item whose page the row is on, or null.</param>
-    public static void Populate(MenuFlyout menu, MediaItem track, MediaItem? parent)
+    /// <summary>
+    /// Fill the menu for one media item. <paramref name="parent"/> is the album, playlist or other item whose page the
+    /// row or card is on, if any.
+    /// </summary>
+    /// <param name="menu">The shared item menu, cleared and refilled.</param>
+    /// <param name="item">The track, album, artist, playlist, radio station, genre or folder the menu was opened on.</param>
+    /// <param name="parent">The item whose page the row or card is on, or null.</param>
+    public static void Populate(MenuFlyout menu, MediaItem item, MediaItem? parent)
     {
         menu.Items.Clear();
         Player? player  = App.ActivePlayer;
-        bool canPlay = track.IsPlayable && track.IsAvailableNow;
+        bool    canPlay = item.IsPlayable && item.IsAvailableNow;
 
-        // Primary play action: on an album, playlist or podcast page the whole list from this track, else the track alone.
-        bool fromHere = parent is { MediaType: "album" or "playlist" or "podcast" } && (parent.Uri != track.Uri);
+        // Primary play action: on an album, playlist or podcast page the whole list from this item, else the item alone.
+        bool fromHere = parent is { MediaType: "album" or "playlist" or "podcast" } && (parent.Uri != item.Uri);
         Func<Task> playPrimary = fromHere
-            ? () => App.PlayAsync(parent!, startItem: track.ItemId, loadingItem: track)
-            : () => App.PlayAsync(track);
+            ? () => App.PlayAsync(parent!, startItem: item.ItemId, loadingItem: item)
+            : () => App.PlayAsync(item);
 
         // Play On: start that play action on the chosen speaker, which also becomes the active player.
         if (canPlay)
         {
-            var playOn = new MenuFlyoutSubItem { Text = $"Play on: {player?.DisplayName ?? "No player selected"}", Icon = Glyph("\uE7F5") };
-            foreach (Player? candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            var playOn = new MenuFlyoutSubItem { Text = $"Play on: {player?.DisplayName ?? "No player selected"}", Icon = Glyph("") };
+            foreach (Player candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
             {
                 bool active = candidate.PlayerId == player?.PlayerId;
-                Add(playOn, candidate.DisplayName, active ? "\uE73E" : "", () =>
+                Add(playOn, candidate.DisplayName, active ? "" : "", () =>
                 {
                     App.SetActivePlayer(candidate.PlayerId);
                     return playPrimary();
@@ -65,48 +69,57 @@ public static class TrackMenu
         }
 
         // Playback: needs a player to play on.
-        if (player is not null && canPlay)
+        if ((player is not null) && canPlay)
         {
             string label = parent?.MediaType switch { "album" => "Play Album from here", "playlist" => "Play Playlist from here", _ => "Play from here to latest" };
-            Add(menu, fromHere ? label : "Play Now", "\uE768", playPrimary);
-            Add(menu, "Play Next", "\uE893", () => App.PlayAsync(track, "next"));
+            Add(menu, fromHere ? label : "Play Now", "", playPrimary);
+            Add(menu, "Play Next", "", () => App.PlayAsync(item, "next"));
 
-            var enqueue = new MenuFlyoutSubItem { Text = "Enqueue options", Icon = Glyph("\uE8FD") };
-            foreach ((string option, string text, string glyph) in EnqueueOptions) Add(enqueue, text, glyph, () => App.PlayAsync(track, option));
+            var enqueue = new MenuFlyoutSubItem { Text = "Enqueue options", Icon = Glyph("") };
+            foreach ((string option, string text, string glyph) in EnqueueOptions)
+            {
+                Add(enqueue, text, glyph, () => App.PlayAsync(item, option));
+            }
             menu.Items.Add(enqueue);
         }
+
         // Navigation: artist (only when there is exactly one, like the web app), album, endless mix.
-        if (track.IsAvailableNow && track.Artists is [var artist])
+        if (item.IsAvailableNow && item.Artists is [var artist])
         {
             Add(menu, $"View artist {artist.Name}", "", () => App.OpenAsync(artist));
         }
-        if (track.IsAvailableNow && track.Album is { } album)
+        if (item.IsAvailableNow && item.Album is { } album)
         {
             Add(menu, $"View album {album.Name}", "", () => App.OpenAsync(album));
         }
 
-        // Track-only entries: the browse and podcast lists use the same row for folders and episodes.
-        bool isTrack = track.MediaType == "track";
-        if (isTrack && track.IsAvailableNow)
+        // Endless mix: the web app's radio seeds are tracks, albums, artists, genres, and playlists that aren't dynamic already.
+        bool mixSeed = (item.MediaType is "track" or "album" or "artist" or "genre") || ((item.MediaType == "playlist") && (item.IsDynamic != true));
+        if (mixSeed && item.IsAvailableNow)
         {
-            MenuFlyoutItem mix = Add(menu, "View track endless mix", "", () => App.OpenAsync(EndlessMix(track)));
-            _ = CheckEndlessMixAsync(mix, track);
+            MenuFlyoutItem mix = Add(menu, $"View {item.MediaType} endless mix", "", () => App.OpenAsync(EndlessMix(item)));
+            _ = CheckEndlessMixAsync(mix, item);
         }
 
-        // Library membership: a library track knows it; a streaming track is looked up.
-        if (isTrack)
+        // Library membership: a library item knows it; a streaming item is looked up.
+        if (item.MediaType is "track" or "album" or "artist" or "playlist" or "radio" or "audiobook" or "podcast")
         {
-            MenuFlyoutItem library = Add(menu, (track.Provider == "library") && track.IsInLibrary ? "Remove from library" : "Add to library", "", () => Task.CompletedTask);
-            _ = WireLibraryAsync(library, track);
+            MenuFlyoutItem library = Add(menu, (item.Provider == "library") && item.IsInLibrary ? "Remove from library" : "Add to library", "", () => Task.CompletedTask);
+            _ = WireLibraryAsync(library, item);
         }
 
         // Favorites (not for browse folders, which the server cannot favorite).
-        if (track.MediaType != "folder") Add(menu, track.Favorite ? "Remove from favorites" : "Add to favorites", track.Favorite ? "" : "", () => App.ToggleFavoriteAsync(track));
+        if (item.MediaType != "folder")
+        {
+            Add(menu, item.Favorite ? "Remove from favorites" : "Add to favorites", item.Favorite ? "" : "", () => App.ToggleFavoriteAsync(item));
+        }
 
-        // Add to playlist.
-        if (isTrack) Add(menu, "Add to playlist...", "", () => ShowAddToPlaylistAsync(track, parent));
+        // Add to playlist: tracks, and albums, which the server unwraps into their tracks.
+        if (item.MediaType is "track" or "album")
+        {
+            Add(menu, "Add to playlist...", "", () => ShowAddToPlaylistAsync(item, parent));
+        }
     }
-
     // =========================================================================
     // ENDLESS MIX
     // =========================================================================
@@ -125,9 +138,15 @@ public static class TrackMenu
         IsPlayable = true,
     };
 
-    /// <summary>A mix can only be generated when a provider of the track (or, for a library track, any provider) supplies similar tracks; otherwise the entry is disabled.</summary>
+    /// <summary>A mix can only be generated when a provider of the item (or, for a library item, any provider) supplies similar tracks, or for a genre; otherwise the entry is disabled.</summary>
     private static async Task CheckEndlessMixAsync(MenuFlyoutItem entry, MediaItem track)
     {
+        // The server builds genre mixes itself, without a similar-tracks provider.
+        if (track.MediaType == "genre")
+        {
+            return;
+        }
+
         try
         {
             var providers = (await App.Client.GetProvidersCachedAsync()).ToDictionary(p => p.InstanceId);
