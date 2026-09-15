@@ -17,13 +17,13 @@ public static class Png
         await bitmap.RenderAsync(element, width, height);
         if (bitmap.PixelWidth == 0) return false;
 
-        var pixels = (await bitmap.GetPixelsAsync()).ToArray();
+        byte[] pixels = (await bitmap.GetPixelsAsync()).ToArray();
         using var stream = new InMemoryRandomAccessStream();
-        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+        BitmapEncoder encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
         encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels);
         await encoder.FlushAsync();
 
-        var bytes = new byte[stream.Size];
+        byte[] bytes = new byte[stream.Size];
         using var reader = new DataReader(stream.GetInputStreamAt(0));
         await reader.LoadAsync((uint)stream.Size);
         reader.ReadBytes(bytes);
@@ -40,7 +40,7 @@ public static class Png
     /// </summary>
     public static void ScheduleSnapshot(UIElement root)
     {
-        var target = Environment.GetEnvironmentVariable("MA_SNAPSHOT");
+        string? target = Environment.GetEnvironmentVariable("MA_SNAPSHOT");
         if (string.IsNullOrEmpty(target)) return;
 
         snapshotTimer = root.DispatcherQueue.CreateTimer();   // held in a field so the GC cannot collect it before it fires

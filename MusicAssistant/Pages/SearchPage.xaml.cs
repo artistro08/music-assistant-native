@@ -16,14 +16,14 @@ public sealed partial class SearchPage : Page
 
     private async void OnQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        var query = args.QueryText.Trim();
+        string query = args.QueryText.Trim();
         if (query.Length < 2) return;
 
         Busy.IsActive = true; Busy.Visibility = Visibility.Visible;
         EmptyText.Visibility = Visibility.Collapsed;
         try
         {
-            var results = await App.Client.SearchAsync(query);
+            SearchResults results = await App.Client.SearchAsync(query);
 
             Fill(ArtistsRow,   results.Artists);
             Fill(AlbumsRow,    results.Albums);
@@ -33,7 +33,7 @@ public sealed partial class SearchPage : Page
             TrackList.ItemsSource    = results.Tracks;
             TracksSection.Visibility = results.Tracks.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-            var any = results.Artists.Count + results.Albums.Count + results.Playlists.Count + results.Radio.Count + results.Tracks.Count > 0;
+            bool any = results.Artists.Count + results.Albums.Count + results.Playlists.Count + results.Radio.Count + results.Tracks.Count > 0;
             EmptyText.Visibility = any ? Visibility.Collapsed : Visibility.Visible;
         }
         catch (ApiException ex)

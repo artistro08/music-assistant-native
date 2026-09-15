@@ -203,7 +203,7 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
 
     [JsonIgnore]
     public string AuthorsText => Authors is null ? "" : string.Join(", ", Authors.Select(a =>
-        a.ValueKind == JsonValueKind.String ? a.GetString() : a.TryGetProperty("name", out var n) ? n.GetString() : null).Where(s => !string.IsNullOrEmpty(s)));
+        a.ValueKind == JsonValueKind.String ? a.GetString() : a.TryGetProperty("name", out JsonElement n) ? n.GetString() : null).Where(s => !string.IsNullOrEmpty(s)));
 
     [JsonIgnore]
     public string SubtitleText => MediaType switch
@@ -262,7 +262,7 @@ public class MediaItem : System.ComponentModel.INotifyPropertyChanged
     public MediaImage? FindImage()
     {
         if (OwnImage() is { } own) return own;
-        if (MediaType == "album" && Uri.Length > 0 && Images.BorrowedCovers.TryGetValue(Uri, out var borrowed)) return borrowed;
+        if (MediaType == "album" && Uri.Length > 0 && Images.BorrowedCovers.TryGetValue(Uri, out MediaImage? borrowed)) return borrowed;
         if (Album?.FindImage() is { } albumImage) return albumImage;
         return Artists?.Select(a => a.FindImage()).FirstOrDefault(i => i is not null);
     }

@@ -35,11 +35,11 @@ public static class TrackMenu
     public static void Populate(MenuFlyout menu, MediaItem track, MediaItem? parent)
     {
         menu.Items.Clear();
-        var player  = App.ActivePlayer;
-        var canPlay = track.IsPlayable && track.IsAvailableNow;
+        Player? player  = App.ActivePlayer;
+        bool canPlay = track.IsPlayable && track.IsAvailableNow;
 
         // Primary play action: on an album, playlist or podcast page the whole list from this track, else the track alone
-        var fromHere = parent is { MediaType: "album" or "playlist" or "podcast" } && parent.Uri != track.Uri;
+        bool fromHere = parent is { MediaType: "album" or "playlist" or "podcast" } && parent.Uri != track.Uri;
         Func<Task> playPrimary = fromHere
             ? () => App.PlayAsync(parent!, startItem: track.ItemId, loadingItem: track)
             : () => App.PlayAsync(track);
@@ -48,9 +48,9 @@ public static class TrackMenu
         if (canPlay)
         {
             var playOn = new MenuFlyoutSubItem { Text = $"Play on: {player?.DisplayName ?? "No player selected"}", Icon = Glyph("\uE7F5") };
-            foreach (var candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            foreach (Player? candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
             {
-                var active = candidate.PlayerId == player?.PlayerId;
+                bool active = candidate.PlayerId == player?.PlayerId;
                 Add(playOn, candidate.DisplayName, active ? "\uE73E" : "", () =>
                 {
                     App.SetActivePlayer(candidate.PlayerId);
@@ -64,12 +64,12 @@ public static class TrackMenu
         // Playback: needs a player to play on
         if (player is not null && canPlay)
         {
-            var label = parent?.MediaType switch { "album" => "Play Album from here", "playlist" => "Play Playlist from here", _ => "Play from here to latest" };
+            string label = parent?.MediaType switch { "album" => "Play Album from here", "playlist" => "Play Playlist from here", _ => "Play from here to latest" };
             Add(menu, fromHere ? label : "Play Now", "\uE768", playPrimary);
             Add(menu, "Play Next", "\uE893", () => App.PlayAsync(track, "next"));
 
             var enqueue = new MenuFlyoutSubItem { Text = "Enqueue options", Icon = Glyph("\uE8FD") };
-            foreach (var (option, text, glyph) in EnqueueOptions) Add(enqueue, text, glyph, () => App.PlayAsync(track, option));
+            foreach ((string option, string text, string glyph) in EnqueueOptions) Add(enqueue, text, glyph, () => App.PlayAsync(track, option));
             menu.Items.Add(enqueue);
         }
         // Navigation: artist (only when there is exactly one, like the web app), album, endless mix
@@ -83,17 +83,17 @@ public static class TrackMenu
         }
 
         // Track-only entries: the browse and podcast lists use the same row for folders and episodes
-        var isTrack = track.MediaType == "track";
+        bool isTrack = track.MediaType == "track";
         if (isTrack && track.IsAvailableNow)
         {
-            var mix = Add(menu, "View track endless mix", "", () => App.OpenAsync(EndlessMix(track)));
+            MenuFlyoutItem mix = Add(menu, "View track endless mix", "", () => App.OpenAsync(EndlessMix(track)));
             _ = CheckEndlessMixAsync(mix, track);
         }
 
         // Library membership: a library track knows it; a streaming track is looked up
         if (isTrack)
         {
-            var library = Add(menu, track.Provider == "library" && track.IsInLibrary ? "Remove from library" : "Add to library", "", () => Task.CompletedTask);
+            MenuFlyoutItem library = Add(menu, track.Provider == "library" && track.IsInLibrary ? "Remove from library" : "Add to library", "", () => Task.CompletedTask);
             _ = WireLibraryAsync(library, track);
         }
 
@@ -128,9 +128,9 @@ public static class TrackMenu
         try
         {
             var providers = (await App.Client.GetProvidersCachedAsync()).ToDictionary(p => p.InstanceId);
-            bool Similar(string instanceId) => providers.TryGetValue(instanceId, out var provider) && provider.Supports("similar_tracks");
+            bool Similar(string instanceId) => providers.TryGetValue(instanceId, out ProviderInstance? provider) && provider.Supports("similar_tracks");
 
-            var supported = track.ProviderMappings is { Count: > 0 } mappings ? mappings.Any(m => Similar(m.ProviderInstance)) : Similar(track.Provider);
+            bool supported = track.ProviderMappings is { Count: > 0 } mappings ? mappings.Any(m => Similar(m.ProviderInstance)) : Similar(track.Provider);
             if (!supported && track.Provider == "library") supported = providers.Values.Any(p => p.Supports("similar_tracks"));
             entry.IsEnabled = supported;
         }
@@ -162,7 +162,7 @@ public static class TrackMenu
             return;
         }
 
-        var inLibrary = libraryItem?.IsInLibrary == true;
+        bool inLibrary = libraryItem?.IsInLibrary == true;
         entry.Text      = inLibrary ? "Remove from library" : "Add to library";
         entry.IsEnabled = true;
         entry.Click += async (_, _) =>
@@ -240,7 +240,7 @@ public static class TrackMenu
         ProviderInstance? createOn = null;
         list.ItemClick += (_, e) => { chosen = e.ClickedItem as MediaItem; dialog.Hide(); };
 
-        var shown = dialog.ShowAsync();
+        Windows.Foundation.IAsyncOperation<ContentDialogResult> shown = dialog.ShowAsync();
         List<MediaItem>        targets  = [];
         List<ProviderInstance> creators = [];
         try
@@ -259,10 +259,10 @@ public static class TrackMenu
         list.ItemsSource  = targets;
         filter.TextChanged += (_, _) =>
         {
-            var query = filter.Text.Trim();
-            list.ItemsSource = query.Length == 0 ? targets : targets.Where(p => p.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+            string query = filter.Text.Trim();
+            list.ItemsSource = query.Length == 0 ? targets : [.. targets.Where(p => p.Name.Contains(query, StringComparison.OrdinalIgnoreCase))];
         };
-        foreach (var provider in creators)
+        foreach (ProviderInstance provider in creators)
         {
             var button = new Button { Content = $"Create new playlist on {provider.Name}", HorizontalAlignment = HorizontalAlignment.Stretch };
             button.Click += (_, _) => { createOn = provider; dialog.Hide(); };
@@ -274,7 +274,7 @@ public static class TrackMenu
         // New playlist: ask for a name, create it, then add to it
         if (createOn is not null)
         {
-            var name = await AskPlaylistNameAsync();
+            string? name = await AskPlaylistNameAsync();
             if (name is null) return;
             try
             {
@@ -342,26 +342,26 @@ public static class TrackMenu
     /// </summary>
     private static async Task<(List<MediaItem> Playlists, List<ProviderInstance> Creators)> PlaylistTargetsAsync(MediaItem track, MediaItem? parent)
     {
-        var reference = track.ProviderMappings is not null ? track : await App.Client.GetItemByUriAsync(track.Uri);
+        MediaItem reference = track.ProviderMappings is not null ? track : await App.Client.GetItemByUriAsync(track.Uri);
         var providers = (await App.Client.GetProvidersCachedAsync()).ToDictionary(p => p.InstanceId);
-        var playlists = await App.Client.GetAllLibraryPlaylistsAsync();
+        List<MediaItem> playlists = await App.Client.GetAllLibraryPlaylistsAsync();
 
         bool Fits(ProviderInstance provider) => provider.Domain == "builtin"
             || provider.IsStreamingProvider == true
             || reference.ProviderMappings?.Any(m => m.ProviderInstance == provider.InstanceId) == true;
 
         var result = new List<MediaItem>();
-        foreach (var playlist in playlists)
+        foreach (MediaItem playlist in playlists)
         {
             if (playlist.ProviderMappings is not { Count: > 0 } mappings || !mappings.Any(m => m.Available == true)) continue;
             if (!CanEditPlaylistItems(playlist)) continue;
             if (parent is { MediaType: "playlist" } && parent.ItemId == playlist.ItemId) continue;
 
-            var types = playlist.SupportedMediatypes ?? ["track"];
+            List<string> types = playlist.SupportedMediatypes ?? ["track"];
             if (types.Contains("track")) types = [.. types, "album"];
             if (!types.Contains(reference.MediaType)) continue;
 
-            if (!providers.TryGetValue(mappings[0].ProviderInstance, out var provider)) continue;
+            if (!providers.TryGetValue(mappings[0].ProviderInstance, out ProviderInstance? provider)) continue;
             if (provider.Supports("playlist_tracks_edit") && Fits(provider)) result.Add(playlist);
         }
 
@@ -380,7 +380,7 @@ public static class TrackMenu
         if (playlist.Access is not { ValueKind: JsonValueKind.Object } access) return true;
         if (App.Client.CurrentUser is not { } user) return false;
         if (user.Role == "admin") return true;
-        return access.TryGetProperty("owner", out var owner) && owner.ValueKind == JsonValueKind.String && owner.GetString() == user.UserId;
+        return access.TryGetProperty("owner", out JsonElement owner) && owner.ValueKind == JsonValueKind.String && owner.GetString() == user.UserId;
     }
 
     // =========================================================================

@@ -33,7 +33,7 @@ public sealed class Identity
     public sealed record PskEntry(byte[] Psk, string PskId, PskCategory Category, string? ServerId);
 
     private readonly PasswordVault vault = new();
-    private readonly Dictionary<string, PskEntry> psks = new();   // by psk_id
+    private readonly Dictionary<string, PskEntry> psks = [];   // by psk_id
 
     public byte[] PrivateKey { get; }
     public byte[] PublicKey  { get; }
@@ -43,7 +43,7 @@ public sealed class Identity
     public Identity()
     {
         // Static key pair
-        var storedKey = Read(IdentityEntry);
+        byte[]? storedKey = Read(IdentityEntry);
         if (storedKey is { Length: NoiseCrypto.KeySize })
         {
             PrivateKey = storedKey;
@@ -56,7 +56,7 @@ public sealed class Identity
         PublicKey = NoiseCrypto.PublicKey(PrivateKey);
 
         // Pairing PSK: long-lived, per device, minted once
-        var storedPairing = Read(PairingPskEntry);
+        byte[]? storedPairing = Read(PairingPskEntry);
         if (storedPairing is { Length: NoiseCrypto.KeySize })
         {
             PairingPsk = storedPairing;
@@ -83,7 +83,7 @@ public sealed class Identity
     /// <summary>Persist the long-term PSK a completed pairing produced for a server, replacing an older record for it.</summary>
     public void AddPairingRecord(string serverId, byte[] longTermPsk)
     {
-        foreach (var stale in psks.Values.Where(e => e.Category == PskCategory.LongTerm && e.ServerId == serverId).ToList())
+        foreach (PskEntry? stale in psks.Values.Where(e => e.Category == PskCategory.LongTerm && e.ServerId == serverId).ToList())
         {
             psks.Remove(stale.PskId);
         }
@@ -105,13 +105,13 @@ public sealed class Identity
 
     private void LoadRecords()
     {
-        var raw = Read(RecordsEntry);
+        byte[]? raw = Read(RecordsEntry);
         if (raw is null) return;
         try
         {
-            foreach (var record in JsonSerializer.Deserialize<List<StoredRecord>>(raw) ?? [])
+            foreach (StoredRecord record in JsonSerializer.Deserialize<List<StoredRecord>>(raw) ?? [])
             {
-                var psk = Base64Url.Decode(record.Psk);
+                byte[] psk = Base64Url.Decode(record.Psk);
                 if (psk.Length == NoiseCrypto.KeySize) Add(new PskEntry(psk, PskIdOf(psk), PskCategory.LongTerm, record.ServerId));
             }
         }
@@ -135,7 +135,7 @@ public sealed class Identity
     {
         try
         {
-            var credential = vault.Retrieve(VaultResource, entry);
+            PasswordCredential credential = vault.Retrieve(VaultResource, entry);
             credential.RetrievePassword();
             return Convert.FromBase64String(credential.Password);
         }
@@ -156,7 +156,7 @@ public sealed class Identity
         const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
         var output = new System.Text.StringBuilder((bytes.Length * 8 + 4) / 5);
         int buffer = 0, bits = 0;
-        foreach (var b in bytes)
+        foreach (byte b in bytes)
         {
             buffer = (buffer << 8) | b;
             bits  += 8;

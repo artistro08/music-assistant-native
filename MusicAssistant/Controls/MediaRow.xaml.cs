@@ -39,9 +39,9 @@ public sealed partial class MediaRow : UserControl
     /// </summary>
     public void Rebind()
     {
-        foreach (var slot in slots)
+        foreach (Button slot in slots)
         {
-            var item = slot.Content;
+            object? item = slot.Content;
             if (item is null) continue;
             slot.Content = null;
             slot.Content = item;
@@ -85,7 +85,7 @@ public sealed partial class MediaRow : UserControl
         get => items;
         set
         {
-            items = value.ToList();
+            items = [.. value];
             page  = 0;
             BuildSlots();
             Render();
@@ -99,7 +99,7 @@ public sealed partial class MediaRow : UserControl
 
     private void BuildSlots()
     {
-        var needed = SlotsNeeded;
+        int needed = SlotsNeeded;
         if (slots.Count >= needed) return;   // ponytail: slots only grow; a shrinking list leaves collapsed slots behind
 
         while (Slots.ColumnDefinitions.Count < SlotCount)
@@ -108,9 +108,9 @@ public sealed partial class MediaRow : UserControl
         // Card grids (players) have no hover bleed, so the gap is the real gap
         if (ShowAll) Slots.ColumnSpacing = Slots.RowSpacing = 12;
 
-        for (var i = slots.Count; i < needed; i++)
+        for (int i = slots.Count; i < needed; i++)
         {
-            var row = i / SlotCount;
+            int row = i / SlotCount;
             if (Slots.RowDefinitions.Count <= row) Slots.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // A subtle button gives the hover/press surface around image and text, plus keyboard and narrator support for free
@@ -168,10 +168,10 @@ public sealed partial class MediaRow : UserControl
         if (slots.Count == 0) return;
         page = Math.Clamp(page, 0, PageCount - 1);
 
-        for (var i = 0; i < slots.Count; i++)
+        for (int i = 0; i < slots.Count; i++)
         {
-            var index = page * PerPage + i;
-            var item  = index < items.Count ? items[index] : null;
+            int index = page * PerPage + i;
+            object? item  = index < items.Count ? items[index] : null;
             slots[i].Content    = item;
             slots[i].Visibility = item is null ? Visibility.Collapsed : Visibility.Visible;
             slots[i].IsTabStop  = item is not null;
@@ -189,7 +189,7 @@ public sealed partial class MediaRow : UserControl
 
     private void TurnPage(int direction)
     {
-        var target = page + direction;
+        int target = page + direction;
         if (target < 0 || target >= PageCount) return;
         page = target;
         Render();
@@ -199,7 +199,7 @@ public sealed partial class MediaRow : UserControl
     /// <summary>Horizontal wheel or trackpad swipe (or Shift + wheel) turns the page.</summary>
     private void OnPointerWheel(object sender, PointerRoutedEventArgs e)
     {
-        var step = Paging.WheelStep(e, this);
+        int step = Paging.WheelStep(e, this);
         if (step == 0) return;
         e.Handled = true;
         TurnPage(step);

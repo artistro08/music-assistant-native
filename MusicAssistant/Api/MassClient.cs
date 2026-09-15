@@ -87,10 +87,10 @@ public sealed class MassClient : IDisposable
             timeout.CancelAfter(TimeSpan.FromSeconds(30));
             using (timeout.Token.Register(() => firstMessage.TrySetException(new ApiException(0, "Timeout waiting for server info"))))
             {
-                var first = await firstMessage.Task;
-                if (first.TryGetProperty("error_code", out var code))
+                JsonElement first = await firstMessage.Task;
+                if (first.TryGetProperty("error_code", out JsonElement code))
                 {
-                    throw new ApiException(code.GetInt32(), first.TryGetProperty("details", out var d) ? d.GetString() ?? "" : "Server error");
+                    throw new ApiException(code.GetInt32(), first.TryGetProperty("details", out JsonElement d) ? d.GetString() ?? "" : "Server error");
                 }
                 ServerInfo = first.Deserialize<ServerInfo>(Json.Options) ?? throw new ApiException(0, "Invalid server info");
             }
@@ -144,7 +144,7 @@ public sealed class MassClient : IDisposable
 
     private void OnTransportClosed(Exception? error)
     {
-        var wasConnected = IsConnected;
+        bool wasConnected = IsConnected;
         IsConnected = false;
         FailPending(new ApiException(0, "Connection lost"));
         if (wasConnected) Disconnected?.Invoke(error);
@@ -159,7 +159,7 @@ public sealed class MassClient : IDisposable
     /// <summary>Username/password login. Returns the access token to store for later sessions.</summary>
     public async Task<string> LoginAsync(string username, string password, string providerId = "builtin")
     {
-        var result = await SendAsync<LoginResult>("auth/login", new
+        LoginResult result = await SendAsync<LoginResult>("auth/login", new
         {
             username,
             password,
@@ -179,7 +179,7 @@ public sealed class MassClient : IDisposable
     /// <summary>Authenticate this connection with an existing token, then load players and queues.</summary>
     public async Task<User> AuthenticateAsync(string token)
     {
-        var result = await SendAsync<AuthResult>("auth", new
+        AuthResult result = await SendAsync<AuthResult>("auth", new
         {
             token,
             device_name = $"{DeviceName} - {Environment.MachineName}",
@@ -193,11 +193,11 @@ public sealed class MassClient : IDisposable
     /// <summary>URL the user must open in a browser to sign in through an OAuth provider (Home Assistant).</summary>
     public async Task<string> GetAuthorizationUrlAsync(string providerId, string returnUrl)
     {
-        var result = await SendAsync<JsonElement>("auth/authorization_url", new { provider_id = providerId, return_url = returnUrl });
-        var url = result.TryGetProperty("authorization_url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
+        JsonElement result = await SendAsync<JsonElement>("auth/authorization_url", new { provider_id = providerId, return_url = returnUrl });
+        string? url = result.TryGetProperty("authorization_url", out JsonElement u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
         if (string.IsNullOrEmpty(url))
         {
-            var error = result.TryGetProperty("error", out var e) ? e.GetString() : null;
+            string? error = result.TryGetProperty("error", out JsonElement e) ? e.GetString() : null;
             throw new ApiException(ApiException.AuthenticationFailed, error ?? "Provider does not support browser sign-in");
         }
         return url;
@@ -216,15 +216,15 @@ public sealed class MassClient : IDisposable
     public static string? NormalizeRemoteId(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
-        var id = new string(text.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        string id = new string([.. text.Where(char.IsLetterOrDigit)]).ToUpperInvariant();
         // Base32 alphabet A-Z 2-7; the server prints 2 as 9. 8, 0 and 1 never occur, so a typo with them is caught here
         return id.Length == 26 && id.All(c => c is >= 'A' and <= 'Z' or >= '2' and <= '7' or '9') ? id : null;
     }
 
     private async Task FetchStateAsync()
     {
-        foreach (var player in await SendAsync<List<Player>>("players/all"))       Players[player.PlayerId] = player;
-        foreach (var queue  in await SendAsync<List<PlayerQueue>>("player_queues/all")) Queues[queue.QueueId] = Stamped(queue);
+        foreach (Player player in await SendAsync<List<Player>>("players/all"))       Players[player.PlayerId] = player;
+        foreach (PlayerQueue queue  in await SendAsync<List<PlayerQueue>>("player_queues/all")) Queues[queue.QueueId] = Stamped(queue);
         StateLoaded = true;
     }
 
@@ -263,7 +263,7 @@ public sealed class MassClient : IDisposable
     public async Task<List<MediaItem>> GetAlbumTracksAsync(string itemId, string provider, string? albumUri = null)
     {
         var args   = new { item_id = itemId, provider_instance_id_or_domain = provider };
-        var tracks = await SendAsync<List<MediaItem>>("music/albums/album_tracks", args);
+        List<MediaItem> tracks = await SendAsync<List<MediaItem>>("music/albums/album_tracks", args);
 
         // A library album whose tracks came from a streaming provider (YouTube Music) can have track number 0 stored for
         // every track. The server sorts by disc and track number, so the list comes back in its alphabetical database
@@ -277,7 +277,7 @@ public sealed class MassClient : IDisposable
 
         if (tracks.Select(t => t.OwnImage()).FirstOrDefault(i => i is not null) is { } cover)
         {
-            foreach (var uri in tracks.Select(t => t.Album?.Uri).Append(albumUri))
+            foreach (string? uri in tracks.Select(t => t.Album?.Uri).Append(albumUri))
             {
                 if (!string.IsNullOrEmpty(uri)) Images.BorrowedCovers.TryAdd(uri, cover);
             }
@@ -332,7 +332,7 @@ public sealed class MassClient : IDisposable
     /// <summary>Provider instances with their capabilities, fetched once per connection (the track menu asks on every open).</summary>
     public Task<List<ProviderInstance>> GetProvidersCachedAsync()
     {
-        var cached = providersCache;
+        Task<List<ProviderInstance>>? cached = providersCache;
         if (cached is { IsFaulted: false, IsCanceled: false }) return cached;
         return providersCache = GetProvidersAsync();
     }
@@ -353,9 +353,9 @@ public sealed class MassClient : IDisposable
     {
         const int pageSize = 500;
         var all = new List<MediaItem>();
-        for (var offset = 0; ; offset += pageSize)
+        for (int offset = 0; ; offset += pageSize)
         {
-            var page = await SendAsync<List<MediaItem>>("music/playlists/library_items", new { limit = pageSize, offset, order_by = "sort_name" });
+            List<MediaItem> page = await SendAsync<List<MediaItem>>("music/playlists/library_items", new { limit = pageSize, offset, order_by = "sort_name" });
             all.AddRange(page);
             if (page.Count < pageSize) return all;
         }
@@ -370,27 +370,27 @@ public sealed class MassClient : IDisposable
     /// <exception cref="ApiException">The server refused the command, or its background task failed or never finished.</exception>
     public async Task AddPlaylistTracksAsync(string dbPlaylistId, IEnumerable<string> uris)
     {
-        var task = await SendAsync<JsonElement>("music/playlists/add_playlist_tracks", new { db_playlist_id = dbPlaylistId, uris = uris.ToArray() });
-        if (task.ValueKind != JsonValueKind.Object || !task.TryGetProperty("id", out var id)) return;   // older servers finish before answering
+        JsonElement task = await SendAsync<JsonElement>("music/playlists/add_playlist_tracks", new { db_playlist_id = dbPlaylistId, uris = uris.ToArray() });
+        if (task.ValueKind != JsonValueKind.Object || !task.TryGetProperty("id", out JsonElement id)) return;   // older servers finish before answering
         await WaitForTaskAsync(id.GetString()!, TimeSpan.FromMinutes(2));
     }
 
     /// <summary>Poll a background task until it finishes; throws its error when it failed.</summary>
     private async Task WaitForTaskAsync(string taskId, TimeSpan timeout)
     {
-        var deadline = DateTime.UtcNow + timeout;
+        DateTime deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
             await Task.Delay(500);
-            var tasks = await SendAsync<JsonElement>("tasks/list");   // ponytail: whole list per poll, a tasks/get command would be lighter if the server adds one
-            var match = tasks.EnumerateArray().FirstOrDefault(t => t.TryGetProperty("id", out var tid) && tid.GetString() == taskId);
+            JsonElement tasks = await SendAsync<JsonElement>("tasks/list");   // ponytail: whole list per poll, a tasks/get command would be lighter if the server adds one
+            JsonElement match = tasks.EnumerateArray().FirstOrDefault(t => t.TryGetProperty("id", out JsonElement tid) && tid.GetString() == taskId);
             if (match.ValueKind != JsonValueKind.Object) return;   // cleared from the list: finished
 
-            var status = match.TryGetProperty("status", out var s) ? s.GetString() : null;
+            string? status = match.TryGetProperty("status", out JsonElement s) ? s.GetString() : null;
             if (status == "success") return;
             if (status is "failed" or "cancelled")
             {
-                var error = match.TryGetProperty("last_error", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+                string? error = match.TryGetProperty("last_error", out JsonElement e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
                 throw new ApiException(0, error ?? $"The server task {status}.");
             }
         }
@@ -453,7 +453,7 @@ public sealed class MassClient : IDisposable
     {
         if (transport is null) throw new ApiException(0, "Not connected");
 
-        var messageId = Guid.NewGuid().ToString();
+        string messageId = Guid.NewGuid().ToString();
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         pending[messageId] = tcs;
 
@@ -465,11 +465,11 @@ public sealed class MassClient : IDisposable
         // On timeout, drop the pending and any accumulated partial chunks too, or a reply that never comes leaks both
         using (timeout.Token.Register(() =>
         {
-            if (pending.TryRemove(messageId, out var timedOut)) timedOut.TrySetException(new ApiException(0, $"Timeout waiting for {command}"));
+            if (pending.TryRemove(messageId, out TaskCompletionSource<JsonElement>? timedOut)) timedOut.TrySetException(new ApiException(0, $"Timeout waiting for {command}"));
             partials.TryRemove(messageId, out _);
         }))
         {
-            var element = await tcs.Task;
+            JsonElement element = await tcs.Task;
             return element.ValueKind == JsonValueKind.Undefined || element.ValueKind == JsonValueKind.Null
                 ? default!
                 : element.Deserialize<T>(Json.Options)!;
@@ -479,11 +479,11 @@ public sealed class MassClient : IDisposable
     private void HandleMessage(JsonElement message)
     {
         // Event
-        if (message.TryGetProperty("event", out var evt))
+        if (message.TryGetProperty("event", out JsonElement evt))
         {
-            var name     = evt.GetString() ?? "";
-            var objectId = message.TryGetProperty("object_id", out var oid) && oid.ValueKind == JsonValueKind.String ? oid.GetString() : null;
-            var data     = message.TryGetProperty("data", out var d) ? d : default;
+            string name     = evt.GetString() ?? "";
+            string? objectId = message.TryGetProperty("object_id", out JsonElement oid) && oid.ValueKind == JsonValueKind.String ? oid.GetString() : null;
+            JsonElement data     = message.TryGetProperty("data", out JsonElement d) ? d : default;
             try
             {
                 ApplyEvent(name, objectId, data);
@@ -498,37 +498,37 @@ public sealed class MassClient : IDisposable
         }
 
         // Command result
-        if (!message.TryGetProperty("message_id", out var idElement)) return;
-        var id = idElement.GetString() ?? "";
+        if (!message.TryGetProperty("message_id", out JsonElement idElement)) return;
+        string id = idElement.GetString() ?? "";
 
-        if (message.TryGetProperty("error_code", out var code))
+        if (message.TryGetProperty("error_code", out JsonElement code))
         {
             partials.TryRemove(id, out _);
-            if (pending.TryRemove(id, out var failed))
+            if (pending.TryRemove(id, out TaskCompletionSource<JsonElement>? failed))
             {
-                var details = message.TryGetProperty("details", out var det) && det.ValueKind == JsonValueKind.String ? det.GetString() : null;
+                string? details = message.TryGetProperty("details", out JsonElement det) && det.ValueKind == JsonValueKind.String ? det.GetString() : null;
                 failed.TrySetException(new ApiException(code.GetInt32(), details ?? $"Command failed ({code})"));
             }
             return;
         }
 
-        var resultElement = message.TryGetProperty("result", out var r) ? r : default;
-        var isPartial     = message.TryGetProperty("partial", out var p) && p.ValueKind == JsonValueKind.True;
+        JsonElement resultElement = message.TryGetProperty("result", out JsonElement r) ? r : default;
+        bool isPartial     = message.TryGetProperty("partial", out JsonElement p) && p.ValueKind == JsonValueKind.True;
 
         if (isPartial)
         {
-            var chunks = partials.GetOrAdd(id, _ => []);
+            List<JsonElement> chunks = partials.GetOrAdd(id, _ => []);
             if (resultElement.ValueKind == JsonValueKind.Array) chunks.AddRange(resultElement.EnumerateArray());
             return;
         }
 
-        if (partials.TryRemove(id, out var earlier))
+        if (partials.TryRemove(id, out List<JsonElement>? earlier))
         {
             if (resultElement.ValueKind == JsonValueKind.Array) earlier.AddRange(resultElement.EnumerateArray());
             resultElement = JsonSerializer.SerializeToElement(earlier, Json.Options);
         }
 
-        if (pending.TryRemove(id, out var tcs)) tcs.TrySetResult(resultElement);
+        if (pending.TryRemove(id, out TaskCompletionSource<JsonElement>? tcs)) tcs.TrySetResult(resultElement);
     }
 
     private void ApplyEvent(string name, string? objectId, JsonElement data)
@@ -541,7 +541,7 @@ public sealed class MassClient : IDisposable
                 {
                     // Log real playback_state transitions so a pause that flips back to playing with no matching app
                     // command in the log points at the server (buffering resume, group sync), not the client.
-                    if (Players.TryGetValue(player.PlayerId, out var old) && old.PlaybackState != player.PlaybackState)
+                    if (Players.TryGetValue(player.PlayerId, out Player? old) && old.PlaybackState != player.PlaybackState)
                         Logger?.Invoke($"player '{player.Name}' {old.PlaybackState} -> {player.PlaybackState}");
                     Players[player.PlayerId] = player;
                     RemovedPlayers.TryRemove(player.PlayerId, out _);
@@ -557,7 +557,7 @@ public sealed class MassClient : IDisposable
                 if (data.Deserialize<PlayerQueue>(Json.Options) is { } queue) Queues[queue.QueueId] = Stamped(queue);
                 break;
             case "queue_time_updated":
-                if (objectId is not null && Queues.TryGetValue(objectId, out var q) && data.ValueKind == JsonValueKind.Number)
+                if (objectId is not null && Queues.TryGetValue(objectId, out PlayerQueue? q) && data.ValueKind == JsonValueKind.Number)
                 {
                     q.ElapsedTime            = data.GetDouble();
                     q.ElapsedTimeLastUpdated = NowSeconds();
@@ -580,9 +580,9 @@ public sealed class MassClient : IDisposable
 
     private void FailPending(Exception error)
     {
-        foreach (var key in pending.Keys.ToArray())
+        foreach (string? key in pending.Keys.ToArray())
         {
-            if (pending.TryRemove(key, out var tcs)) tcs.TrySetException(error);
+            if (pending.TryRemove(key, out TaskCompletionSource<JsonElement>? tcs)) tcs.TrySetException(error);
         }
         partials.Clear();
     }
@@ -591,11 +591,11 @@ public sealed class MassClient : IDisposable
     private static Dictionary<string, object?> Merge(object first, object? second)
     {
         var merged = new Dictionary<string, object?>();
-        foreach (var source in new[] { first, second })
+        foreach (object? source in new[] { first, second })
         {
             if (source is null) continue;
-            var element = JsonSerializer.SerializeToElement(source, Json.Options);
-            foreach (var prop in element.EnumerateObject()) merged[prop.Name] = prop.Value;
+            JsonElement element = JsonSerializer.SerializeToElement(source, Json.Options);
+            foreach (JsonProperty prop in element.EnumerateObject()) merged[prop.Name] = prop.Value;
         }
         return merged;
     }
@@ -624,7 +624,7 @@ public sealed class MassClient : IDisposable
             return image.Path;
         }
 
-        var encoded = Uri.EscapeDataString(Uri.EscapeDataString(image.Path));
+        string encoded = Uri.EscapeDataString(Uri.EscapeDataString(image.Path));
         return $"{BaseUrl}/imageproxy?path={encoded}&provider={Uri.EscapeDataString(image.Provider)}&size={size}";
     }
 }

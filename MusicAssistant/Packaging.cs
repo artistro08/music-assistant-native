@@ -17,7 +17,7 @@ public static class Packaging
 
     private static bool DetectPackaged()
     {
-        var length = 0;
+        int length = 0;
         return GetCurrentPackageFullName(ref length, null) != AppModelErrorNoPackage;
     }
 

@@ -65,7 +65,7 @@ public sealed class Speaker
         loop?.Cancel();
         loop = null;
         // Exchange so only one caller ever disposes: Stop and the reconnect loop can both run at a session drop
-        var current = Interlocked.Exchange(ref player, null);
+        SendspinPlayer? current = Interlocked.Exchange(ref player, null);
         if (current is not null)
         {
             try { current.Disconnect("user_request"); current.Dispose(); } catch (Exception ex) { App.Debug("Speaker stop: " + ex.Message); }
@@ -80,11 +80,11 @@ public sealed class Speaker
         while (!ct.IsCancellationRequested)
         {
             var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var connectedOnce = false;
+            bool connectedOnce = false;
             try
             {
                 SetStatus("Connecting…");
-                var socket = CreateSocket();
+                ISendspinSocket socket = CreateSocket();
                 var session = new SendspinPlayer(identity, socket, Environment.MachineName, App.Client.IsRemote);
                 // Only a drop after the session was up counts: StateChanged also fires mid-handshake, before Connected is set
                 session.StateChanged += () =>
@@ -120,7 +120,7 @@ public sealed class Speaker
             try { Interlocked.Exchange(ref player, null)?.Dispose(); } catch (Exception ex) { App.Debug("Speaker cleanup: " + ex.Message); }
             if (ct.IsCancellationRequested || !App.Client.IsConnected) { SetStatus("Off"); return; }
 
-            var delay = Backoff[Math.Min(attempt++, Backoff.Length - 1)];
+            TimeSpan delay = Backoff[Math.Min(attempt++, Backoff.Length - 1)];
             SetStatus($"Reconnecting in {delay.TotalSeconds:0}s…");
             try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { return; }
         }

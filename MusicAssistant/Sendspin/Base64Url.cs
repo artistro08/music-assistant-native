@@ -8,7 +8,7 @@ public static class Base64Url
 
     public static byte[] Decode(string text)
     {
-        var padded = text.Replace('-', '+').Replace('_', '/');
+        string padded = text.Replace('-', '+').Replace('_', '/');
         padded += (padded.Length % 4) switch { 2 => "==", 3 => "=", 1 => throw new FormatException("Invalid base64url length"), _ => "" };
         return Convert.FromBase64String(padded);
     }

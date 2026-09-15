@@ -30,7 +30,7 @@ public sealed partial class LibraryPage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        var requested = e.Parameter as string ?? "albums";
+        string requested = e.Parameter as string ?? "albums";
 
         // Coming back to the same listing: keep items and scroll position
         if (requested == mediaType && items.Count > 0) return;
@@ -49,7 +49,7 @@ public sealed partial class LibraryPage : Page
             _            => mediaType,
         };
 
-        var asList = mediaType == "tracks";
+        bool asList = mediaType == "tracks";
         List.Visibility = asList ? Visibility.Visible : Visibility.Collapsed;
         CardGrid.Visibility = asList ? Visibility.Collapsed : Visibility.Visible;
 
@@ -74,14 +74,14 @@ public sealed partial class LibraryPage : Page
 
     private async Task LoadPageAsync()
     {
-        var version = loadVersion;
+        int version = loadVersion;
         Busy.IsActive = true; Busy.Visibility = Visibility.Visible;
         MoreButton.Visibility = Visibility.Collapsed;
         try
         {
-            var page = await App.Client.GetLibraryItemsAsync(mediaType, SearchBox.Text, FavoritesToggle.IsChecked == true, PageSize, offset);
+            List<MediaItem> page = await App.Client.GetLibraryItemsAsync(mediaType, SearchBox.Text, FavoritesToggle.IsChecked == true, PageSize, offset);
             if (version != loadVersion) return;   // listing, filter or favorites changed while this page loaded
-            foreach (var item in page) items.Add(item);
+            foreach (MediaItem item in page) items.Add(item);
             offset += page.Count;
             MoreButton.Visibility = page.Count == PageSize ? Visibility.Visible : Visibility.Collapsed;
             UpdateEmptyState();
@@ -105,7 +105,7 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        var what = TitleText.Text.ToLowerInvariant();
+        string what = TitleText.Text.ToLowerInvariant();
         (EmptyText.Text, EmptyHint.Text) = (SearchBox.Text.Length > 0, FavoritesToggle.IsChecked == true) switch
         {
             (true, _)     => ($"No {what} match \"{SearchBox.Text}\"", "Try a different filter."),
@@ -127,9 +127,9 @@ public sealed partial class LibraryPage : Page
         if (CardGrid.ItemsPanelRoot is not ItemsWrapGrid panel) return;
         const int columns = 6, bleed = 14, gap = 12, textBlock = 60;   // gap = BareGridViewItemStyle margin, bleed = gap/2 + card padding
 
-        var content   = Math.Min(e.NewSize.Width - CardGrid.Padding.Left - CardGrid.Padding.Right, (double)Application.Current.Resources["ContentMaxWidth"]);
-        var available = content + 2 * bleed;
-        var cell      = Math.Max(48, Math.Floor((available - 1) / columns));   // 1px slack so rounding can never push a card to the next row
+        double content   = Math.Min(e.NewSize.Width - CardGrid.Padding.Left - CardGrid.Padding.Right, (double)Application.Current.Resources["ContentMaxWidth"]);
+        double available = content + 2 * bleed;
+        double cell      = Math.Max(48, Math.Floor((available - 1) / columns));   // 1px slack so rounding can never push a card to the next row
         if (Math.Abs(panel.ItemWidth - cell) < 0.5 && Math.Abs(panel.Width - cell * columns) < 0.5) return;
 
         panel.HorizontalAlignment = HorizontalAlignment.Center;

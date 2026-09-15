@@ -12,7 +12,7 @@ public static class DiagnosticLog
     public static void EnableIfRequested()
     {
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MA_RTC_LOG"))) return;
-        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "sipsorcery.log");
+        string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "sipsorcery.log");
         try { File.WriteAllText(path, ""); } catch (IOException) { }
         SIPSorcery.LogFactory.Set(new FileLoggerFactory(path));
     }
@@ -32,7 +32,7 @@ public static class DiagnosticLog
             public void Log<TState>(LogLevel level, EventId id, TState state, Exception? ex, Func<TState, Exception?, string> formatter)
             {
                 if (!IsEnabled(level)) return;
-                var line = $"{DateTime.Now:HH:mm:ss.fff} {level} {category.Split('.')[^1]}: {formatter(state, ex)}{(ex is null ? "" : " " + ex.Message)}";
+                string line = $"{DateTime.Now:HH:mm:ss.fff} {level} {category.Split('.')[^1]}: {formatter(state, ex)}{(ex is null ? "" : " " + ex.Message)}";
                 lock (Gate) { try { File.AppendAllText(path, line + Environment.NewLine); } catch (IOException) { } }
             }
         }

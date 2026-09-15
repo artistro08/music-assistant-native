@@ -67,11 +67,11 @@ public sealed class TrayMenu
 
         // Tool window (no taskbar entry), fully transparent. Deliberately not owned by the main window:
         // activating an owned window drags its owner to the front, and the menu must not raise the app
-        var style = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
+        long style = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
         SetWindowLongPtr(hwnd, GWL_EXSTYLE, (IntPtr)(style | WS_EX_LAYERED | WS_EX_TOOLWINDOW));
         SetLayeredWindowAttributes(hwnd, 0, 0, LWA_ALPHA);
 
-        foreach (var item in new MenuFlyoutItemBase[] { openItem, new MenuFlyoutSeparator(), playItem, nextItem, previousItem, new MenuFlyoutSeparator(), speakerItem, new MenuFlyoutSeparator(), exitItem })
+        foreach (MenuFlyoutItemBase item in new MenuFlyoutItemBase[] { openItem, new MenuFlyoutSeparator(), playItem, nextItem, previousItem, new MenuFlyoutSeparator(), speakerItem, new MenuFlyoutSeparator(), exitItem })
         {
             flyout.Items.Add(item);
         }
@@ -97,15 +97,15 @@ public sealed class TrayMenu
 
         // Icon rectangle and the work area of its monitor
         var id = new NOTIFYICONIDENTIFIER { cbSize = (uint)Marshal.SizeOf<NOTIFYICONIDENTIFIER>(), hWnd = owner, uID = 1 };
-        if (Shell_NotifyIconGetRect(ref id, out var icon) != 0) icon = new RECT { Left = x, Top = y, Right = x + 1, Bottom = y + 1 };
+        if (Shell_NotifyIconGetRect(ref id, out RECT icon) != 0) icon = new RECT { Left = x, Top = y, Right = x + 1, Bottom = y + 1 };
         var info = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
         GetMonitorInfo(MonitorFromRect(ref icon, MONITOR_DEFAULTTONEAREST), ref info);
-        var work = info.rcWork;
+        RECT work = info.rcWork;
 
         // The taskbar is on the monitor edge the icon sits against
         int toTop  = icon.Top  - info.rcMonitor.Top,  toBottom = info.rcMonitor.Bottom - icon.Bottom;
         int toLeft = icon.Left - info.rcMonitor.Left, toRight  = info.rcMonitor.Right  - icon.Right;
-        var edge = Math.Min(Math.Min(toTop, toBottom), Math.Min(toLeft, toRight)) switch
+        Edge edge = Math.Min(Math.Min(toTop, toBottom), Math.Min(toLeft, toRight)) switch
         {
             var m when m == toBottom => Edge.Bottom,
             var m when m == toTop    => Edge.Top,
@@ -114,11 +114,11 @@ public sealed class TrayMenu
         };
 
         // Park the host in the work-area corner next to the icon; the flyout grows from that corner into the screen
-        var w = Math.Min(HostWidth,  work.Right - work.Left);
-        var h = Math.Min(HostHeight, work.Bottom - work.Top);
-        var right  = Math.Clamp(icon.Right,  work.Left + w, work.Right);
-        var bottom = Math.Clamp(icon.Bottom, work.Top + h,  work.Bottom);
-        var host = edge switch
+        int w = Math.Min(HostWidth,  work.Right - work.Left);
+        int h = Math.Min(HostHeight, work.Bottom - work.Top);
+        int right  = Math.Clamp(icon.Right,  work.Left + w, work.Right);
+        int bottom = Math.Clamp(icon.Bottom, work.Top + h,  work.Bottom);
+        RECT host = edge switch
         {
             Edge.Bottom => new RECT { Left = right - w, Top = work.Bottom - h, Right = right, Bottom = work.Bottom },
             Edge.Top    => new RECT { Left = right - w, Top = work.Top, Right = right, Bottom = work.Top + h },
@@ -162,8 +162,8 @@ public sealed class TrayMenu
     /// <summary>Labels and enabled state follow the active player; the Speaker submenu lists every visible player.</summary>
     private void Refresh()
     {
-        var player  = App.ActivePlayer;
-        var enabled = player is not null;
+        Player? player  = App.ActivePlayer;
+        bool enabled = player is not null;
 
         playItem.Text = player?.IsPlaying == true ? "Pause" : "Play";
         ((FontIcon)playItem.Icon).Glyph = player?.IsPlaying == true ? "" : "";
@@ -171,7 +171,7 @@ public sealed class TrayMenu
 
         speakerItem.Text = player is null ? "Speaker" : $"Speaker: {player.DisplayName}";
         speakerItem.Items.Clear();
-        foreach (var candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name))
+        foreach (Player? candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name))
         {
             var entry = new ToggleMenuFlyoutItem
             {

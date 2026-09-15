@@ -54,7 +54,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Changed += (_, _) => SyncTitleBarHeight();   // DPI or caption height changes
 
         // App icon in the title bar / taskbar, and the tray icon with its menu
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
         AppWindow.SetIcon(iconPath);
         tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), iconPath, ShowFromTray, ExitApp, App.Settings.ShowTrayIcon);
         App.StateChanged += UpdateTrayTip;
@@ -107,7 +107,7 @@ public sealed partial class MainWindow : Window
         // If the window is open on another virtual desktop, plain Activate would switch the user to that desktop.
         // Hiding then showing re-places it on the desktop the user is on now, so launching from the Start menu (or the
         // tray) brings the app to them instead of yanking them away.
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        nint hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         if (AppWindow.IsVisible && !IsOnCurrentDesktop(hwnd)) AppWindow.Hide();
 
         AppWindow.Show();
@@ -123,7 +123,7 @@ public sealed partial class MainWindow : Window
             var manager = (IVirtualDesktopManager)new VirtualDesktopManagerClass();
             try
             {
-                return manager.IsWindowOnCurrentVirtualDesktop(hwnd, out var onCurrent) == 0 && onCurrent != 0;
+                return manager.IsWindowOnCurrentVirtualDesktop(hwnd, out int onCurrent) == 0 && onCurrent != 0;
             }
             finally
             {
@@ -165,18 +165,18 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private static async Task StopOwnSpeakerAsync()
     {
-        var id = App.Settings.SpeakerClientId;
+        string? id = App.Settings.SpeakerClientId;
         if (!App.Settings.SpeakerEnabled || string.IsNullOrEmpty(id)) return;
-        if (!App.Client.Players.TryGetValue(id, out var pc) || !pc.IsPlaying) return;
+        if (!App.Client.Players.TryGetValue(id, out Player? pc) || !pc.IsPlaying) return;
         try { await App.Client.PlayerCommandAsync(id, "stop").WaitAsync(TimeSpan.FromSeconds(2)); }
         catch (Exception ex) { App.Log("Exit stop: " + ex.Message); }
     }
 
     private void UpdateTrayTip()
     {
-        var player = App.ActivePlayer;
-        var item   = player is null ? null : App.Client.Queues.GetValueOrDefault(App.Client.QueueIdFor(player))?.CurrentItem;
-        var title  = item?.Title ?? player?.CurrentMedia?.Title;
+        Player? player = App.ActivePlayer;
+        QueueItem? item   = player is null ? null : App.Client.Queues.GetValueOrDefault(App.Client.QueueIdFor(player))?.CurrentItem;
+        string? title  = item?.Title ?? player?.CurrentMedia?.Title;
         tray.SetTip(title is null ? "Music Assistant" : $"Music Assistant\n{title}\n{player!.Name}");
     }
 
@@ -187,10 +187,10 @@ public sealed partial class MainWindow : Window
     /// <summary>Restore the last size and position when it still lands on a connected display; otherwise use the default size.</summary>
     private void RestorePlacement()
     {
-        var s = App.Settings;
+        Session s = App.Settings;
         var rect = new Windows.Graphics.RectInt32(s.WindowX, s.WindowY, s.WindowWidth, s.WindowHeight);
 
-        var onScreen = s.WindowWidth >= 400 && s.WindowHeight >= 300
+        bool onScreen = s.WindowWidth >= 400 && s.WindowHeight >= 300
             && Microsoft.UI.Windowing.DisplayArea.GetFromRect(rect, Microsoft.UI.Windowing.DisplayAreaFallback.None) is { } area
             && rect.X < area.WorkArea.X + area.WorkArea.Width - 100
             && rect.Y < area.WorkArea.Y + area.WorkArea.Height - 100;
@@ -201,7 +201,7 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
         {
             // Below this the player bar's Narrow state and the Home rows stop fitting; the limit is in physical pixels
-            var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+            double scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
             presenter.PreferredMinimumWidth  = (int)(720 * scale);
             presenter.PreferredMinimumHeight = (int)(520 * scale);
 
@@ -217,11 +217,11 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void SyncTitleBarHeight()
     {
-        var height = AppWindow.TitleBar.Height;
+        int height = AppWindow.TitleBar.Height;
         if (height <= 0) return;
-        var maximized = AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized };
-        var scale     = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
-        var logical   = (height - (maximized ? 0 : 1)) / scale;
+        bool maximized = AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized };
+        double scale     = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+        double logical   = (height - (maximized ? 0 : 1)) / scale;
         if (double.IsNaN(TitleBarRow.Height) || Math.Abs(TitleBarRow.Height - logical) > 0.01) TitleBarRow.Height = logical;
     }
 
@@ -230,7 +230,7 @@ public sealed partial class MainWindow : Window
 
     private void SavePlacement()
     {
-        var s = App.Settings;
+        Session s = App.Settings;
         var presenter = AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
         s.WindowMaximized = presenter?.State == Microsoft.UI.Windowing.OverlappedPresenterState.Maximized;
 
@@ -257,7 +257,7 @@ public sealed partial class MainWindow : Window
 
     private async Task StartAsync()
     {
-        var token = App.Settings.GetToken();
+        string? token = App.Settings.GetToken();
         if (string.IsNullOrEmpty(token) || (string.IsNullOrEmpty(App.Settings.ServerAddress) && string.IsNullOrEmpty(App.Settings.RemoteId)))
         {
             ShowLogin(null);
@@ -288,8 +288,8 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private async Task ConnectBestAsync(CancellationToken ct)
     {
-        var address  = App.Settings.ServerAddress;
-        var remoteId = App.Settings.RemoteId;
+        string? address  = App.Settings.ServerAddress;
+        string? remoteId = App.Settings.RemoteId;
         Exception? localError = null;
 
         if (!string.IsNullOrEmpty(address))
@@ -346,7 +346,7 @@ public sealed partial class MainWindow : Window
         App.Settings.Save();
 
         await ConnectBestAsync(CancellationToken.None);
-        var token = await App.Client.LoginAsync(username, password);
+        string token = await App.Client.LoginAsync(username, password);
         App.Settings.SetToken(token);
         ShowMain();
     }
@@ -364,20 +364,20 @@ public sealed partial class MainWindow : Window
         await App.Client.ConnectAsync(address, ct);
         SetRemote(false);
 
-        var providers = await App.Client.GetAuthProvidersAsync();
-        var provider  = providers.FirstOrDefault(p => p.ProviderType == "oauth_homeassistant" || p.ProviderId == "homeassistant")
+        List<AuthProvider> providers = await App.Client.GetAuthProvidersAsync();
+        AuthProvider provider  = providers.FirstOrDefault(p => p.ProviderType == "oauth_homeassistant" || p.ProviderId == "homeassistant")
             ?? throw new ApiException(ApiException.AuthenticationFailed, "This server has no Home Assistant sign-in configured.");
 
         using var loopback = new OAuthLoopback();
-        var authorizeUrl = await App.Client.GetAuthorizationUrlAsync(provider.ProviderId, loopback.ReturnUrl);
+        string authorizeUrl = await App.Client.GetAuthorizationUrlAsync(provider.ProviderId, loopback.ReturnUrl);
 
-        if (!Uri.TryCreate(authorizeUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        if (!Uri.TryCreate(authorizeUrl, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https"))
         {
             throw new ApiException(ApiException.AuthenticationFailed, "Server returned an invalid sign-in URL.");
         }
 
         await Windows.System.Launcher.LaunchUriAsync(uri);
-        var token = await loopback.WaitForCodeAsync(ct);
+        string token = await loopback.WaitForCodeAsync(ct);
 
         App.Settings.ServerAddress = address;
         App.Settings.Save();
@@ -422,7 +422,7 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, reconnectAttempt))), ct);
 
                 // The token is re-read every attempt: a sign-out in between must end the loop, not be undone by it
-                var token = App.Settings.GetToken();
+                string? token = App.Settings.GetToken();
                 if (token is null) { ShowLogin(null); return; }
 
                 try
@@ -478,7 +478,7 @@ public sealed partial class MainWindow : Window
         Nav.SelectedItem = Nav.MenuItems[1];
         Navigate(typeof(HomePage), null);
 
-        var user = App.Client.CurrentUser;
+        User? user = App.Client.CurrentUser;
         UserNameText.Text = user?.DisplayName ?? user?.Username ?? "";
         ToolTipService.SetToolTip(UserItem, user?.Username);
         _ = LoadAvatarAsync(user?.AvatarUrl);
@@ -500,7 +500,7 @@ public sealed partial class MainWindow : Window
         UserIcon.UriSource = appIcon;
         if (string.IsNullOrWhiteSpace(avatarUrl)) return;
 
-        var absolute = avatarUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? avatarUrl : App.Client.BaseUrl + "/" + avatarUrl.TrimStart('/');
+        string absolute = avatarUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? avatarUrl : App.Client.BaseUrl + "/" + avatarUrl.TrimStart('/');
         if (Templates.Decode(absolute, 96) is not { } image) return;
 
         var opened = new TaskCompletionSource<bool>();
@@ -521,7 +521,7 @@ public sealed partial class MainWindow : Window
 
         // Let the brush paint once, then capture the circle to a PNG (BitmapIcon only takes a file)
         await Task.Yield();
-        var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "avatar.png");
+        string file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "avatar.png");
         if (!await Png.SaveAsync(AvatarStamp, file, 96, 96)) { App.Log("Avatar circle render produced no pixels; keeping app icon"); return; }
         UserIcon.UriSource = new Uri(file);
     }
@@ -536,8 +536,8 @@ public sealed partial class MainWindow : Window
         if (App.Client.IsRemote || App.Client.CurrentUser?.Role != "admin") return;
         try
         {
-            var info = await App.Client.GetRemoteAccessInfoAsync();
-            var id   = info.Enabled ? MassClient.NormalizeRemoteId(info.RemoteId) : null;
+            RemoteAccessInfo info = await App.Client.GetRemoteAccessInfoAsync();
+            string? id   = info.Enabled ? MassClient.NormalizeRemoteId(info.RemoteId) : null;
             if (id == App.Settings.RemoteId) return;
             App.Settings.RemoteId = id;
             App.Settings.Save();
@@ -577,7 +577,7 @@ public sealed partial class MainWindow : Window
         // Start offscreen and transparent so there is no flash before the slide, then animate in on the next tick.
         // The first open has never been laid out, so beginning the storyboard in this same tick would snap; the
         // enqueue lets the frame realize its visual and measure its height first.
-        var transform = QueueFrame.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform ?? new Microsoft.UI.Xaml.Media.TranslateTransform();
+        Microsoft.UI.Xaml.Media.TranslateTransform transform = QueueFrame.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform ?? new Microsoft.UI.Xaml.Media.TranslateTransform();
         QueueFrame.RenderTransform = transform;
         transform.Y           = QueueDistance;
         QueueFrame.Opacity    = 0;
@@ -612,10 +612,10 @@ public sealed partial class MainWindow : Window
 
     private void SlideQueue(bool open, Action? completed = null)
     {
-        var transform = QueueFrame.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform ?? new Microsoft.UI.Xaml.Media.TranslateTransform();
+        Microsoft.UI.Xaml.Media.TranslateTransform transform = QueueFrame.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform ?? new Microsoft.UI.Xaml.Media.TranslateTransform();
         QueueFrame.RenderTransform = transform;
 
-        var distance = QueueDistance;
+        double distance = QueueDistance;
         var duration = new Duration(TimeSpan.FromMilliseconds(open ? 320 : 240));
         var ease     = new CubicEase { EasingMode = open ? EasingMode.EaseOut : EasingMode.EaseIn };
 
@@ -641,7 +641,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void OnSpace(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
-        var focused = FocusManager.GetFocusedElement(Content.XamlRoot);
+        object focused = FocusManager.GetFocusedElement(Content.XamlRoot);
         if (focused is TextBox or PasswordBox or AutoSuggestBox or RichEditBox || LoginFrame.Visibility == Visibility.Visible)
         {
             args.Handled = false;
@@ -656,7 +656,7 @@ public sealed partial class MainWindow : Window
 
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        var props = e.GetCurrentPoint(Root).Properties;
+        Microsoft.UI.Input.PointerPointProperties props = e.GetCurrentPoint(Root).Properties;
         if (props.IsXButton1Pressed)      { GoBack();    e.Handled = true; }
         else if (props.IsXButton2Pressed) { GoForward(); e.Handled = true; }
     }
@@ -683,7 +683,7 @@ public sealed partial class MainWindow : Window
         MessageBar.IsOpen   = true;
         if (!autoClose) return;
 
-        var timer = DispatcherQueue.CreateTimer();
+        Microsoft.UI.Dispatching.DispatcherQueueTimer timer = DispatcherQueue.CreateTimer();
         timer.Interval = TimeSpan.FromSeconds(6);
         timer.IsRepeating = false;
         timer.Tick += (_, _) => MessageBar.IsOpen = false;
@@ -706,7 +706,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (args.InvokedItemContainer?.Tag is string tag && NavPages.TryGetValue(tag, out var page))
+        if (args.InvokedItemContainer?.Tag is string tag && NavPages.TryGetValue(tag, out Type? page))
         {
             Navigate(page, tag);
         }

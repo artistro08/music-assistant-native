@@ -48,7 +48,7 @@ public sealed class TrayIcon : IDisposable
     public void Show()
     {
         if (added) return;
-        var data = NewData();
+        NotifyIconData data = NewData();
         data.uFlags           = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         data.uCallbackMessage = TrayMessage;
         data.hIcon            = icon;
@@ -62,7 +62,7 @@ public sealed class TrayIcon : IDisposable
     public void Hide()
     {
         if (!added) return;
-        var data = NewData();
+        NotifyIconData data = NewData();
         Shell_NotifyIcon(NIM_DELETE, ref data);
         added = false;
     }
@@ -77,7 +77,7 @@ public sealed class TrayIcon : IDisposable
     public void SetTip(string tip)
     {
         if (!added) return;
-        var data = NewData();
+        NotifyIconData data = NewData();
         data.uFlags = NIF_TIP;
         data.szTip  = tip.Length > 127 ? tip[..127] : tip;
         Shell_NotifyIcon(NIM_MODIFY, ref data);

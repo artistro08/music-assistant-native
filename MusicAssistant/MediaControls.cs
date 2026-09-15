@@ -1,7 +1,7 @@
+using MusicAssistant.Api;
 using Windows.Media;
 using Windows.Storage;
 using Windows.Storage.Streams;
-using MusicAssistant.Api;
 
 namespace MusicAssistant;
 
@@ -24,7 +24,7 @@ public static class MediaControls
     public static void Attach(Microsoft.UI.Xaml.Window window)
     {
         RegisterAppIdentity();
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        nint hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         controls = SystemMediaTransportControlsInterop.GetForWindow(hwnd);
 
         controls.IsEnabled         = true;
@@ -47,10 +47,10 @@ public static class MediaControls
     private static void RegisterAppIdentity()
     {
         if (Packaging.IsPackaged) return;   // package identity covers name, icon and AppUserModelID
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
         try
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey($@"Software\Classes\AppUserModelId\{App.AppUserModelId}");
+            using Microsoft.Win32.RegistryKey? key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey($@"Software\Classes\AppUserModelId\{App.AppUserModelId}");
             key?.SetValue("DisplayName", "Music Assistant");
             key?.SetValue("IconUri", iconPath);
             key?.SetValue("IconBackgroundColor", "FF0E8FE0");
@@ -69,8 +69,8 @@ public static class MediaControls
     /// </summary>
     private static Player? Target()
     {
-        var selected = App.ActivePlayer;
-        var local    = Player.OwnPlayerId is { } id && App.Client.Players.GetValueOrDefault(id) is { IsVisible: true } p ? p : null;
+        Player? selected = App.ActivePlayer;
+        Player? local    = Player.OwnPlayerId is { } id && App.Client.Players.GetValueOrDefault(id) is { IsVisible: true } p ? p : null;
 
         Player? target;
         if (local is null || local.PlayerId == selected?.PlayerId || selected?.PlaybackState is "playing" or "paused") target = selected;
@@ -89,7 +89,7 @@ public static class MediaControls
     {
         if (Target() is not { } player) return;
 
-        var command = args.Button switch
+        string? command = args.Button switch
         {
             SystemMediaTransportControlsButton.Play     => "play",
             SystemMediaTransportControlsButton.Pause    => "pause",
@@ -116,7 +116,7 @@ public static class MediaControls
         try
         {
             if (await Templates.ArtFileAsync(imageUrl) is not { } path) return;
-            var file = await StorageFile.GetFileFromPathAsync(path);
+            StorageFile file = await StorageFile.GetFileFromPathAsync(path);
             if (controls is null || signature != displaySignature) return;
             controls.DisplayUpdater.Thumbnail = RandomAccessStreamReference.CreateFromFile(file);
             controls.DisplayUpdater.Update();
@@ -131,30 +131,30 @@ public static class MediaControls
     {
         if (controls is null) return;
 
-        var player = Target();
-        var queue  = player is null ? null : App.Client.Queues.GetValueOrDefault(App.Client.QueueIdFor(player));
-        var item   = queue?.CurrentItem;
-        var media  = player?.CurrentMedia;
+        Player? player = Target();
+        PlayerQueue? queue  = player is null ? null : App.Client.Queues.GetValueOrDefault(App.Client.QueueIdFor(player));
+        QueueItem? item   = queue?.CurrentItem;
+        PlayerMedia? media  = player?.CurrentMedia;
 
         // Windows routes media keys to the most recent app whose session is playing or paused. A player that stopped
         // with a queue still on it (a paused WiiM turns idle after 30 s, a stopped web player) is resumable, so report
         // it as paused; reporting Stopped hands the keys to the next app and Play then goes nowhere.
-        var resumable = player?.PlaybackState is "paused" || item is not null;
+        bool resumable = player?.PlaybackState is "paused" || item is not null;
         controls.PlaybackStatus = player?.IsPlaying == true ? MediaPlaybackStatus.Playing
                                 : resumable                 ? MediaPlaybackStatus.Paused
                                 :                             MediaPlaybackStatus.Stopped;
 
-        var title    = item?.Title ?? media?.Title ?? "";
-        var artist   = item?.MediaItem?.ArtistsText ?? media?.Artist ?? "";
-        var album    = item?.MediaItem?.Album?.Name ?? media?.Album ?? "";
-        var imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 512) : media?.ImageUrl;
+        string title    = item?.Title ?? media?.Title ?? "";
+        string artist   = item?.MediaItem?.ArtistsText ?? media?.Artist ?? "";
+        string album    = item?.MediaItem?.Album?.Name ?? media?.Album ?? "";
+        string? imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 512) : media?.ImageUrl;
 
         // Only push display metadata when it changed, to avoid re-fetching artwork every second
-        var signature = $"{title}|{artist}|{album}|{imageUrl}";
+        string signature = $"{title}|{artist}|{album}|{imageUrl}";
         if (signature != displaySignature)
         {
             displaySignature = signature;
-            var updater = controls.DisplayUpdater;
+            SystemMediaTransportControlsDisplayUpdater updater = controls.DisplayUpdater;
             updater.Type = MediaPlaybackType.Music;
             updater.MusicProperties.Title      = title;
             updater.MusicProperties.Artist     = artist;
@@ -165,10 +165,10 @@ public static class MediaControls
         }
 
         // Timeline for the overlay's progress bar
-        var duration = item?.Duration ?? media?.Duration ?? 0;
+        double duration = item?.Duration ?? media?.Duration ?? 0;
         if (duration > 0 && queue is not null)
         {
-            var elapsed = queue.ElapsedNow;
+            double elapsed = queue.ElapsedNow;
             controls.UpdateTimelineProperties(new SystemMediaTransportControlsTimelineProperties
             {
                 StartTime   = TimeSpan.Zero,

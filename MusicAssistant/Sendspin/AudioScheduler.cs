@@ -94,8 +94,8 @@ public sealed class AudioScheduler
     /// <summary>Render callback: fill `frames` frames whose first frame plays at `firstFrameTimeUs`.</summary>
     public void Render(Span<float> buffer, int frames, long firstFrameTimeUs)
     {
-        var written = 0;
-        var frameUs = 1_000_000.0 / SampleRate;
+        int written = 0;
+        double frameUs = 1_000_000.0 / SampleRate;
 
         lock (gate)
         {
@@ -109,15 +109,15 @@ public sealed class AudioScheduler
                     offset = 0;
                 }
 
-                var slotTime   = firstFrameTimeUs + (long)(written * frameUs);
-                var targetTime = timeFilter.ComputeClientTime(current.ServerTimeUs) + OutputDelayUs + (long)(offset * frameUs);
-                var error      = slotTime - targetTime;   // > 0: this sample is overdue
+                long slotTime   = firstFrameTimeUs + (long)(written * frameUs);
+                long targetTime = timeFilter.ComputeClientTime(current.ServerTimeUs) + OutputDelayUs + (long)(offset * frameUs);
+                long error      = slotTime - targetTime;   // > 0: this sample is overdue
                 Interlocked.Exchange(ref syncErrorUs, error);
 
                 if (error > snapThresholdUs)
                 {
                     // Late: skip what has already passed (one-shot resync)
-                    var skip = (int)(error / frameUs);
+                    int skip = (int)(error / frameUs);
                     resyncs++;
                     if (offset + skip >= current.Frames) { droppedLate++; current = null; continue; }
                     offset += skip;
@@ -126,7 +126,7 @@ public sealed class AudioScheduler
                 if (error < -snapThresholdUs)
                 {
                     // Early: silence until the chunk is due
-                    var wait = (int)Math.Min(frames - written, (-error) / frameUs);
+                    int wait = (int)Math.Min(frames - written, (-error) / frameUs);
                     if (wait <= 0) wait = 1;
                     written += wait;   // buffer is pre-cleared
                     continue;
@@ -150,7 +150,7 @@ public sealed class AudioScheduler
                     }
                 }
 
-                var take = Math.Min(frames - written, current.Frames - offset);
+                int take = Math.Min(frames - written, current.Frames - offset);
                 current.Samples.AsSpan(offset * Channels, take * Channels).CopyTo(buffer.Slice(written * Channels, take * Channels));
                 written += take;
                 offset  += take;
@@ -170,17 +170,17 @@ public sealed class AudioScheduler
     /// <summary>Volume ramps toward its target with a short time constant so changes never click.</summary>
     private void ApplyGain(Span<float> buffer, int frames)
     {
-        var alpha = 1f - MathF.Exp(-1000f / (GainTimeConstantMs * SampleRate));
-        var max   = 0f;
-        for (var f = 0; f < frames; f++)
+        float alpha = 1f - MathF.Exp(-1000f / (GainTimeConstantMs * SampleRate));
+        float max   = 0f;
+        for (int f = 0; f < frames; f++)
         {
             gain += (targetGain - gain) * alpha;
-            var g = gain;
-            var row = buffer.Slice(f * Channels, Channels);
-            for (var c = 0; c < Channels; c++)
+            float g = gain;
+            Span<float> row = buffer.Slice(f * Channels, Channels);
+            for (int c = 0; c < Channels; c++)
             {
                 row[c] *= g;
-                var magnitude = MathF.Abs(row[c]);
+                float magnitude = MathF.Abs(row[c]);
                 if (magnitude > max) max = magnitude;
             }
         }

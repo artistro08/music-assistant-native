@@ -22,7 +22,7 @@ public partial class App : Application
     public static event Action? StateChanged;
 
     public static Player? ActivePlayer
-        => Settings.ActivePlayerId is { } id && Client.Players.TryGetValue(id, out var player) ? player : null;
+        => Settings.ActivePlayerId is { } id && Client.Players.TryGetValue(id, out Player? player) ? player : null;
 
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "crash.log");
@@ -119,13 +119,13 @@ public partial class App : Application
         // server restart the other speakers are missing from players/all until their providers rediscover them.
         // Only give it up when the server said player_removed, or when the own speaker was switched off here.
         // Overwriting on mere absence is what silently moved playback from the remembered speaker to this PC.
-        var remembered = Settings.ActivePlayerId;
+        string? remembered = Settings.ActivePlayerId;
         if (!string.IsNullOrEmpty(remembered))
         {
             if (Client.Players.ContainsKey(remembered)) return;
-            var own     = remembered == Player.OwnPlayerId;
-            var ownOff  = own && !Settings.SpeakerEnabled;
-            var removed = !own && Client.RemovedPlayers.ContainsKey(remembered);   // own speaker comes and goes with its connection
+            bool own     = remembered == Player.OwnPlayerId;
+            bool ownOff  = own && !Settings.SpeakerEnabled;
+            bool removed = !own && Client.RemovedPlayers.ContainsKey(remembered);   // own speaker comes and goes with its connection
             if (!ownOff && !removed) return;
         }
 
@@ -134,8 +134,8 @@ public partial class App : Application
         // No usable remembered selection: pick the first playing player, else the first visible one. The own web
         // player counts as playing only when the local speaker is really streaming, so a stale server flag after a
         // crash does not make the app open selecting itself.
-        var ownStreaming = Window.SpeakerPlaying;
-        var fallback     = (visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId;
+        bool ownStreaming = Window.SpeakerPlaying;
+        string? fallback     = (visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId;
         if (fallback is null) return;   // nothing to select yet; re-evaluated on the next player event
         Log($"Active player fallback: '{remembered}' is gone, selecting '{fallback}'");
         SetActivePlayer(fallback);
@@ -165,7 +165,7 @@ public partial class App : Application
     /// </summary>
     public static void SendPlayerCommand(Player player, string command)
     {
-        var starts = command is "play" or "play_pause" && player.PlaybackState is not ("playing" or "paused");
+        bool starts = command is "play" or "play_pause" && player.PlaybackState is not ("playing" or "paused");
         if (starts) MarkStarting(player, null);
 
         _ = Client.PlayerCommandAsync(player.PlayerId, command).ContinueWith(t => Dispatcher.TryEnqueue(() =>
@@ -179,7 +179,7 @@ public partial class App : Application
     public static async Task PlayQueueItemAsync(QueueItem item)
     {
         // Every member of a synced group maps to the leader's queue; mark the player the bar shows, so its spinner and seek lock apply
-        var player = ActivePlayer is { } active && Client.QueueIdFor(active) == item.QueueId
+        Player? player = ActivePlayer is { } active && Client.QueueIdFor(active) == item.QueueId
             ? active
             : Client.Players.Values.FirstOrDefault(p => Client.QueueIdFor(p) == item.QueueId);
         if (player is not null) MarkStarting(player, item.QueueItemId);
@@ -215,8 +215,8 @@ public partial class App : Application
     {
         if (startingPlayerId != player.PlayerId) return false;
 
-        var current = Client.Queues.GetValueOrDefault(Client.QueueIdFor(player))?.CurrentItem?.QueueItemId;
-        var started = player.IsPlaying && (startingItemId is null || startingItemId == current);
+        string? current = Client.Queues.GetValueOrDefault(Client.QueueIdFor(player))?.CurrentItem?.QueueItemId;
+        bool started = player.IsPlaying && (startingItemId is null || startingItemId == current);
         if (!started && DateTime.UtcNow < startingUntil) return true;
 
         startingPlayerId = null;   // playing now, or gave up: a later pause must not bring the spinner back
@@ -238,15 +238,15 @@ public partial class App : Application
         }
 
         // Only immediate playback shows a loading state; queueing for later is instant
-        var startsNow = option is null or "play" or "replace";
-        var loading   = loadingItem ?? item;
+        bool startsNow = option is null or "play" or "replace";
+        MediaItem loading   = loadingItem ?? item;
         if (startsNow) BeginLoading(loading);
 
         try
         {
             // Snapshot before sending: the server pushes the queue update before it answers the command
-            var queueId = Client.QueueIdFor(player);
-            var before  = Client.Queues.GetValueOrDefault(queueId)?.CurrentItem?.QueueItemId;
+            string queueId = Client.QueueIdFor(player);
+            string? before  = Client.Queues.GetValueOrDefault(queueId)?.CurrentItem?.QueueItemId;
 
             // The server builds an album's queue from the same track list the album page shows, so an album whose stored
             // track numbers are still 0 would be queued in alphabetical order. Loading its tracks first has the server
@@ -262,8 +262,8 @@ public partial class App : Application
             if (watch.Elapsed > TimeSpan.FromSeconds(5)) Log($"play_media on {player.Name} took {watch.Elapsed.TotalSeconds:0}s to be accepted");
             if (startsNow && !await WaitForPlaybackAsync(player.PlayerId, queueId, before, TimeSpan.FromSeconds(15)))
             {
-                var current = Client.Players.GetValueOrDefault(player.PlayerId);
-                var queue   = Client.Queues.GetValueOrDefault(queueId);
+                Player? current = Client.Players.GetValueOrDefault(player.PlayerId);
+                PlayerQueue? queue   = Client.Queues.GetValueOrDefault(queueId);
                 Log($"{player.Name} did not report playback within 15s: player {current?.PlaybackState}, queue {queue?.State} at {queue?.ElapsedTime:0}s of '{queue?.CurrentItem?.Name}'");
             }
         }
@@ -299,9 +299,9 @@ public partial class App : Application
 
         void Check()
         {
-            var queue   = Client.Queues.GetValueOrDefault(queueId);
-            var playing = queue?.State == "playing" || Client.Players.GetValueOrDefault(playerId)?.IsPlaying == true;
-            var changed = queue?.CurrentItem is { } current && (current.QueueItemId != before || queue.ElapsedTime < 3);
+            PlayerQueue? queue   = Client.Queues.GetValueOrDefault(queueId);
+            bool playing = queue?.State == "playing" || Client.Players.GetValueOrDefault(playerId)?.IsPlaying == true;
+            bool changed = queue?.CurrentItem is { } current && (current.QueueItemId != before || queue.ElapsedTime < 3);
             if (playing && changed) started.TrySetResult();
         }
 
@@ -342,7 +342,7 @@ public partial class App : Application
             if (item.Favorite)
             {
                 // Removal needs the library id; queue and provider items carry the provider's id instead
-                var library = item.Provider == "library" ? item : await Client.GetItemByUriAsync(item.Uri);
+                MediaItem library = item.Provider == "library" ? item : await Client.GetItemByUriAsync(item.Uri);
                 await Client.RemoveFavoriteAsync(library);
             }
             else

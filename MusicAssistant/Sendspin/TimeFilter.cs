@@ -60,11 +60,11 @@ public sealed class TimeFilter
         {
             if (timeAdded <= lastUpdate) return;
 
-            var dt = (double)(timeAdded - lastUpdate);
+            double dt = (double)(timeAdded - lastUpdate);
             lastUpdate = timeAdded;
 
-            var updateStdDev        = maxError * MaxErrorScale;
-            var measurementVariance = updateStdDev * updateStdDev;
+            double updateStdDev        = maxError * MaxErrorScale;
+            double measurementVariance = updateStdDev * updateStdDev;
 
             if (count <= 0)
             {
@@ -88,13 +88,13 @@ public sealed class TimeFilter
             }
 
             // Predict
-            var predictedOffset = offset + drift * dt;
-            var dtSquared       = dt * dt;
-            var newDriftCovariance       = driftCovariance + dt * driftProcessVariance;
-            var newOffsetDriftCovariance = offsetDriftCovariance + driftCovariance * dt;
-            var newOffsetCovariance      = offsetCovariance + 2 * offsetDriftCovariance * dt + driftCovariance * dtSquared + dt * processVariance;
+            double predictedOffset = offset + drift * dt;
+            double dtSquared       = dt * dt;
+            double newDriftCovariance       = driftCovariance + dt * driftProcessVariance;
+            double newOffsetDriftCovariance = offsetDriftCovariance + driftCovariance * dt;
+            double newOffsetCovariance      = offsetCovariance + 2 * offsetDriftCovariance * dt + driftCovariance * dtSquared + dt * processVariance;
 
-            var residual = measurement - predictedOffset;
+            double residual = measurement - predictedOffset;
 
             // Adaptive forgetting once there is history
             if (count < 100)
@@ -109,9 +109,9 @@ public sealed class TimeFilter
             }
 
             // Correct
-            var uncertainty = 1.0 / Math.Max(newOffsetCovariance + measurementVariance, 1e-9);
-            var offsetGain  = newOffsetCovariance * uncertainty;
-            var driftGain   = newOffsetDriftCovariance * uncertainty;
+            double uncertainty = 1.0 / Math.Max(newOffsetCovariance + measurementVariance, 1e-9);
+            double offsetGain  = newOffsetCovariance * uncertainty;
+            double driftGain   = newOffsetDriftCovariance * uncertainty;
 
             offset = predictedOffset + offsetGain * residual;
             drift += driftGain * residual;
@@ -144,7 +144,7 @@ public sealed class TimeFilter
     {
         lock (gate)
         {
-            var dt = (double)(clientTime - elementLastUpdate);
+            double dt = (double)(clientTime - elementLastUpdate);
             return clientTime + (long)Math.Round(elementOffset + EffectiveDrift * dt);
         }
     }
@@ -154,10 +154,10 @@ public sealed class TimeFilter
     {
         lock (gate)
         {
-            var drift = EffectiveDrift;
+            double drift = EffectiveDrift;
             // Solve server = client + offset + drift*(client - lastUpdate) for client, expressed so the drift
             // term is drift*(elapsed) rather than drift*(absolute clock), which stays exact under the cap.
-            var elapsed = serverTime - elementOffset - elementLastUpdate;
+            double elapsed = serverTime - elementOffset - elementLastUpdate;
             return serverTime - (long)Math.Round(elementOffset + drift * elapsed);
         }
     }

@@ -31,8 +31,8 @@ public sealed partial class HomePage : Page
 
     private static string Greeting()
     {
-        var name = App.Client.CurrentUser?.DisplayName ?? App.Client.CurrentUser?.Username;
-        var part = DateTime.Now.Hour switch { < 12 => "Good morning", < 18 => "Good afternoon", _ => "Good evening" };
+        string? name = App.Client.CurrentUser?.DisplayName ?? App.Client.CurrentUser?.Username;
+        string part = DateTime.Now.Hour switch { < 12 => "Good morning", < 18 => "Good afternoon", _ => "Good evening" };
         return string.IsNullOrEmpty(name) ? part : $"{part}, {name}";
     }
 
@@ -45,11 +45,11 @@ public sealed partial class HomePage : Page
         var players = App.Client.Players.Values.Where(p => p.IsVisible)
             .OrderByDescending(p => p.PlayerId == Player.OwnPlayerId).ThenBy(p => p.Name).ToList();
 
-        var signature = string.Join("|", players.Select(p => $"{p.PlayerId}:{p.PlaybackState}:{p.NowPlayingText}")) + "#" + App.Settings.ActivePlayerId;
+        string signature = string.Join("|", players.Select(p => $"{p.PlayerId}:{p.PlaybackState}:{p.NowPlayingText}")) + "#" + App.Settings.ActivePlayerId;
         if (signature == playersSignature) return;
         playersSignature = signature;
 
-        var playing = players.Count(p => p.IsPlaying);
+        int playing = players.Count(p => p.IsPlaying);
         PlayersRow.BadgeText  = playing == 0 ? null : $"{playing} playing";
         PlayersRow.Items      = players;
         PlayersRow.Visibility = players.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -62,12 +62,12 @@ public sealed partial class HomePage : Page
         RefreshPlayers();
         try
         {
-            var recentTask  = App.Client.GetRecentlyPlayedAsync(20);
-            var foldersTask = App.Client.GetRecommendationsAsync();
+            Task<List<MediaItem>> recentTask  = App.Client.GetRecentlyPlayedAsync(20);
+            Task<List<MediaItem>> foldersTask = App.Client.GetRecommendationsAsync();
             await Task.WhenAll(recentTask, foldersTask);
 
             var folders   = foldersTask.Result.Where(f => f.EnabledByDefault != false).ToList();
-            var itemTasks = folders.Select(LoadFolderItemsAsync).ToArray();
+            Task<List<MediaItem>>[] itemTasks = [.. folders.Select(LoadFolderItemsAsync)];
             await Task.WhenAll(itemTasks);
 
             var rows = folders.Zip(itemTasks.Select(t => t.Result), (folder, items) => (folder, items)).ToList();
@@ -75,12 +75,12 @@ public sealed partial class HomePage : Page
             Picks.Load(rows.Select(r => (r.folder.Name, r.items)), recentTask.Result);
 
             AddRow("Recently played", "Pick up where you left off", recentTask.Result);
-            foreach (var (folder, items) in rows) AddRow(folder.Name, folder.Subtitle, items);
+            foreach ((MediaItem folder, List<MediaItem> items) in rows) AddRow(folder.Name, folder.Subtitle, items);
 
             // Second pass, after the page is up: fill in album cards the server sent without a cover
             if (await FillMissingAlbumArtAsync(recentTask.Result.Concat(rows.SelectMany(r => r.items))))
             {
-                foreach (var row in Rows.Children.OfType<MediaRow>()) row.Rebind();
+                foreach (MediaRow row in Rows.Children.OfType<MediaRow>()) row.Rebind();
                 Picks.Rebind();
             }
         }
@@ -110,8 +110,8 @@ public sealed partial class HomePage : Page
     /// </summary>
     private static async Task<bool> FillMissingAlbumArtAsync(IEnumerable<MediaItem> items)
     {
-        var filled = false;
-        foreach (var album in items.Where(i => i.MediaType == "album" && i.Uri.Length > 0 && i.FindImage() is null).DistinctBy(i => i.Uri))
+        bool filled = false;
+        foreach (MediaItem? album in items.Where(i => i.MediaType == "album" && i.Uri.Length > 0 && i.FindImage() is null).DistinctBy(i => i.Uri))
         {
             try
             {

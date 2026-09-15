@@ -18,7 +18,7 @@ public sealed partial class BrowsePage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         // The navigation tag "browse" means root; anything else is a provider path
-        var path = e.Parameter as string;
+        string? path = e.Parameter as string;
         if (path == "browse") path = null;
         if (path == loadedPath && List.ItemsSource is not null) return;   // back/forward to the same folder
 
@@ -31,7 +31,7 @@ public sealed partial class BrowsePage : Page
     {
         try
         {
-            var items = await App.Client.BrowseAsync(path);
+            List<MediaItem> items = await App.Client.BrowseAsync(path);
             List.ItemsSource     = items;
             EmptyText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }

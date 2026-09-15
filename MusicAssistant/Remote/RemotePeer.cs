@@ -101,7 +101,7 @@ public sealed class RemotePeer : IDisposable
         api.onclose   += () => Fail("Connection closed");
         api.onmessage += (_, protocol, data) => OnApiMessage(protocol, data);
 
-        var offer = pc.createOffer();
+        RTCSessionDescriptionInit offer = pc.createOffer();
         await pc.setLocalDescription(offer);
         await SendSignalingAsync(new { type = "offer", remoteId, sessionId, data = new { type = "offer", sdp = offer.sdp } });
 
@@ -116,13 +116,13 @@ public sealed class RemotePeer : IDisposable
         var list = new List<RTCIceServer>();
         if (servers.ValueKind == JsonValueKind.Array)
         {
-            foreach (var server in servers.EnumerateArray())
+            foreach (JsonElement server in servers.EnumerateArray())
             {
-                var username   = server.TryGetProperty("username", out var u) ? u.GetString() : null;
-                var credential = server.TryGetProperty("credential", out var c) ? c.GetString() : null;
-                if (!server.TryGetProperty("urls", out var urls)) continue;
-                var urlList = urls.ValueKind == JsonValueKind.Array ? urls.EnumerateArray().Select(x => x.GetString()).ToList() : [urls.GetString()];
-                foreach (var url in urlList)
+                string? username   = server.TryGetProperty("username", out JsonElement u) ? u.GetString() : null;
+                string? credential = server.TryGetProperty("credential", out JsonElement c) ? c.GetString() : null;
+                if (!server.TryGetProperty("urls", out JsonElement urls)) continue;
+                List<string?> urlList = urls.ValueKind == JsonValueKind.Array ? [.. urls.EnumerateArray().Select(x => x.GetString())] : [urls.GetString()];
+                foreach (string? url in urlList)
                 {
                     if (string.IsNullOrEmpty(url)) continue;
                     list.Add(new RTCIceServer { urls = url, username = username, credential = credential, credentialType = RTCIceCredentialType.password });
@@ -139,7 +139,7 @@ public sealed class RemotePeer : IDisposable
     private async Task SendSignalingAsync(object message)
     {
         if (signaling is not { State: WebSocketState.Open }) return;
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(message);
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(message);
         await signalingSend.WaitAsync();
         try
         {
@@ -157,7 +157,7 @@ public sealed class RemotePeer : IDisposable
 
     private async Task SignalingLoopAsync(CancellationToken ct)
     {
-        var buffer = new byte[64 * 1024];
+        byte[] buffer = new byte[64 * 1024];
         using var message = new MemoryStream();
         try
         {
@@ -197,25 +197,25 @@ public sealed class RemotePeer : IDisposable
 
         using (document)
         {
-            var root = document.RootElement;
-            var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
+            JsonElement root = document.RootElement;
+            string? type = root.TryGetProperty("type", out JsonElement t) ? t.GetString() : null;
             switch (type)
             {
                 case "connected":
-                    sessionId = root.TryGetProperty("sessionId", out var sid) ? sid.GetString() : null;
-                    connectedSignal?.TrySetResult(root.TryGetProperty("iceServers", out var ice) ? ice.Clone() : default);
+                    sessionId = root.TryGetProperty("sessionId", out JsonElement sid) ? sid.GetString() : null;
+                    connectedSignal?.TrySetResult(root.TryGetProperty("iceServers", out JsonElement ice) ? ice.Clone() : default);
                     break;
                 case "answer":
-                    if (root.TryGetProperty("data", out var answerData)) await HandleAnswerAsync(answerData);
+                    if (root.TryGetProperty("data", out JsonElement answerData)) await HandleAnswerAsync(answerData);
                     break;
                 case "ice-candidate":
-                    if (root.TryGetProperty("data", out var candidateData)) HandleCandidate(candidateData);
+                    if (root.TryGetProperty("data", out JsonElement candidateData)) HandleCandidate(candidateData);
                     break;
                 case "peer-disconnected":
                     Fail("Server disconnected");
                     break;
                 case "error":
-                    var error = root.TryGetProperty("error", out var e) ? e.GetString() ?? "Signaling error" : "Signaling error";
+                    string error = root.TryGetProperty("error", out JsonElement e) ? e.GetString() ?? "Signaling error" : "Signaling error";
                     if (connectedSignal is { Task.IsCompleted: false } pending) pending.TrySetException(new ApiException(0, error));
                     else Fail(error);
                     break;
@@ -229,14 +229,14 @@ public sealed class RemotePeer : IDisposable
         try
         {
             // Pinning happens here, before the description is accepted
-            var sdp = RemoteId.VerifyAndSanitizeSdp(answer.GetProperty("sdp").GetString(), remoteId);
-            var result = pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = sdp });
+            string sdp = RemoteId.VerifyAndSanitizeSdp(answer.GetProperty("sdp").GetString(), remoteId);
+            SetDescriptionResultEnum result = pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = sdp });
             if (result != SetDescriptionResultEnum.OK) { Fail("Answer rejected: " + result); return Task.CompletedTask; }
 
             lock (gate)
             {
                 remoteDescribed = true;
-                foreach (var candidate in pendingCandidates) pc.addIceCandidate(candidate);
+                foreach (RTCIceCandidateInit candidate in pendingCandidates) pc.addIceCandidate(candidate);
                 pendingCandidates.Clear();
             }
         }
@@ -252,9 +252,9 @@ public sealed class RemotePeer : IDisposable
         if (pc is null) return;
         var init = new RTCIceCandidateInit
         {
-            candidate     = data.TryGetProperty("candidate", out var c) ? c.GetString() ?? "" : "",
-            sdpMid        = data.TryGetProperty("sdpMid", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null,
-            sdpMLineIndex = data.TryGetProperty("sdpMLineIndex", out var i) && i.ValueKind == JsonValueKind.Number ? (ushort)i.GetInt32() : (ushort)0,
+            candidate     = data.TryGetProperty("candidate", out JsonElement c) ? c.GetString() ?? "" : "",
+            sdpMid        = data.TryGetProperty("sdpMid", out JsonElement m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null,
+            sdpMLineIndex = data.TryGetProperty("sdpMLineIndex", out JsonElement i) && i.ValueKind == JsonValueKind.Number ? (ushort)i.GetInt32() : (ushort)0,
         };
         if (string.IsNullOrEmpty(init.candidate)) return;
         lock (gate)
@@ -282,13 +282,13 @@ public sealed class RemotePeer : IDisposable
         if (protocol != DataChannelPayloadProtocols.WebRTC_String) return;
         try
         {
-            var text = Encoding.UTF8.GetString(data);
+            string text = Encoding.UTF8.GetString(data);
             if (text.Length > 0 && text[0] == '{')
             {
                 // Oversized messages arrive as "__chunk__" frames; HTTP proxy replies come back on this channel too
                 using var document = JsonDocument.Parse(text);
-                var root = document.RootElement;
-                var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
+                JsonElement root = document.RootElement;
+                string? type = root.TryGetProperty("type", out JsonElement t) ? t.GetString() : null;
                 if (type == "__chunk__") { HandleChunk(root); return; }
                 if (type == "http-proxy-response") { FinishHttp(root); return; }
             }
@@ -302,18 +302,18 @@ public sealed class RemotePeer : IDisposable
 
     private void HandleChunk(JsonElement frame)
     {
-        var id    = frame.GetProperty("id").GetInt64();
-        var seq   = frame.GetProperty("seq").GetInt32();
-        var count = frame.GetProperty("count").GetInt32();
-        var piece = frame.GetProperty("b64").GetString() ?? "";
+        long id    = frame.GetProperty("id").GetInt64();
+        int seq   = frame.GetProperty("seq").GetInt32();
+        int count = frame.GetProperty("count").GetInt32();
+        string piece = frame.GetProperty("b64").GetString() ?? "";
         if (count <= 0 || count > 100_000 || seq < 0 || seq >= count) return;
 
         // Drop groups that never completed (a dropped final frame, or a hostile peer opening many ids) so
         // reassembly state cannot grow without bound
         if (chunkGroups.Count >= MaxChunkGroups)
         {
-            var cutoff = DateTime.UtcNow - ChunkGroupMaxAge;
-            foreach (var (staleId, g) in chunkGroups)
+            DateTime cutoff = DateTime.UtcNow - ChunkGroupMaxAge;
+            foreach ((long staleId, (int Count, string?[] Parts, int Received, DateTime Started, long Bytes) g) in chunkGroups)
             {
                 if (g.Started < cutoff) chunkGroups.TryRemove(staleId, out _);
             }
@@ -325,10 +325,10 @@ public sealed class RemotePeer : IDisposable
         byte[][] parts;
         // The Parts array reference is stable for the group's life, so it is a safe lock target; the tuple's counters
         // are re-read from the dictionary inside the lock so concurrent frames for one id cannot lose an update.
-        var slot = chunkGroups.GetOrAdd(id, _ => (count, new string?[count], 0, DateTime.UtcNow, 0L));
+        (int Count, string?[] Parts, int Received, DateTime Started, long Bytes) slot = chunkGroups.GetOrAdd(id, _ => (count, new string?[count], 0, DateTime.UtcNow, 0L));
         lock (slot.Parts)
         {
-            var group = chunkGroups.TryGetValue(id, out var current) ? current : slot;
+            (int Count, string?[] Parts, int Received, DateTime Started, long Bytes) group = chunkGroups.TryGetValue(id, out (int Count, string?[] Parts, int Received, DateTime Started, long Bytes) current) ? current : slot;
             if (group.Parts[seq] is null)
             {
                 group.Received++;
@@ -339,10 +339,10 @@ public sealed class RemotePeer : IDisposable
             group.Parts[seq] = piece;
             chunkGroups[id] = group;
             if (group.Received < group.Count) return;
-            parts = group.Parts.Select(p => Convert.FromBase64String(p ?? "")).ToArray();
+            parts = [.. group.Parts.Select(p => Convert.FromBase64String(p ?? ""))];
         }
         chunkGroups.TryRemove(id, out _);
-        var text = Encoding.UTF8.GetString(parts.SelectMany(b => b).ToArray());
+        string text = Encoding.UTF8.GetString([.. parts.SelectMany(b => b)]);
         OnApiMessage(DataChannelPayloadProtocols.WebRTC_String, Encoding.UTF8.GetBytes(text));
     }
 
@@ -353,7 +353,7 @@ public sealed class RemotePeer : IDisposable
     public async Task<HttpReply> HttpAsync(string method, string path, IDictionary<string, string>? headers, CancellationToken ct)
     {
         if (api is null || !IsConnected) throw new ApiException(0, "Not connected");
-        var id  = Guid.NewGuid().ToString("N");
+        string id  = Guid.NewGuid().ToString("N");
         var tcs = new TaskCompletionSource<HttpReply>(TaskCreationOptions.RunContinuationsAsynchronously);
         httpWaiting[id] = tcs;
         api.send(JsonSerializer.Serialize(new { type = "http-proxy-request", id, method, path, headers = headers ?? new Dictionary<string, string>() }));
@@ -368,15 +368,15 @@ public sealed class RemotePeer : IDisposable
 
     private void FinishHttp(JsonElement response)
     {
-        var id = response.GetProperty("id").GetString() ?? "";
-        if (!httpWaiting.TryRemove(id, out var waiter)) return;
+        string id = response.GetProperty("id").GetString() ?? "";
+        if (!httpWaiting.TryRemove(id, out TaskCompletionSource<HttpReply>? waiter)) return;
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (response.TryGetProperty("headers", out var h) && h.ValueKind == JsonValueKind.Object)
+        if (response.TryGetProperty("headers", out JsonElement h) && h.ValueKind == JsonValueKind.Object)
         {
-            foreach (var header in h.EnumerateObject()) headers[header.Name] = header.Value.ToString();
+            foreach (JsonProperty header in h.EnumerateObject()) headers[header.Name] = header.Value.ToString();
         }
-        var status = response.TryGetProperty("status", out var s) ? s.GetInt32() : 0;
-        var body   = response.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String ? Convert.FromHexString(b.GetString()!) : [];
+        int status = response.TryGetProperty("status", out JsonElement s) ? s.GetInt32() : 0;
+        byte[] body   = response.TryGetProperty("body", out JsonElement b) && b.ValueKind == JsonValueKind.String ? Convert.FromHexString(b.GetString()!) : [];
         waiter.TrySetResult(new HttpReply(status, headers, body));
     }
 
@@ -462,9 +462,9 @@ public sealed class RemotePeer : IDisposable
         IsConnected = false;
         connectedSignal?.TrySetException(new ApiException(0, reason));
         apiOpen?.TrySetException(new ApiException(0, reason));
-        foreach (var id in httpWaiting.Keys.ToArray())
+        foreach (string? id in httpWaiting.Keys.ToArray())
         {
-            if (httpWaiting.TryRemove(id, out var waiter)) waiter.TrySetCanceled();
+            if (httpWaiting.TryRemove(id, out TaskCompletionSource<HttpReply>? waiter)) waiter.TrySetCanceled();
         }
         try { lifetime?.Cancel(); } catch (ObjectDisposedException) { }
         try { api?.close(); } catch (Exception) { }

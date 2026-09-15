@@ -38,7 +38,7 @@ public sealed partial class QueuePage : Page
     }
 
     private static PlayerQueue? Queue
-        => App.ActivePlayer is { } p && App.Client.Queues.TryGetValue(App.Client.QueueIdFor(p), out var q) ? q : null;
+        => App.ActivePlayer is { } p && App.Client.Queues.TryGetValue(App.Client.QueueIdFor(p), out PlayerQueue? q) ? q : null;
 
     private void OnStateChanged() => _ = LoadAsync(force: false);
 
@@ -48,14 +48,14 @@ public sealed partial class QueuePage : Page
 
     private async Task LoadAsync(bool force)
     {
-        var queue = Queue;
-        var item  = queue?.CurrentItem;
-        var media = App.ActivePlayer?.CurrentMedia;
+        PlayerQueue? queue = Queue;
+        QueueItem? item  = queue?.CurrentItem;
+        PlayerMedia? media = App.ActivePlayer?.CurrentMedia;
 
         TitleText.Text  = item?.Title ?? media?.Title ?? "Nothing playing";
         ArtistText.Text = item?.MediaItem?.ArtistsText ?? media?.Artist ?? "";
 
-        var imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 512) : media?.ImageUrl;
+        string? imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 512) : media?.ImageUrl;
         if (imageUrl != lastImageUrl)
         {
             lastImageUrl = imageUrl;
@@ -82,23 +82,23 @@ public sealed partial class QueuePage : Page
         if (reordering && !force) return;
 
         // Refetch items only when the queue identity, length or position changed, or something else reordered it
-        var changed = force || queue.QueueId != loadedQueueId || queue.Items != loadedCount || (queue.CurrentIndex ?? -1) != currentIndex
+        bool changed = force || queue.QueueId != loadedQueueId || queue.Items != loadedCount || (queue.CurrentIndex ?? -1) != currentIndex
             || queue.NextItem?.QueueItemId != upNext.FirstOrDefault()?.QueueItemId;
         if (!changed || (inFlight > 0 && !force)) return;   // the next state change re-checks once this fetch has landed
 
-        var version = ++loadVersion;
+        int version = ++loadVersion;
         inFlight++;
         try
         {
-            var items = await App.Client.GetQueueItemsAsync(queue.QueueId);
+            List<QueueItem> items = await App.Client.GetQueueItemsAsync(queue.QueueId);
             if (version != loadVersion) return;   // a newer fetch or a drag started meanwhile
             loadedQueueId = queue.QueueId;
             loadedCount   = queue.Items;
             currentIndex  = queue.CurrentIndex ?? -1;
             allItems      = items;
 
-            var playing = currentIndex >= 0 && currentIndex < items.Count;
-            var current = playing ? items[currentIndex] : null;
+            bool playing = currentIndex >= 0 && currentIndex < items.Count;
+            QueueItem? current = playing ? items[currentIndex] : null;
             upNext = new ObservableCollection<QueueItem>(playing ? items.Skip(currentIndex + 1) : items);
 
             PlayedList.ItemsSource     = playing ? items.Take(currentIndex).ToList() : null;
@@ -135,8 +135,8 @@ public sealed partial class QueuePage : Page
     /// <summary>Light the level bars on the row playing right now; clear them everywhere else.</summary>
     private void UpdateNowPlaying()
     {
-        var playing = App.ActivePlayer?.IsPlaying == true;
-        foreach (var item in allItems)
+        bool playing = App.ActivePlayer?.IsPlaying == true;
+        foreach (QueueItem item in allItems)
         {
             item.IsNowPlaying = playing && item.SortIndex == currentIndex;
         }
@@ -161,7 +161,7 @@ public sealed partial class QueuePage : Page
             if (args.Items.FirstOrDefault() is not QueueItem item || dragFromPosition < 0 || Queue is not { } queue) return;
 
             // Up Next holds only tracks after the current one, so a shift inside it is the same shift in the whole queue
-            var shift = upNext.IndexOf(item) - dragFromPosition;
+            int shift = upNext.IndexOf(item) - dragFromPosition;
             if (shift == 0) return;
 
             // The server owns the order; ask it to move and reload from its answer

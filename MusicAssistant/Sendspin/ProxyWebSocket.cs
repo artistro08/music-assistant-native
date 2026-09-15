@@ -28,7 +28,7 @@ public sealed class ProxyWebSocket : ISendspinSocket
 
     public ProxyWebSocket(string baseUrl, string token, string clientId)
     {
-        var ws = baseUrl.Replace("https://", "wss://", StringComparison.OrdinalIgnoreCase).Replace("http://", "ws://", StringComparison.OrdinalIgnoreCase).TrimEnd('/');
+        string ws = baseUrl.Replace("https://", "wss://", StringComparison.OrdinalIgnoreCase).Replace("http://", "ws://", StringComparison.OrdinalIgnoreCase).TrimEnd('/');
         uri = new Uri(ws + "/sendspin");
         this.token    = token;
         this.clientId = clientId;
@@ -39,15 +39,15 @@ public sealed class ProxyWebSocket : ISendspinSocket
     {
         await socket.ConnectAsync(uri, ct);
 
-        var auth = JsonSerializer.Serialize(new { type = "auth", token, client_id = clientId });
+        string auth = JsonSerializer.Serialize(new { type = "auth", token, client_id = clientId });
         await socket.SendAsync(Encoding.UTF8.GetBytes(auth), WebSocketMessageType.Text, true, ct);
 
         // First reply is auth_ok (or a close with a reason)
-        var buffer = new byte[4096];
-        var result = await socket.ReceiveAsync(buffer, ct);
+        byte[] buffer = new byte[4096];
+        WebSocketReceiveResult result = await socket.ReceiveAsync(buffer, ct);
         if (result.MessageType != WebSocketMessageType.Text) throw new InvalidOperationException("Speaker proxy refused the session");
         using var reply = JsonDocument.Parse(buffer.AsMemory(0, result.Count));
-        if (reply.RootElement.TryGetProperty("type", out var type) && type.GetString() != "auth_ok")
+        if (reply.RootElement.TryGetProperty("type", out JsonElement type) && type.GetString() != "auth_ok")
         {
             throw new InvalidOperationException("Speaker proxy authentication failed");
         }
@@ -78,7 +78,7 @@ public sealed class ProxyWebSocket : ISendspinSocket
 
     private async Task ReadLoopAsync(CancellationToken ct)
     {
-        var buffer = new byte[64 * 1024];
+        byte[] buffer = new byte[64 * 1024];
         using var message = new MemoryStream();
         try
         {
@@ -96,7 +96,7 @@ public sealed class ProxyWebSocket : ISendspinSocket
                 }
                 while (!result.EndOfMessage);
 
-                var bytes = message.ToArray();
+                byte[] bytes = message.ToArray();
                 if (result.MessageType == WebSocketMessageType.Text) TextReceived?.Invoke(Encoding.UTF8.GetString(bytes));
                 else BinaryReceived?.Invoke(bytes);
             }

@@ -70,7 +70,7 @@ public sealed class SendspinConnection : IDisposable
         established = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await socket.OpenAsync(ct);
 
-        var init = JsonSerializer.Serialize(new { type = "client/init", payload = new { client_id = identity.ClientId, version = 1, suite = "25519_AESGCM_SHA256" } });
+        string init = JsonSerializer.Serialize(new { type = "client/init", payload = new { client_id = identity.ClientId, version = 1, suite = "25519_AESGCM_SHA256" } });
         lock (gate)
         {
             rawClientInit = Encoding.UTF8.GetBytes(init);
@@ -90,7 +90,7 @@ public sealed class SendspinConnection : IDisposable
     public void SendControl(string type, object payload)
     {
         if (Quiesced && type is "client/time" or "client/state" or "client/command") return;   // held back during a re-handshake
-        var json = JsonSerializer.SerializeToUtf8Bytes(new { type, payload });
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(new { type, payload });
         SendPlaintext([TypeJson, .. json]);
     }
 
@@ -111,14 +111,14 @@ public sealed class SendspinConnection : IDisposable
             }
 
             // Fragment: [2][origType][data...] then [2][data] ... [3][data]; encrypt in send order under the lock
-            var body   = plaintext.AsSpan(1);
-            var first  = Math.Min(body.Length, MaxTransportPlaintext - 2);
+            Span<byte> body   = plaintext.AsSpan(1);
+            int first  = Math.Min(body.Length, MaxTransportPlaintext - 2);
             socket.SendBinary(current.Encrypt([TypeFragmentMore, plaintext[0], .. body[..first]]));
-            var rest = body[first..];
+            Span<byte> rest = body[first..];
             while (rest.Length > 0)
             {
-                var take = Math.Min(rest.Length, MaxTransportPlaintext - 1);
-                var last = take == rest.Length;
+                int take = Math.Min(rest.Length, MaxTransportPlaintext - 1);
+                bool last = take == rest.Length;
                 socket.SendBinary(current.Encrypt([last ? TypeFragmentEnd : TypeFragmentMore, .. rest[..take]]));
                 rest = rest[take..];
             }
@@ -132,9 +132,9 @@ public sealed class SendspinConnection : IDisposable
         try
         {
             using var document = JsonDocument.Parse(text);
-            var root = document.RootElement;
-            var type = root.GetProperty("type").GetString();
-            var payload = root.GetProperty("payload");
+            JsonElement root = document.RootElement;
+            string? type = root.GetProperty("type").GetString();
+            JsonElement payload = root.GetProperty("payload");
 
             lock (gate)
             {
@@ -143,7 +143,7 @@ public sealed class SendspinConnection : IDisposable
                     if (payload.GetProperty("version").GetInt32() != 1) { Fail("Server speaks an unsupported Sendspin version"); return; }
                     ServerId = payload.GetProperty("server_id").GetString() ?? "";
                     if (Base64Url.Decode(ServerId).Length != NoiseCrypto.KeySize) { Fail("Server sent an invalid server_id"); return; }
-                    var prologue = (byte[])[.. rawClientInit, .. Encoding.UTF8.GetBytes(text)];
+                    byte[] prologue = (byte[])[.. rawClientInit, .. Encoding.UTF8.GetBytes(text)];
                     handshake = new HandshakeState(initiator: false, prologue, identity.PrivateKey, identity.PublicKey, Base64Url.Decode(ServerId));
                     state = State.AwaitNoise1;
                     ArmHandshakeTimer();
@@ -156,7 +156,7 @@ public sealed class SendspinConnection : IDisposable
                 }
                 if (state == State.AwaitServerInit && type == "server/error")
                 {
-                    Fail("Server rejected the connection: " + (payload.TryGetProperty("reason", out var r) ? r.GetString() : "error"));
+                    Fail("Server rejected the connection: " + (payload.TryGetProperty("reason", out JsonElement r) ? r.GetString() : "error"));
                     return;
                 }
             }
@@ -173,12 +173,12 @@ public sealed class SendspinConnection : IDisposable
     /// <summary>Read Noise message 1, pick the PSK its payload names, answer with message 2 and switch keys. Caller holds the lock.</summary>
     private void CompleteHandshake(HandshakeState hs, byte[] message1, bool rehandshake)
     {
-        var payload1 = hs.ReadMessage1(message1);
+        byte[] payload1 = hs.ReadMessage1(message1);
         using var document = JsonDocument.Parse(payload1);
-        var pskId = document.RootElement.GetProperty("psk_id").GetString() ?? "";
-        var category = document.RootElement.TryGetProperty("psk_category", out var c) ? c.GetString() : null;
+        string pskId = document.RootElement.GetProperty("psk_id").GetString() ?? "";
+        string? category = document.RootElement.TryGetProperty("psk_category", out JsonElement c) ? c.GetString() : null;
 
-        var entry = identity.Lookup(pskId);
+        Identity.PskEntry? entry = identity.Lookup(pskId);
         if (entry is not null && category is not null && CategoryCode(entry.Category) != category) entry = null;   // held under another category: a miss
         if (entry is { Category: Identity.PskCategory.LongTerm } && entry.ServerId != ServerId) { Fail("Pairing record belongs to another server"); return; }
         if (entry is null)
@@ -188,7 +188,7 @@ public sealed class SendspinConnection : IDisposable
         }
 
         hs.SetPsk(entry.Psk);
-        var message2 = Base64Url.Encode(hs.WriteMessage2("{}"u8));
+        string message2 = Base64Url.Encode(hs.WriteMessage2("{}"u8));
         var frame = new { type = "noise/handshake", payload = new { data = message2 } };
         if (rehandshake)
         {
@@ -237,7 +237,7 @@ public sealed class SendspinConnection : IDisposable
             {
                 case TypeFragmentMore:
                 case TypeFragmentEnd:
-                    if (!Reassemble(plaintext, out var whole)) return;
+                    if (!Reassemble(plaintext, out byte[]? whole)) return;
                     toDispatch = whole;
                     break;
                 default:
@@ -282,9 +282,9 @@ public sealed class SendspinConnection : IDisposable
         try
         {
             using var document = JsonDocument.Parse(plaintext.AsMemory(1));
-            var root = document.RootElement;
-            var type = root.GetProperty("type").GetString() ?? "";
-            var payload = root.TryGetProperty("payload", out var p) ? p.Clone() : default;
+            JsonElement root = document.RootElement;
+            string type = root.GetProperty("type").GetString() ?? "";
+            JsonElement payload = root.TryGetProperty("payload", out JsonElement p) ? p.Clone() : default;
 
             switch (type)
             {

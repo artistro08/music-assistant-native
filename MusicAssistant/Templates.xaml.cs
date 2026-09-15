@@ -36,7 +36,7 @@ public sealed partial class Templates : ResourceDictionary
     /// <summary>Code-behind counterpart of the template bindings: set an Image's source from the cache with the matching starting opacity.</summary>
     public static void Show(Image image, string? url, int logicalWidth)
     {
-        var bitmap    = Decode(url, logicalWidth);
+        BitmapImage? bitmap    = Decode(url, logicalWidth);
         image.Source  = bitmap;
         image.Opacity = bitmap is { PixelWidth: > 0 } ? 1 : 0;
     }
@@ -81,10 +81,10 @@ public sealed partial class Templates : ResourceDictionary
 
     public static BitmapImage? Decode(string? url, int logicalWidth)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https" or "data")) return null;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https" or "data")) return null;
 
-        var key = $"{logicalWidth}|{url}";
-        if (cache.TryGetValue(key, out var node))
+        string key = $"{logicalWidth}|{url}";
+        if (cache.TryGetValue(key, out LinkedListNode<(string Key, BitmapImage Bitmap)>? node))
         {
             recent.Remove(node);
             recent.AddFirst(node);
@@ -135,17 +135,17 @@ public sealed partial class Templates : ResourceDictionary
     /// the art cannot be had or the URL is not http(s). Also used for the Windows media overlay thumbnail.
     /// </summary>
     public static Task<string?> ArtFileAsync(string? url)
-        => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? ArtFileAsync(uri) : Task.FromResult<string?>(null);
+        => Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) && uri.Scheme is "http" or "https" ? ArtFileAsync(uri) : Task.FromResult<string?>(null);
 
     private static Task<string?> ArtFileAsync(Uri uri)
     {
-        var file  = Path.Combine(ArtDir, FileNameFor(uri));
-        var fresh = File.Exists(file) && (uri.Fragment != "#playlist" || DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < PlaylistMaxAge);
+        string file  = Path.Combine(ArtDir, FileNameFor(uri));
+        bool fresh = File.Exists(file) && (uri.Fragment != "#playlist" || DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < PlaylistMaxAge);
         if (fresh) return Task.FromResult<string?>(file);
 
         // One download per file: a second caller (another display size, a re-bind mid-download) waits for the first
-        if (inflight.TryGetValue(file, out var running)) return running;
-        var task = DownloadAsync(uri, file);
+        if (inflight.TryGetValue(file, out Task<string?>? running)) return running;
+        Task<string?> task = DownloadAsync(uri, file);
         inflight[file] = task;
         return task;
     }
@@ -155,11 +155,11 @@ public sealed partial class Templates : ResourceDictionary
         await Task.Yield();   // never finish synchronously, so the inflight entry exists before the finally removes it
         try
         {
-            var bytes = await FetchAsync(new UriBuilder(uri) { Fragment = "" }.Uri);
+            byte[]? bytes = await FetchAsync(new UriBuilder(uri) { Fragment = "" }.Uri);
             if (bytes is null) return File.Exists(file) ? file : null;   // a stale playlist cover that failed to refresh keeps its old file
 
             Directory.CreateDirectory(ArtDir);
-            var temp = file + ".tmp";
+            string temp = file + ".tmp";
             await File.WriteAllBytesAsync(temp, bytes);
             File.Move(temp, file, overwrite: true);   // readers never see a half-written file
             return file;
@@ -178,12 +178,12 @@ public sealed partial class Templates : ResourceDictionary
     /// <summary>GET the bytes with a few retries for network and server errors; null after the last failure or on a 4xx, which retrying cannot fix.</summary>
     private static async Task<byte[]?> FetchAsync(Uri uri)
     {
-        for (var attempt = 0; ; attempt++)
+        for (int attempt = 0; ; attempt++)
         {
             await downloads.WaitAsync();
             try
             {
-                using var response = await http.GetAsync(uri);
+                using HttpResponseMessage response = await http.GetAsync(uri);
                 if (response.IsSuccessStatusCode) return await response.Content.ReadAsByteArrayAsync();
                 App.Debug($"Art: {uri} -> {(int)response.StatusCode}");
                 if ((int)response.StatusCode is >= 400 and < 500) return null;
@@ -201,7 +201,7 @@ public sealed partial class Templates : ResourceDictionary
             await Task.Delay(TimeSpan.FromSeconds(RetryDelaysSeconds[attempt]));
 
             // A dropped connection gets up to two minutes to come back instead of burning the retries on it
-            for (var waited = 0; waited < 60 && !App.Client.IsConnected; waited++) await Task.Delay(TimeSpan.FromSeconds(2));
+            for (int waited = 0; waited < 60 && !App.Client.IsConnected; waited++) await Task.Delay(TimeSpan.FromSeconds(2));
         }
     }
 
@@ -212,10 +212,10 @@ public sealed partial class Templates : ResourceDictionary
     /// </summary>
     private static string FileNameFor(Uri uri)
     {
-        var pathAndQuery = uri.PathAndQuery;
-        var proxyAt      = pathAndQuery.IndexOf("/imageproxy", StringComparison.Ordinal);
-        var identity     = proxyAt >= 0 ? pathAndQuery[proxyAt..] : uri.GetLeftPart(UriPartial.Query);
-        var hash         = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity));
+        string pathAndQuery = uri.PathAndQuery;
+        int proxyAt      = pathAndQuery.IndexOf("/imageproxy", StringComparison.Ordinal);
+        string identity     = proxyAt >= 0 ? pathAndQuery[proxyAt..] : uri.GetLeftPart(UriPartial.Query);
+        byte[] hash         = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity));
         return Convert.ToHexString(hash.AsSpan(0, 16)) + ".img";
     }
 
@@ -228,15 +228,15 @@ public sealed partial class Templates : ResourceDictionary
         try
         {
             if (!Directory.Exists(ArtDir)) return;
-            var files = new DirectoryInfo(ArtDir).GetFiles();
-            foreach (var partial in files.Where(f => f.Extension == ".tmp")) partial.Delete();
+            FileInfo[] files = new DirectoryInfo(ArtDir).GetFiles();
+            foreach (FileInfo? partial in files.Where(f => f.Extension == ".tmp")) partial.Delete();
 
             var art   = files.Where(f => f.Extension == ".img").OrderBy(f => f.LastWriteTimeUtc).ToList();
-            var total = art.Sum(f => f.Length);
+            long total = art.Sum(f => f.Length);
             if (total <= MaxArtBytes) return;
 
             // ponytail: oldest download goes first, not least recently shown; track reads if a big library keeps evicting favorites
-            foreach (var file in art)
+            foreach (FileInfo? file in art)
             {
                 if (total <= TrimArtBytes) break;
                 total -= file.Length;
@@ -251,7 +251,7 @@ public sealed partial class Templates : ResourceDictionary
 
     private static void Evict(string key, BitmapImage bitmap)
     {
-        if (cache.TryGetValue(key, out var current) && ReferenceEquals(current.Value.Bitmap, bitmap))
+        if (cache.TryGetValue(key, out LinkedListNode<(string Key, BitmapImage Bitmap)>? current) && ReferenceEquals(current.Value.Bitmap, bitmap))
         {
             recent.Remove(current);
             cache.Remove(key);
@@ -318,9 +318,9 @@ public sealed partial class Templates : ResourceDictionary
     public static void AnimateBothAxes(ScaleTransform target, Func<Timeline> make)
     {
         var storyboard = new Storyboard();
-        foreach (var property in new[] { "ScaleX", "ScaleY" })
+        foreach (string? property in new[] { "ScaleX", "ScaleY" })
         {
-            var timeline = make();
+            Timeline timeline = make();
             Storyboard.SetTarget(timeline, target);
             Storyboard.SetTargetProperty(timeline, property);
             storyboard.Children.Add(timeline);

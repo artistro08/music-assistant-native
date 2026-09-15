@@ -12,8 +12,8 @@ public static class Clock
     /// <summary>Integer arithmetic so the value stays exact for years of uptime.</summary>
     public static long TicksToUs(long ticks)
     {
-        var seconds   = ticks / Frequency;
-        var remainder = ticks % Frequency;
+        long seconds   = ticks / Frequency;
+        long remainder = ticks % Frequency;
         return seconds * 1_000_000 + remainder * 1_000_000 / Frequency;
     }
 }

@@ -23,7 +23,7 @@ public static class SingleInstance
     /// <summary>True when this process is the first; false after asking the running copy to show itself.</summary>
     public static bool Claim()
     {
-        mutex = new Mutex(true, MutexName, out var first);
+        mutex = new Mutex(true, MutexName, out bool first);
         if (first) return true;
 
         PostMessage(HWND_BROADCAST, ActivateMessage, IntPtr.Zero, IntPtr.Zero);

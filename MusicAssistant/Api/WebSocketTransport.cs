@@ -38,7 +38,7 @@ public sealed class WebSocketTransport : IMassTransport
     public async Task SendAsync(string message)
     {
         if (socket is not { State: WebSocketState.Open }) throw new ApiException(0, "Not connected");
-        var bytes = Encoding.UTF8.GetBytes(message);
+        byte[] bytes = Encoding.UTF8.GetBytes(message);
         await sendLock.WaitAsync();
         try { await socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None); }
         finally { sendLock.Release(); }
@@ -59,7 +59,7 @@ public sealed class WebSocketTransport : IMassTransport
 
     private async Task ReadLoopAsync(CancellationToken ct)
     {
-        var buffer = new byte[ReceiveBufferSize];
+        byte[] buffer = new byte[ReceiveBufferSize];
         Exception? error = null;
         try
         {
@@ -90,14 +90,14 @@ public sealed class WebSocketTransport : IMassTransport
         if (!address.Contains("://")) address = "http://" + address;
 
         var uri = new Uri(address, UriKind.Absolute);
-        var (httpScheme, wsScheme) = uri.Scheme switch
+        (string httpScheme, string wsScheme) = uri.Scheme switch
         {
             "http" or "ws"   => ("http",  "ws"),
             "https" or "wss" => ("https", "wss"),
             _ => throw new ArgumentException("Server address must use http, https, ws or wss."),
         };
 
-        var path = uri.AbsolutePath.TrimEnd('/');
+        string path = uri.AbsolutePath.TrimEnd('/');
         if (path.EndsWith("/ws", StringComparison.Ordinal)) path = path[..^3];
 
         return ($"{httpScheme}://{uri.Authority}{path}", new Uri($"{wsScheme}://{uri.Authority}{path}/ws"));

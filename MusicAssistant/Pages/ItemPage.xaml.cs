@@ -45,8 +45,8 @@ public sealed partial class ItemPage : Page
     {
         if (TrackList.ItemsSource is not IEnumerable<MediaItem> tracks) return;
 
-        var playing = App.ActivePlayer?.IsPlaying == true ? App.ActivePlayer!.CurrentMedia?.Uri : null;
-        foreach (var track in tracks)
+        string? playing = App.ActivePlayer?.IsPlaying == true ? App.ActivePlayer!.CurrentMedia?.Uri : null;
+        foreach (MediaItem track in tracks)
         {
             track.IsNowPlaying = playing is not null && track.Uri == playing;
         }
@@ -84,7 +84,7 @@ public sealed partial class ItemPage : Page
             ? Visibility.Collapsed : Visibility.Visible;   // "Genre" / "Artist" would just repeat the type label above the name
         FavoriteToggle.IsChecked = item.Favorite;
 
-        var description = item.Metadata?.Description;
+        string? description = item.Metadata?.Description;
         DescriptionText.Text       = description ?? "";
         DescriptionText.Visibility = string.IsNullOrWhiteSpace(description) ? Visibility.Collapsed : Visibility.Visible;
 
@@ -93,7 +93,7 @@ public sealed partial class ItemPage : Page
 
     private async Task LoadAsync(int version)
     {
-        var target = item;   // local copy: the field changes as soon as the user opens another item
+        MediaItem target = item;   // local copy: the field changes as soon as the user opens another item
         try
         {
             // Item mappings from lists are thin; fetch the full item for metadata and favorite state
@@ -108,7 +108,7 @@ public sealed partial class ItemPage : Page
             List<MediaItem>? tracks = null;
             List<MediaItem>? albums = null;
             List<MediaItem>  rows   = [];   // genre: one row per media type
-            var title = "Tracks";
+            string title = "Tracks";
             switch (target.MediaType)
             {
                 case "podcast":
@@ -117,7 +117,7 @@ public sealed partial class ItemPage : Page
                     break;
                 case "genre":
                     // Overview rows (Artists, Albums, Tracks, Playlists, ...) as the web app shows them; plain track list only as a fallback
-                    rows = (await App.Client.GetGenreOverviewAsync(target.ItemId, target.Provider)).Where(f => f.Items is { Count: > 0 }).ToList();
+                    rows = [.. (await App.Client.GetGenreOverviewAsync(target.ItemId, target.Provider)).Where(f => f.Items is { Count: > 0 })];
                     if (rows.Count == 0) tracks = await App.Client.GetGenreTracksAsync(target.ItemId);
                     break;
                 case "audiobook":
@@ -125,7 +125,7 @@ public sealed partial class ItemPage : Page
                 case "album":
                     // Loading the tracks also records a track's cover for an album the server has no image for; re-render
                     // the hero when that just gave it one (the tracks resolve it through their album link on bind)
-                    var hadCover = target.FindImage() is not null;
+                    bool hadCover = target.FindImage() is not null;
                     tracks = await App.Client.GetAlbumTracksAsync(target.ItemId, target.Provider, target.Uri);
                     if (!hadCover && target.FindImage() is not null && version == loadVersion) Render();
                     break;
@@ -134,8 +134,8 @@ public sealed partial class ItemPage : Page
                     break;
                 case "artist":
                     title = "Top tracks";
-                    var tracksTask = App.Client.GetArtistTopTracksAsync(target.ItemId, target.Provider);
-                    var albumsTask = App.Client.GetArtistAlbumsAsync(target.ItemId, target.Provider);
+                    Task<List<MediaItem>> tracksTask = App.Client.GetArtistTopTracksAsync(target.ItemId, target.Provider);
+                    Task<List<MediaItem>> albumsTask = App.Client.GetArtistAlbumsAsync(target.ItemId, target.Provider);
                     await Task.WhenAll(tracksTask, albumsTask);
                     tracks = tracksTask.Result;
                     albums = albumsTask.Result;
@@ -149,7 +149,7 @@ public sealed partial class ItemPage : Page
                 AlbumsRow.Items      = albums.OrderByDescending(a => a.Year ?? 0).ToList();
                 AlbumsRow.Visibility = albums.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
-            foreach (var folder in rows)
+            foreach (MediaItem folder in rows)
             {
                 HeaderRows.Children.Add(new Controls.MediaRow { Title = folder.Name, Items = folder.Items! });
             }

@@ -24,20 +24,20 @@ public static class NoiseCrypto
 
     public static (byte[] PrivateKey, byte[] PublicKey) GenerateKeyPair()
     {
-        var privateKey = RandomNumberGenerator.GetBytes(KeySize);
+        byte[] privateKey = RandomNumberGenerator.GetBytes(KeySize);
         return (privateKey, PublicKey(privateKey));
     }
 
     public static byte[] PublicKey(byte[] privateKey)
     {
-        var publicKey = new byte[KeySize];
+        byte[] publicKey = new byte[KeySize];
         X25519.ScalarMultBase(privateKey, 0, publicKey, 0);
         return publicKey;
     }
 
     public static byte[] Dh(byte[] privateKey, byte[] peerPublicKey)
     {
-        var shared = new byte[KeySize];
+        byte[] shared = new byte[KeySize];
         // CalculateAgreement returns false for a small-order / all-zero result (RFC 7748 6.1); reject it
         if (!X25519.CalculateAgreement(privateKey, 0, peerPublicKey, 0, shared, 0))
         {
@@ -61,7 +61,7 @@ public static class NoiseCrypto
     {
         Span<byte> nonce = stackalloc byte[12];
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(nonce[4..], counter);
-        var output = new byte[plaintext.Length + TagSize];
+        byte[] output = new byte[plaintext.Length + TagSize];
         using var aes = new AesGcm(key, TagSize);
         aes.Encrypt(nonce, plaintext, output.AsSpan(0, plaintext.Length), output.AsSpan(plaintext.Length, TagSize), ad);
         return output;
@@ -72,7 +72,7 @@ public static class NoiseCrypto
         if (ciphertext.Length < TagSize) throw new CryptographicException("Ciphertext shorter than the tag");
         Span<byte> nonce = stackalloc byte[12];
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(nonce[4..], counter);
-        var output = new byte[ciphertext.Length - TagSize];
+        byte[] output = new byte[ciphertext.Length - TagSize];
         using var aes = new AesGcm(key, TagSize);
         aes.Decrypt(nonce, ciphertext[..output.Length], ciphertext[output.Length..], output, ad);
         return output;
@@ -81,11 +81,11 @@ public static class NoiseCrypto
     /// <summary>Noise HKDF (section 4.3): two or three 32-byte outputs from the chaining key and input key material.</summary>
     public static byte[][] Hkdf(byte[] chainingKey, byte[] inputKeyMaterial, int outputs)
     {
-        var tempKey = HMACSHA256.HashData(chainingKey, inputKeyMaterial);
-        var o1 = HMACSHA256.HashData(tempKey, new byte[] { 1 });
-        var o2 = HMACSHA256.HashData(tempKey, (byte[])[.. o1, 2]);
+        byte[] tempKey = HMACSHA256.HashData(chainingKey, inputKeyMaterial);
+        byte[] o1 = HMACSHA256.HashData(tempKey, new byte[] { 1 });
+        byte[] o2 = HMACSHA256.HashData(tempKey, (byte[])[.. o1, 2]);
         if (outputs == 2) return [o1, o2];
-        var o3 = HMACSHA256.HashData(tempKey, (byte[])[.. o2, 3]);
+        byte[] o3 = HMACSHA256.HashData(tempKey, (byte[])[.. o2, 3]);
         return [o1, o2, o3];
     }
 }
@@ -113,7 +113,7 @@ public sealed class CipherState
     public byte[] DecryptWithAd(ReadOnlySpan<byte> ad, ReadOnlySpan<byte> ciphertext)
     {
         if (key is null) return ciphertext.ToArray();
-        var plaintext = NoiseCrypto.Decrypt(key, nonce, ad, ciphertext);   // a failed tag leaves the counter untouched
+        byte[] plaintext = NoiseCrypto.Decrypt(key, nonce, ad, ciphertext);   // a failed tag leaves the counter untouched
         nonce++;
         return plaintext;
     }
@@ -129,7 +129,7 @@ public sealed class SymmetricState
 
     public SymmetricState(string protocolName)
     {
-        var name = System.Text.Encoding.UTF8.GetBytes(protocolName);
+        byte[] name = System.Text.Encoding.UTF8.GetBytes(protocolName);
         if (name.Length <= 32)
         {
             Hash = new byte[32];
@@ -147,14 +147,14 @@ public sealed class SymmetricState
 
     public void MixKey(byte[] inputKeyMaterial)
     {
-        var outputs = NoiseCrypto.Hkdf(chainingKey, inputKeyMaterial, 2);
+        byte[][] outputs = NoiseCrypto.Hkdf(chainingKey, inputKeyMaterial, 2);
         chainingKey = outputs[0];
         Cipher.InitializeKey(outputs[1]);
     }
 
     public void MixKeyAndHash(byte[] inputKeyMaterial)
     {
-        var outputs = NoiseCrypto.Hkdf(chainingKey, inputKeyMaterial, 3);
+        byte[][] outputs = NoiseCrypto.Hkdf(chainingKey, inputKeyMaterial, 3);
         chainingKey = outputs[0];
         MixHash(outputs[1]);
         Cipher.InitializeKey(outputs[2]);
@@ -162,14 +162,14 @@ public sealed class SymmetricState
 
     public byte[] EncryptAndHash(ReadOnlySpan<byte> plaintext)
     {
-        var ciphertext = Cipher.EncryptWithAd(Hash, plaintext);
+        byte[] ciphertext = Cipher.EncryptWithAd(Hash, plaintext);
         MixHash(ciphertext);
         return ciphertext;
     }
 
     public byte[] DecryptAndHash(ReadOnlySpan<byte> ciphertext)
     {
-        var plaintext = Cipher.DecryptWithAd(Hash, ciphertext);
+        byte[] plaintext = Cipher.DecryptWithAd(Hash, ciphertext);
         MixHash(ciphertext);
         return plaintext;
     }
@@ -177,7 +177,7 @@ public sealed class SymmetricState
     /// <summary>Transport keys: first for initiator to responder, second for responder to initiator.</summary>
     public (CipherState InitiatorToResponder, CipherState ResponderToInitiator) Split()
     {
-        var outputs = NoiseCrypto.Hkdf(chainingKey, [], 2);
+        byte[][] outputs = NoiseCrypto.Hkdf(chainingKey, [], 2);
         var first   = new CipherState();
         var second  = new CipherState();
         first.InitializeKey(outputs[0]);
@@ -256,7 +256,7 @@ public sealed class HandshakeState
         symmetric.MixKey(NoiseCrypto.Dh(ephemeralPrivate, remoteEphemeral));      // ee
         symmetric.MixKey(NoiseCrypto.Dh(ephemeralPrivate, remoteStatic));         // se, seen from the responder
         symmetric.MixKeyAndHash(psk);                                             // psk2
-        var encrypted = symmetric.EncryptAndHash(payload);
+        byte[] encrypted = symmetric.EncryptAndHash(payload);
         return [.. ephemeralPublic, .. encrypted];
     }
 
@@ -269,7 +269,7 @@ public sealed class HandshakeState
         symmetric.MixKey(ephemeralPublic);
         symmetric.MixKey(NoiseCrypto.Dh(ephemeralPrivate, remoteStatic));         // es, seen from the initiator
         symmetric.MixKey(NoiseCrypto.Dh(staticPrivate, remoteStatic));            // ss
-        var encrypted = symmetric.EncryptAndHash(payload);
+        byte[] encrypted = symmetric.EncryptAndHash(payload);
         return [.. ephemeralPublic, .. encrypted];
     }
 
@@ -292,7 +292,7 @@ public sealed class HandshakeState
     /// <summary>Transport-mode session for this side once both messages are exchanged.</summary>
     public NoiseSession Split()
     {
-        var (toResponder, toInitiator) = symmetric.Split();
+        (CipherState toResponder, CipherState toInitiator) = symmetric.Split();
         return initiator ? new NoiseSession(toResponder, toInitiator) : new NoiseSession(toInitiator, toResponder);
     }
 }

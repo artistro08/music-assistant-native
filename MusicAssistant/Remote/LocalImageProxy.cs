@@ -29,7 +29,7 @@ public sealed class LocalImageProxy : IDisposable
 
         var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
         probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        int port = ((IPEndPoint)probe.LocalEndpoint).Port;
         probe.Stop();
 
         BaseUrl = $"http://127.0.0.1:{port}/{nonce}";
@@ -71,11 +71,11 @@ public sealed class LocalImageProxy : IDisposable
 
     private async Task HandleAsync(HttpListenerContext context, CancellationToken ct)
     {
-        var response = context.Response;
+        HttpListenerResponse response = context.Response;
         try
         {
             // Strip the nonce prefix; refuse anything that is not an allowed GET
-            var path = context.Request.Url?.PathAndQuery ?? "";
+            string path = context.Request.Url?.PathAndQuery ?? "";
             path = path.StartsWith($"/{nonce}", StringComparison.Ordinal) ? path[(nonce.Length + 1)..] : "";
 
             if (context.Request.HttpMethod != "GET" || !AllowedPrefixes.Any(p => path.StartsWith(p, StringComparison.Ordinal)))
@@ -85,9 +85,9 @@ public sealed class LocalImageProxy : IDisposable
                 return;
             }
 
-            var reply = await peer.HttpAsync("GET", path, null, ct);
+            RemotePeer.HttpReply reply = await peer.HttpAsync("GET", path, null, ct);
             response.StatusCode = reply.Status == 0 ? 502 : reply.Status;
-            if (reply.Headers.TryGetValue("Content-Type", out var type)) response.ContentType = type;
+            if (reply.Headers.TryGetValue("Content-Type", out string? type)) response.ContentType = type;
             response.Headers["Cache-Control"] = "private, max-age=3600";
             response.ContentLength64 = reply.Body.Length;
             await response.OutputStream.WriteAsync(reply.Body, ct);

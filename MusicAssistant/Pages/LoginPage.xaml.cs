@@ -40,10 +40,10 @@ public sealed partial class LoginPage : Page
 
     private async void OnSignIn(object sender, RoutedEventArgs e)
     {
-        var server   = ServerBox.Text.Trim();
-        var remoteId = MassClient.NormalizeRemoteId(RemoteIdBox.Text);
-        var username = UsernameBox.Text.Trim();
-        var password = PasswordBox.Password;
+        string server   = ServerBox.Text.Trim();
+        string? remoteId = MassClient.NormalizeRemoteId(RemoteIdBox.Text);
+        string username = UsernameBox.Text.Trim();
+        string password = PasswordBox.Password;
 
         if (RemoteIdBox.Text.Trim().Length > 0 && remoteId is null)
         {
@@ -78,7 +78,7 @@ public sealed partial class LoginPage : Page
 
     private async void OnSignInWithHomeAssistant(object sender, RoutedEventArgs e)
     {
-        var server = ServerBox.Text.Trim();
+        string server = ServerBox.Text.Trim();
         if (server.Length == 0)
         {
             ShowError("Enter your Music Assistant server address first.");

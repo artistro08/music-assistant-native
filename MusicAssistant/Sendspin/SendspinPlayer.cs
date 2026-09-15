@@ -152,7 +152,7 @@ public sealed class SendspinPlayer : IDisposable
     /// <summary>Formats in preference order: the device's own rate as PCM on the LAN, Opus first over the internet.</summary>
     private object[] SupportedFormats()
     {
-        var rate = output?.SampleRate ?? 48000;
+        int rate = output?.SampleRate ?? 48000;
         var pcm  = new { codec = "pcm",  channels = 2, sample_rate = rate,  bit_depth = 16 };
         var opus = new { codec = "opus", channels = 2, sample_rate = 48000, bit_depth = 16 };
         var pcm48 = new { codec = "pcm", channels = 2, sample_rate = 48000, bit_depth = 16 };
@@ -189,12 +189,12 @@ public sealed class SendspinPlayer : IDisposable
     }
 
     private static bool RolesInclude(JsonElement payload, string role)
-        => payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("roles", out var roles) || roles.EnumerateArray().Any(r => r.GetString() == role);
+        => payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("roles", out JsonElement roles) || roles.EnumerateArray().Any(r => r.GetString() == role);
 
     private void OnActivate(JsonElement payload)
     {
-        var activities = payload.TryGetProperty("activities", out var a) ? a.EnumerateArray().Select(x => x.GetString()).ToList() : [];
-        if (payload.TryGetProperty("active_roles", out var roles)) playerRoleActive = roles.EnumerateArray().Any(r => r.GetString() == "player@v1");
+        List<string?> activities = payload.TryGetProperty("activities", out JsonElement a) ? [.. a.EnumerateArray().Select(x => x.GetString())] : [];
+        if (payload.TryGetProperty("active_roles", out JsonElement roles)) playerRoleActive = roles.EnumerateArray().Any(r => r.GetString() == "player@v1");
 
         if (activities.Contains("pairing"))
         {
@@ -228,14 +228,14 @@ public sealed class SendspinPlayer : IDisposable
 
     private void OnStreamStart(JsonElement payload)
     {
-        if (!payload.TryGetProperty("player", out var player)) return;
+        if (!payload.TryGetProperty("player", out JsonElement player)) return;
         var format = new ChunkDecoder.Format(
             player.GetProperty("codec").GetString() ?? "pcm",
             player.GetProperty("sample_rate").GetInt32(),
             player.GetProperty("channels").GetInt32(),
-            player.TryGetProperty("bit_depth", out var bd) ? bd.GetInt32() : 16);
+            player.TryGetProperty("bit_depth", out JsonElement bd) ? bd.GetInt32() : 16);
 
-        var update = decoder?.IsConfigured == true;
+        bool update = decoder?.IsConfigured == true;
         decoder?.Configure(format);
         if (!update) scheduler?.Clear();   // a new stream starts from an empty buffer; a format update keeps the timeline
         App.Debug($"Speaker: stream {(update ? "format update" : "start")} {format.Codec} {format.SampleRate} Hz {format.Channels} ch {format.BitDepth} bit");
@@ -255,7 +255,7 @@ public sealed class SendspinPlayer : IDisposable
 
     private void OnCommand(JsonElement payload)
     {
-        if (!payload.TryGetProperty("player", out var player)) return;
+        if (!payload.TryGetProperty("player", out JsonElement player)) return;
         switch (player.GetProperty("command").GetString())
         {
             case "volume":           volume = Math.Clamp(player.GetProperty("volume").GetInt32(), 0, 100); break;
@@ -283,8 +283,8 @@ public sealed class SendspinPlayer : IDisposable
         if (frame[0] != 4 || frame.Length < 13 || decoder is null || scheduler is null) return;   // 4 = player audio chunk
         if (!playerRoleActive) return;
 
-        var serverTime = BinaryPrimitives.ReadInt64BigEndian(frame.AsSpan(1, 8));
-        var decoded = decoder.Decode(frame.AsSpan(13));
+        long serverTime = BinaryPrimitives.ReadInt64BigEndian(frame.AsSpan(1, 8));
+        (float[] Samples, int Frames)? decoded = decoder.Decode(frame.AsSpan(13));
         if (decoded is not { Frames: > 0 } chunk) return;
         scheduler.Enqueue(new AudioScheduler.Chunk(chunk.Samples, chunk.Frames, serverTime, scheduler.CurrentGeneration));
     }
@@ -297,7 +297,7 @@ public sealed class SendspinPlayer : IDisposable
     private void SendState()
     {
         if (!connection.Ready) return;
-        var synced = timeFilter.IsSynchronized;
+        bool synced = timeFilter.IsSynchronized;
         connection.SendControl("client/state", new
         {
             available = synced,
@@ -317,7 +317,7 @@ public sealed class SendspinPlayer : IDisposable
     /// <summary>The app asks the server to pair this player; the server then re-handshakes with the pairing PSK and activates pairing.</summary>
     private void StartPairing(JsonElement payload)
     {
-        var method = payload.TryGetProperty("pairing", out var p) && p.TryGetProperty("method", out var m) ? m.GetString() : null;
+        string? method = payload.TryGetProperty("pairing", out JsonElement p) && p.TryGetProperty("method", out JsonElement m) ? m.GetString() : null;
         if (method != "pairing_psk" || connection.Matched?.Category != Identity.PskCategory.Pairing)
         {
             connection.SendControl("pair/abort", new { reason = "method_not_supported" });
@@ -348,7 +348,7 @@ public sealed class SendspinPlayer : IDisposable
     private void OnPairAbort(JsonElement payload)
     {
         lock (gate) { pendingLongTermPsk = null; }
-        LastError = "Pairing aborted: " + (payload.TryGetProperty("reason", out var r) ? r.GetString() : "unknown");
+        LastError = "Pairing aborted: " + (payload.TryGetProperty("reason", out JsonElement r) ? r.GetString() : "unknown");
         App.Debug("Speaker: " + LastError);
     }
 
@@ -400,17 +400,17 @@ public sealed class SendspinPlayer : IDisposable
 
     private void OnServerTime(JsonElement payload)
     {
-        var t4 = Clock.NowUs();
-        var t1 = payload.GetProperty("client_transmitted").GetInt64();
-        var t2 = payload.GetProperty("server_received").GetInt64();
-        var t3 = payload.GetProperty("server_transmitted").GetInt64();
+        long t4 = Clock.NowUs();
+        long t1 = payload.GetProperty("client_transmitted").GetInt64();
+        long t2 = payload.GetProperty("server_received").GetInt64();
+        long t3 = payload.GetProperty("server_transmitted").GetInt64();
 
         lock (gate)
         {
             if (!burstActive || probeInFlight != t1) return;
             probeInFlight = 0;
-            var measurement = ((t2 - t1) + (t3 - t4)) / 2.0;
-            var rtt         = Math.Max(0, (t4 - t1) - (t3 - t2));
+            double measurement = ((t2 - t1) + (t3 - t4)) / 2.0;
+            long rtt         = Math.Max(0, (t4 - t1) - (t3 - t2));
             burstSamples.Add((measurement, Math.Max(1000, rtt / 2.0), t4, rtt));
             if (burstSent >= TimeSyncBurstSize) { FinishBurst(); return; }
         }
@@ -426,10 +426,10 @@ public sealed class SendspinPlayer : IDisposable
         {
             // Keep only samples whose round trip is near the burst minimum: a higher RTT means the probe or its
             // reply queued behind audio on the ordered channel, which also skews its one-way offset estimate.
-            var minRtt = burstSamples.Min(s => s.Rtt);
+            double minRtt = burstSamples.Min(s => s.Rtt);
             var clean  = burstSamples.Where(s => s.Rtt <= minRtt * 1.5 + 2000).OrderBy(s => s.Measurement).ToList();
-            var pick   = clean[clean.Count / 2];
-            var wasSynced = timeFilter.IsSynchronized;
+            (double Measurement, double MaxError, long T4, double Rtt) pick   = clean[clean.Count / 2];
+            bool wasSynced = timeFilter.IsSynchronized;
             timeFilter.Update(pick.Measurement, pick.MaxError, pick.T4);
             if (!wasSynced && timeFilter.IsSynchronized) ThreadPool.QueueUserWorkItem(_ => { SendState(); Notify(); });   // now available
         }

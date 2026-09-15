@@ -21,21 +21,21 @@ public static class Paging
     private sealed class Progress { public int Accumulated; public DateTime LastStep; }
 
     // Weak keys: rows come and go with navigation and must not be kept alive by their scroll bookkeeping
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<UIElement, Progress> state = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<UIElement, Progress> state = [];
 
     /// <summary>+1 for next page, -1 for previous, 0 when the event is not a horizontal scroll or not yet a full step.</summary>
     public static int WheelStep(PointerRoutedEventArgs e, UIElement owner)
     {
-        var point = e.GetCurrentPoint(owner);
-        var props = point.Properties;
-        var shift = (e.KeyModifiers & VirtualKeyModifiers.Shift) != 0;
+        Microsoft.UI.Input.PointerPoint point = e.GetCurrentPoint(owner);
+        Microsoft.UI.Input.PointerPointProperties props = point.Properties;
+        bool shift = (e.KeyModifiers & VirtualKeyModifiers.Shift) != 0;
 
         if (!props.IsHorizontalMouseWheel && !shift) return 0;
 
         // Horizontal wheel: positive = right. Shift + vertical wheel: wheel down (negative) = next.
-        var delta = props.IsHorizontalMouseWheel ? props.MouseWheelDelta : -props.MouseWheelDelta;
+        int delta = props.IsHorizontalMouseWheel ? props.MouseWheelDelta : -props.MouseWheelDelta;
 
-        var progress = state.GetOrCreateValue(owner);
+        Progress progress = state.GetOrCreateValue(owner);
         if ((DateTime.UtcNow - progress.LastStep).TotalMilliseconds < Cooldown)
         {
             progress.Accumulated = 0;
@@ -45,7 +45,7 @@ public static class Paging
         progress.Accumulated += delta;
         if (Math.Abs(progress.Accumulated) < Notch) return 0;
 
-        var step = Math.Sign(progress.Accumulated);
+        int step = Math.Sign(progress.Accumulated);
         progress.Accumulated = 0;
         progress.LastStep    = DateTime.UtcNow;
         return step;
@@ -59,7 +59,7 @@ public static class Paging
     {
         if (direction == 0) return;
 
-        var transform = element.RenderTransform as TranslateTransform ?? new TranslateTransform();
+        TranslateTransform transform = element.RenderTransform as TranslateTransform ?? new TranslateTransform();
         element.RenderTransform = transform;
 
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };

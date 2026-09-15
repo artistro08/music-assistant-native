@@ -69,24 +69,24 @@ public sealed class ChunkDecoder
                 if (opus is null) return null;
                 frames = opus.Decode(payload, opusBuffer, opusBuffer.Length / format.Channels, false);
                 native = new float[frames * format.Channels];
-                for (var i = 0; i < native.Length; i++) native[i] = opusBuffer[i] / 32768f;
+                for (int i = 0; i < native.Length; i++) native[i] = opusBuffer[i] / 32768f;
                 break;
             default:
                 return null;
         }
 
-        var mapped = MapChannels(native, frames, format.Channels);
+        float[] mapped = MapChannels(native, frames, format.Channels);
         return format.SampleRate == outputRate ? (mapped, frames) : Resample(mapped, frames, format.SampleRate);
     }
 
     private static (float[] Samples, int Frames) DecodePcm(ReadOnlySpan<byte> data, Format format)
     {
-        var bytesPerSample = format.BitDepth / 8;
-        var count   = data.Length / bytesPerSample;
-        var samples = new float[count];
-        for (var i = 0; i < count; i++)
+        int bytesPerSample = format.BitDepth / 8;
+        int count   = data.Length / bytesPerSample;
+        float[] samples = new float[count];
+        for (int i = 0; i < count; i++)
         {
-            var at = data.Slice(i * bytesPerSample, bytesPerSample);
+            ReadOnlySpan<byte> at = data.Slice(i * bytesPerSample, bytesPerSample);
             samples[i] = format.BitDepth switch
             {
                 16 => BinaryPrimitives.ReadInt16LittleEndian(at) / 32768f,
@@ -101,10 +101,10 @@ public sealed class ChunkDecoder
     private float[] MapChannels(float[] samples, int frames, int channels)
     {
         if (channels == outputChannels) return samples;
-        var output = new float[frames * outputChannels];
-        for (var f = 0; f < frames; f++)
+        float[] output = new float[frames * outputChannels];
+        for (int f = 0; f < frames; f++)
         {
-            for (var c = 0; c < outputChannels; c++)
+            for (int c = 0; c < outputChannels; c++)
             {
                 output[f * outputChannels + c] = channels == 1 ? samples[f] : c < channels ? samples[f * channels + c] : 0f;
             }
@@ -115,28 +115,28 @@ public sealed class ChunkDecoder
     /// <summary>Linear interpolation from the stream rate to the device rate, continuous across chunk boundaries.</summary>
     private (float[] Samples, int Frames) Resample(float[] input, int frames, int inputRate)
     {
-        var ratio  = (double)inputRate / outputRate;
-        var source = resampleTail.Length == 0 ? input : [.. resampleTail, .. input];
-        var sourceFrames = source.Length / outputChannels;
-        var outFrames = (int)Math.Floor((sourceFrames - 1 - resamplePosition) / ratio) + 1;
+        double ratio  = (double)inputRate / outputRate;
+        float[] source = resampleTail.Length == 0 ? input : [.. resampleTail, .. input];
+        int sourceFrames = source.Length / outputChannels;
+        int outFrames = (int)Math.Floor((sourceFrames - 1 - resamplePosition) / ratio) + 1;
         if (outFrames <= 0) { resampleTail = source; return ([], 0); }
 
-        var output = new float[outFrames * outputChannels];
-        var position = resamplePosition;
-        for (var f = 0; f < outFrames; f++, position += ratio)
+        float[] output = new float[outFrames * outputChannels];
+        double position = resamplePosition;
+        for (int f = 0; f < outFrames; f++, position += ratio)
         {
-            var index = (int)position;
-            var frac  = (float)(position - index);
-            for (var c = 0; c < outputChannels; c++)
+            int index = (int)position;
+            float frac  = (float)(position - index);
+            for (int c = 0; c < outputChannels; c++)
             {
-                var a = source[index * outputChannels + c];
-                var b = source[Math.Min(index + 1, sourceFrames - 1) * outputChannels + c];
+                float a = source[index * outputChannels + c];
+                float b = source[Math.Min(index + 1, sourceFrames - 1) * outputChannels + c];
                 output[f * outputChannels + c] = a + (b - a) * frac;
             }
         }
         // Keep the last frame consumed so the next chunk interpolates from it. The clamped index must also
         // anchor resamplePosition, or the fractional offset drifts one frame from where the tail begins.
-        var consumed = Math.Min((int)position, sourceFrames - 1);
+        int consumed = Math.Min((int)position, sourceFrames - 1);
         resamplePosition = position - consumed;
         resampleTail = source.AsSpan(consumed * outputChannels).ToArray();
         return (output, outFrames);

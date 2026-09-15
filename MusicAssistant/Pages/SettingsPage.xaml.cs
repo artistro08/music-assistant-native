@@ -13,8 +13,8 @@ public sealed partial class SettingsPage : Page
     {
         InitializeComponent();
 
-        var info = App.Client.ServerInfo;
-        var user = App.Client.CurrentUser;
+        ServerInfo? info = App.Client.ServerInfo;
+        User? user = App.Client.CurrentUser;
 
         ServerText.Text  = App.Settings.ServerAddress ?? "(remote only)";
         VersionText.Text = info is null ? "" : $"{info.Name ?? "Music Assistant"} • server {info.ServerVersion} • schema {info.SchemaVersion}";
@@ -23,7 +23,7 @@ public sealed partial class SettingsPage : Page
         ConnectionText.Text = App.Client.IsRemote ? "Currently connected remotely through the relay." : "Currently connected over your local network.";
         RemoteIdBox.Text    = App.Settings.RemoteId ?? "";
 
-        if (!App.Client.IsRemote && Uri.TryCreate(App.Settings.ServerAddress, UriKind.Absolute, out var uri)) WebLink.NavigateUri = uri;
+        if (!App.Client.IsRemote && Uri.TryCreate(App.Settings.ServerAddress, UriKind.Absolute, out Uri? uri)) WebLink.NavigateUri = uri;
         else WebLink.Visibility = Visibility.Collapsed;
 
         _ = LoadRemoteAccessAsync();
@@ -101,7 +101,7 @@ public sealed partial class SettingsPage : Page
         loadingRemote = false;
 
         // Keep this PC in sync with the server so roaming works without copying
-        var id = info.Enabled ? MassClient.NormalizeRemoteId(info.RemoteId) : null;
+        string? id = info.Enabled ? MassClient.NormalizeRemoteId(info.RemoteId) : null;
         if (id is not null && id != App.Settings.RemoteId)
         {
             App.Settings.RemoteId = id;
@@ -127,8 +127,8 @@ public sealed partial class SettingsPage : Page
 
     private void OnRemoteIdEdited(object sender, RoutedEventArgs e)
     {
-        var text = RemoteIdBox.Text.Trim();
-        var id   = MassClient.NormalizeRemoteId(text);
+        string text = RemoteIdBox.Text.Trim();
+        string? id   = MassClient.NormalizeRemoteId(text);
         if (text.Length > 0 && id is null)
         {
             App.Window.ShowMessage("That Remote ID does not look right. It has 26 letters and digits.");

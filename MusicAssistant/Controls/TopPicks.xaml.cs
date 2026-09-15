@@ -40,11 +40,11 @@ public sealed partial class TopPicks : UserControl
         // Round-robin across rows so the collage mixes sources
         while (queues.Any(q => q.queue.Count > 0) && result.Count < MaxPicks)
         {
-            foreach (var (title, queue) in queues)
+            foreach ((string title, Queue<MediaItem> queue) in queues)
             {
                 while (queue.Count > 0)
                 {
-                    var item = queue.Dequeue();
+                    MediaItem item = queue.Dequeue();
                     if (!seen.Add(item.Uri)) continue;
                     item.Tag = title;
                     result.Add(item);
@@ -53,7 +53,7 @@ public sealed partial class TopPicks : UserControl
             }
         }
 
-        foreach (var item in fallback)
+        foreach (MediaItem item in fallback)
         {
             if (result.Count >= MaxPicks) break;
             if (!seen.Add(item.Uri)) continue;
@@ -77,11 +77,11 @@ public sealed partial class TopPicks : UserControl
         var template = (DataTemplate)Application.Current.Resources["HeroCardTemplate"];
 
         Collage.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(LeadSpan, GridUnitType.Star) });
-        for (var c = 0; c < columns; c++) Collage.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (int c = 0; c < columns; c++) Collage.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         // Lead tile, then column by column top to bottom
         AddTile(template, column: 0, row: 0, rowSpan: 2);
-        for (var c = 1; c <= columns; c++)
+        for (int c = 1; c <= columns; c++)
         {
             AddTile(template, c, 0, 1);
             AddTile(template, c, 1, 1);
@@ -132,9 +132,9 @@ public sealed partial class TopPicks : UserControl
 
     private static Image? FindImage(DependencyObject root)
     {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            var child = VisualTreeHelper.GetChild(root, i);
+            DependencyObject child = VisualTreeHelper.GetChild(root, i);
             if (child is Image image) return image;
             if (FindImage(child) is { } found) return found;
         }
@@ -151,10 +151,10 @@ public sealed partial class TopPicks : UserControl
         if (tiles.Count == 0) return;
         page = Math.Clamp(page, 0, PageCount - 1);
 
-        for (var i = 0; i < tiles.Count; i++)
+        for (int i = 0; i < tiles.Count; i++)
         {
-            var index = page * PerPage + i;
-            var item  = index < picks.Count ? picks[index] : null;
+            int index = page * PerPage + i;
+            MediaItem? item  = index < picks.Count ? picks[index] : null;
             tiles[i].Content    = item;
             tiles[i].Visibility = item is null ? Visibility.Collapsed : Visibility.Visible;
             tiles[i].IsTabStop  = item is not null;
@@ -170,9 +170,9 @@ public sealed partial class TopPicks : UserControl
     /// <summary>Re-run every tile's template so art resolved after the first bind shows (the image binding is OneTime).</summary>
     public void Rebind()
     {
-        foreach (var tile in tiles)
+        foreach (ContentControl tile in tiles)
         {
-            var item = tile.Content;
+            object? item = tile.Content;
             if (item is null) continue;
             tile.Content = null;
             tile.Content = item;
@@ -184,7 +184,7 @@ public sealed partial class TopPicks : UserControl
 
     private void TurnPage(int direction)
     {
-        var target = page + direction;
+        int target = page + direction;
         if (target < 0 || target >= PageCount) return;
         page = target;
         Fill();
@@ -193,7 +193,7 @@ public sealed partial class TopPicks : UserControl
 
     private void OnPointerWheel(object sender, PointerRoutedEventArgs e)
     {
-        var step = Paging.WheelStep(e, this);
+        int step = Paging.WheelStep(e, this);
         if (step == 0) return;
         e.Handled = true;
         TurnPage(step);

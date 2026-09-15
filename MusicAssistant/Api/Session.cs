@@ -72,7 +72,7 @@ public sealed class Session
         if (TokenKey is not { } key) return null;
         try
         {
-            var credential = new PasswordVault().Retrieve(VaultResource, key);
+            PasswordCredential credential = new PasswordVault().Retrieve(VaultResource, key);
             credential.RetrievePassword();
             return credential.Password;
         }
