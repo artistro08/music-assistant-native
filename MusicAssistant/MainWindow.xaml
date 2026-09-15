@@ -14,7 +14,6 @@
             <KeyboardAccelerator Key="Space" Invoked="OnSpace" />
             <KeyboardAccelerator Modifiers="Control" Key="F" Invoked="OnFindShortcut" />
             <KeyboardAccelerator Modifiers="Menu" Key="Left" Invoked="OnBackShortcut" />
-            <KeyboardAccelerator Key="GoBack" Invoked="OnBackShortcut" />
         </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

@@ -1063,7 +1063,7 @@ public sealed partial class MainWindow : Window
 
     private void OnBackClick(object sender, RoutedEventArgs e) => GoBack();
 
-    /// <summary>Alt+Left and the keyboard's Back key go back, as in other Windows apps.</summary>
+    /// <summary>Alt+Left goes back, as in other Windows apps (the mouse's back button is handled in OnPointerPressed).</summary>
     /// <param name="sender">The accelerator.</param>
     /// <param name="args">Marked handled when there was somewhere to go back to.</param>
     private void OnBackShortcut(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
