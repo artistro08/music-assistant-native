@@ -58,7 +58,7 @@
         <!-- /Top Bar -->
 
         <!-- Body -->
-        <Grid Grid.Row="1" ColumnSpacing="24" Padding="24,0">
+        <Grid x:Name="Body" Grid.Row="1" ColumnSpacing="24" Padding="24,0" SizeChanged="OnNowPlayingSizeChanged">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
@@ -66,14 +66,15 @@
 
             <!-- Now Playing -->
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="24" MaxWidth="560">
-                <!-- Shrinks with its column on narrow windows instead of overflowing into the queue list -->
-                <Viewbox MaxWidth="380" MaxHeight="380" Stretch="Uniform">
+                <!-- Shrinks with its column on narrow windows and with the body on short ones (OnNowPlayingSizeChanged),
+                     instead of overflowing into the queue list or past the top and bottom -->
+                <Viewbox x:Name="ArtBox" MaxWidth="380" MaxHeight="380" Stretch="Uniform">
                     <Grid Width="380" Height="380" CornerRadius="{StaticResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <FontIcon Glyph="&#xEC4F;" FontSize="64" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                         <Image x:Name="ArtImage" Stretch="UniformToFill" Opacity="0" ImageOpened="OnImageOpened" />
                     </Grid>
                 </Viewbox>
-                <StackPanel Spacing="8" HorizontalAlignment="Center">
+                <StackPanel x:Name="NowPlayingInfo" Spacing="8" HorizontalAlignment="Center" SizeChanged="OnNowPlayingSizeChanged">
                     <TextBlock x:Name="TitleText" Style="{StaticResource TitleLargeTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="ArtistText" Style="{StaticResource SubtitleTextBlockStyle}" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>

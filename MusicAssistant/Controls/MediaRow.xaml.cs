@@ -143,9 +143,6 @@ public sealed partial class MediaRow : UserControl
             };
             slot.Click += OnSlotClick;
 
-            // Item menu on the focusable button, so right-click, Shift+F10 and the menu key all open it.
-            slot.ContextFlyout = (FlyoutBase)Application.Current.Resources["ItemMenu"];
-
             // Self-drawn cards: no hover surface behind them; a translucent overlay on top of the card tints it under
             // the pointer. Done in code rather than template visual states, which crash Microsoft.UI.Xaml on hover.
             UIElement cell = slot;
@@ -195,6 +192,10 @@ public sealed partial class MediaRow : UserControl
             slots[i].Visibility = item is null ? Visibility.Collapsed : Visibility.Visible;
             slots[i].IsTabStop  = item is not null;
             AutomationProperties.SetName(slots[i], item switch { MediaItem m => m.Name, Player p => p.DisplayName, _ => "" });
+
+            // Item menu on the focusable button, so right-click, Shift+F10 and the menu key all open it. Player cards
+            // (the Home page's Players row) have no item menu.
+            slots[i].ContextFlyout = item is MediaItem ? (FlyoutBase)Application.Current.Resources["ItemMenu"] : null;
         }
 
         Pager.Visibility     = PageCount > 1 ? Visibility.Visible : Visibility.Collapsed;

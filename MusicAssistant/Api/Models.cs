@@ -614,10 +614,10 @@ public sealed class Player
     [JsonIgnore]
     public string TypeGlyph => IsThisDevice ? "\uE7F4" : Type switch
     {
-        "group"       => "",
-        "stereo_pair" => "",
-        "display"     => "",
-        _             => "",
+        "group"       => "\uE8FD",
+        "stereo_pair" => "\uE7F5",
+        "display"     => "\uE7F4",
+        _             => "\uE7F5",
     };
 
     /// <summary>Check whether the player supports a feature.</summary>

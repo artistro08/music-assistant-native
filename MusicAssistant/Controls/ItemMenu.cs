@@ -25,11 +25,11 @@ public static class ItemMenu
     /// <summary>Labels are the web app's English strings (src/translations/en.json).</summary>
     private static readonly (string Option, string Label, string Glyph)[] EnqueueOptions =
     [
-        ("play",         "Play now (keep queue)",     ""),
-        ("next",         "Play next (keep queue)",    ""),
-        ("add",          "Add to the queue",          ""),
-        ("replace",      "Play now (replace queue)",  ""),
-        ("replace_next", "Play next (replace queue)", ""),
+        ("play",         "Play now (keep queue)",     "\uE768"),
+        ("next",         "Play next (keep queue)",    "\uE893"),
+        ("add",          "Add to the queue",          "\uE710"),
+        ("replace",      "Play now (replace queue)",  "\uE768"),
+        ("replace_next", "Play next (replace queue)", "\uE893"),
     ];
 
     /// <summary>
@@ -54,11 +54,11 @@ public static class ItemMenu
         // Play On: start that play action on the chosen speaker, which also becomes the active player.
         if (canPlay)
         {
-            var playOn = new MenuFlyoutSubItem { Text = $"Play on: {player?.DisplayName ?? "No player selected"}", Icon = Glyph("") };
+            var playOn = new MenuFlyoutSubItem { Text = $"Play on: {player?.DisplayName ?? "No player selected"}", Icon = Glyph("\uE7F5") };
             foreach (Player candidate in App.Client.Players.Values.Where(p => p.IsVisible).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
             {
                 bool active = candidate.PlayerId == player?.PlayerId;
-                Add(playOn, candidate.DisplayName, active ? "" : "", () =>
+                Add(playOn, candidate.DisplayName, active ? "\uE73E" : "", () =>
                 {
                     App.SetActivePlayer(candidate.PlayerId);
                     return playPrimary();
@@ -72,10 +72,10 @@ public static class ItemMenu
         if ((player is not null) && canPlay)
         {
             string label = parent?.MediaType switch { "album" => "Play Album from here", "playlist" => "Play Playlist from here", _ => "Play from here to latest" };
-            Add(menu, fromHere ? label : "Play Now", "", playPrimary);
-            Add(menu, "Play Next", "", () => App.PlayAsync(item, "next"));
+            Add(menu, fromHere ? label : "Play Now", "\uE768", playPrimary);
+            Add(menu, "Play Next", "\uE893", () => App.PlayAsync(item, "next"));
 
-            var enqueue = new MenuFlyoutSubItem { Text = "Enqueue options", Icon = Glyph("") };
+            var enqueue = new MenuFlyoutSubItem { Text = "Enqueue options", Icon = Glyph("\uE8FD") };
             foreach ((string option, string text, string glyph) in EnqueueOptions)
             {
                 Add(enqueue, text, glyph, () => App.PlayAsync(item, option));
@@ -86,40 +86,41 @@ public static class ItemMenu
         // Navigation: artist (only when there is exactly one, like the web app), album, endless mix.
         if (item.IsAvailableNow && item.Artists is [var artist])
         {
-            Add(menu, $"View artist {artist.Name}", "", () => App.OpenAsync(artist));
+            Add(menu, $"View artist {artist.Name}", "\uE77B", () => App.OpenAsync(artist));
         }
         if (item.IsAvailableNow && item.Album is { } album)
         {
-            Add(menu, $"View album {album.Name}", "", () => App.OpenAsync(album));
+            Add(menu, $"View album {album.Name}", "\uE93C", () => App.OpenAsync(album));
         }
 
         // Endless mix: the web app's radio seeds are tracks, albums, artists, genres, and playlists that aren't dynamic already.
         bool mixSeed = (item.MediaType is "track" or "album" or "artist" or "genre") || ((item.MediaType == "playlist") && (item.IsDynamic != true));
         if (mixSeed && item.IsAvailableNow)
         {
-            MenuFlyoutItem mix = Add(menu, $"View {item.MediaType} endless mix", "", () => App.OpenAsync(EndlessMix(item)));
+            MenuFlyoutItem mix = Add(menu, $"View {item.MediaType} endless mix", "\uE8EE", () => App.OpenAsync(EndlessMix(item)));
             _ = CheckEndlessMixAsync(mix, item);
         }
 
         // Library membership: a library item knows it; a streaming item is looked up.
         if (item.MediaType is "track" or "album" or "artist" or "playlist" or "radio" or "audiobook" or "podcast")
         {
-            MenuFlyoutItem library = Add(menu, (item.Provider == "library") && item.IsInLibrary ? "Remove from library" : "Add to library", "", () => Task.CompletedTask);
+            MenuFlyoutItem library = Add(menu, (item.Provider == "library") && item.IsInLibrary ? "Remove from library" : "Add to library", "\uE8F1", () => Task.CompletedTask);
             _ = WireLibraryAsync(library, item);
         }
 
         // Favorites (not for browse folders, which the server cannot favorite).
         if (item.MediaType != "folder")
         {
-            Add(menu, item.Favorite ? "Remove from favorites" : "Add to favorites", item.Favorite ? "" : "", () => App.ToggleFavoriteAsync(item));
+            Add(menu, item.Favorite ? "Remove from favorites" : "Add to favorites", item.Favorite ? "\uEB52" : "\uEB51", () => App.ToggleFavoriteAsync(item));
         }
 
         // Add to playlist: tracks, and albums, which the server unwraps into their tracks.
         if (item.MediaType is "track" or "album")
         {
-            Add(menu, "Add to playlist...", "", () => ShowAddToPlaylistAsync(item, parent));
+            Add(menu, "Add to playlist...", "\uE710", () => ShowAddToPlaylistAsync(item, parent));
         }
     }
+
     // =========================================================================
     // ENDLESS MIX
     // =========================================================================
@@ -139,10 +140,10 @@ public static class ItemMenu
     };
 
     /// <summary>A mix can only be generated when a provider of the item (or, for a library item, any provider) supplies similar tracks, or for a genre; otherwise the entry is disabled.</summary>
-    private static async Task CheckEndlessMixAsync(MenuFlyoutItem entry, MediaItem track)
+    private static async Task CheckEndlessMixAsync(MenuFlyoutItem entry, MediaItem item)
     {
         // The server builds genre mixes itself, without a similar-tracks provider.
-        if (track.MediaType == "genre")
+        if (item.MediaType == "genre")
         {
             return;
         }
@@ -152,14 +153,14 @@ public static class ItemMenu
             var providers = (await App.Client.GetProvidersCachedAsync()).ToDictionary(p => p.InstanceId);
             bool Similar(string instanceId) => providers.TryGetValue(instanceId, out ProviderInstance? provider) && provider.Supports("similar_tracks");
 
-            bool supported = track.ProviderMappings is { Count: > 0 } mappings ? mappings.Any(m => Similar(m.ProviderInstance)) : Similar(track.Provider);
-            if (!supported && (track.Provider == "library")) supported = providers.Values.Any(p => p.Supports("similar_tracks"));
+            bool supported = item.ProviderMappings is { Count: > 0 } mappings ? mappings.Any(m => Similar(m.ProviderInstance)) : Similar(item.Provider);
+            if (!supported && (item.Provider == "library")) supported = providers.Values.Any(p => p.Supports("similar_tracks"));
             entry.IsEnabled = supported;
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             // Leave the entry enabled; opening the mix reports its own error.
-            App.Debug($"Track menu: provider lookup failed: {ex.Message}");
+            App.Debug($"Item menu: provider lookup failed: {ex.Message}");
         }
     }
 
@@ -171,17 +172,17 @@ public static class ItemMenu
     /// Settle the library entry: resolve a streaming track to its library copy (the removal needs that id), set the
     /// label, and attach add or remove. Disabled until the answer is in.
     /// </summary>
-    private static async Task WireLibraryAsync(MenuFlyoutItem entry, MediaItem track)
+    private static async Task WireLibraryAsync(MenuFlyoutItem entry, MediaItem item)
     {
         entry.IsEnabled = false;
         MediaItem? libraryItem;
         try
         {
-            libraryItem = track.Provider == "library" ? track : await App.Client.GetLibraryItemAsync(track.MediaType, track.ItemId, track.Provider);
+            libraryItem = item.Provider == "library" ? item : await App.Client.GetLibraryItemAsync(item.MediaType, item.ItemId, item.Provider);
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            App.Debug($"Track menu: library lookup failed: {ex.Message}");
+            App.Debug($"Item menu: library lookup failed: {ex.Message}");
             return;
         }
 
@@ -194,16 +195,16 @@ public static class ItemMenu
             {
                 if (!inLibrary)
                 {
-                    await App.Client.AddToLibraryAsync(track.Uri);
-                    App.Window.ShowMessage($"Added {track.Name} to the library", InfoBarSeverity.Success);
+                    await App.Client.AddToLibraryAsync(item.Uri);
+                    App.Window.ShowMessage($"Added {item.Name} to the library", InfoBarSeverity.Success);
                 }
                 else if (await ConfirmRemoveAsync())
                 {
                     await App.Client.RemoveFromLibraryAsync(libraryItem!.MediaType, libraryItem.ItemId);
 
                     // A favorite is always in the library, so leaving it clears that too.
-                    track.Favorite = false;
-                    App.Window.ShowMessage($"Removed {track.Name} from the library", InfoBarSeverity.Success);
+                    item.Favorite = false;
+                    App.Window.ShowMessage($"Removed {item.Name} from the library", InfoBarSeverity.Success);
                 }
             }
             catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
@@ -231,11 +232,11 @@ public static class ItemMenu
     // ADD TO PLAYLIST
     // =========================================================================
 
-    /// <summary>Pick one of the library playlists the track can be added to, then add it.</summary>
-    private static async Task ShowAddToPlaylistAsync(MediaItem track, MediaItem? parent)
+    /// <summary>Pick one of the library playlists the track or album can be added to, then add it.</summary>
+    private static async Task ShowAddToPlaylistAsync(MediaItem item, MediaItem? parent)
     {
         var busy   = new ProgressRing { IsActive = true, Margin = new Thickness(0, 24, 0, 24) };
-        var empty  = new TextBlock { Text = "No playlists this track can be added to.", Visibility = Visibility.Collapsed, Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
+        var empty  = new TextBlock { Text = "No playlists this item can be added to.", Visibility = Visibility.Collapsed, Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
         var filter = new TextBox { PlaceholderText = "Search", Visibility = Visibility.Collapsed };
         var list   = new ListView
         {
@@ -278,7 +279,7 @@ public static class ItemMenu
         List<ProviderInstance> creators = [];
         try
         {
-            (targets, creators) = await PlaylistTargetsAsync(track, parent);
+            (targets, creators) = await PlaylistTargetsAsync(item, parent);
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
@@ -315,7 +316,7 @@ public static class ItemMenu
             if (name is null) return;
             try
             {
-                chosen = await App.Client.CreatePlaylistAsync(name, createOn.InstanceId, CreateMediaTypes(createOn, track));
+                chosen = await App.Client.CreatePlaylistAsync(name, createOn.InstanceId, CreateMediaTypes(createOn, item));
             }
             catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
             {
@@ -327,12 +328,12 @@ public static class ItemMenu
 
         try
         {
-            await App.Client.AddPlaylistTracksAsync(chosen.ItemId, [track.Uri]);
-            App.Window.ShowMessage($"Added {track.Name} to {chosen.Name}", InfoBarSeverity.Success);
+            await App.Client.AddPlaylistTracksAsync(chosen.ItemId, [item.Uri]);
+            App.Window.ShowMessage($"Added {item.Name} to {chosen.Name}", InfoBarSeverity.Success);
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            App.Window.ShowMessage($"Could not add {track.Name} to {chosen.Name}: {ex.Message}");
+            App.Window.ShowMessage($"Could not add {item.Name} to {chosen.Name}: {ex.Message}");
         }
     }
 
@@ -355,9 +356,9 @@ public static class ItemMenu
     }
 
     /// <summary>Media types for a new playlist, as the web app picks them: everything the provider can mix, or just this item's type.</summary>
-    private static List<string> CreateMediaTypes(ProviderInstance provider, MediaItem track)
+    private static List<string> CreateMediaTypes(ProviderInstance provider, MediaItem item)
     {
-        if (!provider.Supports("playlist_create_mixed")) return [track.MediaType];
+        if (!provider.Supports("playlist_create_mixed")) return [item.MediaType];
 
         List<string> types = [];
         if (provider.Supports("playlist_create") || provider.Supports("playlist_create_tracks")) types.Add("track");
@@ -377,9 +378,9 @@ public static class ItemMenu
     ///
     /// Also returns the providers a new playlist can be created on, by the same web app rules.
     /// </summary>
-    private static async Task<(List<MediaItem> Playlists, List<ProviderInstance> Creators)> PlaylistTargetsAsync(MediaItem track, MediaItem? parent)
+    private static async Task<(List<MediaItem> Playlists, List<ProviderInstance> Creators)> PlaylistTargetsAsync(MediaItem item, MediaItem? parent)
     {
-        MediaItem reference = track.ProviderMappings is not null ? track : await App.Client.GetItemByUriAsync(track.Uri);
+        MediaItem reference = item.ProviderMappings is not null ? item : await App.Client.GetItemByUriAsync(item.Uri);
         var providers = (await App.Client.GetProvidersCachedAsync()).ToDictionary(p => p.InstanceId);
         List<MediaItem> playlists = await App.Client.GetAllLibraryPlaylistsAsync();
 

@@ -42,12 +42,12 @@ public sealed class TrayMenu
     private readonly MenuFlyout flyout = new();
 
     // Persistent items, relabeled per show.
-    private readonly MenuFlyoutItem    openItem     = Item("Open Music Assistant", "");
-    private readonly MenuFlyoutItem    playItem     = Item("Play", "");
-    private readonly MenuFlyoutItem    nextItem     = Item("Next", "");
-    private readonly MenuFlyoutItem    previousItem = Item("Previous", "");
-    private readonly MenuFlyoutSubItem speakerItem  = new() { Text = "Speaker", Icon = new FontIcon { Glyph = "" } };
-    private readonly MenuFlyoutItem    exitItem     = Item("Exit", "");
+    private readonly MenuFlyoutItem    openItem     = Item("Open Music Assistant", "\uE8A7");
+    private readonly MenuFlyoutItem    playItem     = Item("Play", "\uE768");
+    private readonly MenuFlyoutItem    nextItem     = Item("Next", "\uE893");
+    private readonly MenuFlyoutItem    previousItem = Item("Previous", "\uE892");
+    private readonly MenuFlyoutSubItem speakerItem  = new() { Text = "Speaker", Icon = new FontIcon { Glyph = "\uE7F5" } };
+    private readonly MenuFlyoutItem    exitItem     = Item("Exit", "\uE7E8");
 
     private bool visible;
 
@@ -188,7 +188,7 @@ public sealed class TrayMenu
         bool enabled = player is not null;
 
         playItem.Text = player?.IsPlaying == true ? "Pause" : "Play";
-        ((FontIcon)playItem.Icon).Glyph = player?.IsPlaying == true ? "" : "";
+        ((FontIcon)playItem.Icon).Glyph = player?.IsPlaying == true ? "\uE769" : "\uE768";
         playItem.IsEnabled = nextItem.IsEnabled = previousItem.IsEnabled = enabled;
 
         speakerItem.Text = player is null ? "Speaker" : $"Speaker: {player.DisplayName}";

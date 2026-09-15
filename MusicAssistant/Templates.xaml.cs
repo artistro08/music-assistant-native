@@ -233,7 +233,7 @@ public sealed partial class Templates : ResourceDictionary
             if (Interlocked.Increment(ref downloadsSinceTrim) >= TrimEveryDownloads)
             {
                 Interlocked.Exchange(ref downloadsSinceTrim, 0);
-                TrimArtCache();
+                TrimArtCache(atLaunch: false);
             }
 
             return file;
@@ -298,24 +298,35 @@ public sealed partial class Templates : ResourceDictionary
     /// app is still connecting, and again after every <see cref="TrimEveryDownloads"/> new files; a card that loses its
     /// file to the trim re-downloads it on its next bind.
     /// </summary>
-    public static void TrimArtCache() => Task.Run(() =>
+    /// <param name="atLaunch">True for the launch trim, the only one that clears partial downloads: later on, a .tmp file may be one another download is still writing.</param>
+    public static void TrimArtCache(bool atLaunch = true) => Task.Run(() =>
     {
         try
         {
             if (!Directory.Exists(ArtDir)) return;
             FileInfo[] files = new DirectoryInfo(ArtDir).GetFiles();
-            foreach (FileInfo? partial in files.Where(f => f.Extension == ".tmp")) partial.Delete();
+            if (atLaunch)
+            {
+                foreach (FileInfo partial in files.Where(f => f.Extension == ".tmp"))
+                {
+                    TryDelete(partial);
+                }
+            }
 
             var art   = files.Where(f => f.Extension == ".img").OrderBy(f => f.LastWriteTimeUtc).ToList();
             long total = art.Sum(f => f.Length);
             if (total <= MaxArtBytes) return;
 
             // ponytail: oldest download goes first, not least recently shown; track reads if a big library keeps evicting favorites.
-            foreach (FileInfo? file in art)
+            foreach (FileInfo file in art)
             {
                 if (total <= TrimArtBytes) break;
-                total -= file.Length;
-                file.Delete();
+
+                // A file that's open or already gone is skipped rather than ending the whole trim.
+                if (TryDelete(file))
+                {
+                    total -= file.Length;
+                }
             }
         }
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
@@ -323,6 +334,23 @@ public sealed partial class Templates : ResourceDictionary
             App.Debug($"Art: trim failed: {ex.Message}");
         }
     });
+
+    /// <summary>Deletes a cache file, reporting instead of throwing when it's in use or already gone.</summary>
+    /// <param name="file">The file to delete.</param>
+    /// <returns>Whether the file was deleted.</returns>
+    private static bool TryDelete(FileInfo file)
+    {
+        try
+        {
+            file.Delete();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            App.Debug($"Art: could not delete {file.Name}: {ex.Message}");
+            return false;
+        }
+    }
 
     private static void Evict(string key, BitmapImage bitmap)
     {
@@ -475,7 +503,7 @@ public sealed partial class Templates : ResourceDictionary
         }
 
         // Cards and list rows carry their item as content; a row's "..." button only has it as its data context.
-        MediaItem? item = (menu.Target as ContentControl)?.Content as MediaItem ?? (menu.Target as FrameworkElement)?.DataContext as MediaItem;
+        MediaItem? item = ((menu.Target as ContentControl)?.Content as MediaItem) ?? ((menu.Target as FrameworkElement)?.DataContext as MediaItem);
         if (item is null)
         {
             menu.Items.Clear();

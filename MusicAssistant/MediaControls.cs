@@ -63,6 +63,7 @@ public static class MediaControls
         catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             // Registry not writable (or any other failure at startup): the overlay just shows a generic name.
+            App.Debug($"Media overlay identity not registered: {ex.Message}");
         }
     }
 

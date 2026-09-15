@@ -226,17 +226,23 @@ public sealed partial class QueuePage : Page
     private void OnTransferMenuOpening(object sender, object e)
     {
         TransferMenu.Items.Clear();
-        if ((Queue is not { } queue) || (App.ActivePlayer is not { } source))
+        if ((Queue is not { } queue) || (App.ActivePlayer is null))
         {
             TransferMenu.Items.Add(new MenuFlyoutItem { Text = "No queue to transfer", IsEnabled = false });
             return;
         }
 
-        foreach (Player target in App.Client.Players.Values.Where(p => p.IsVisible && (p.PlayerId != source.PlayerId)).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        // Players that already play from this queue (the group it belongs to, and that group's members) aren't targets.
+        foreach (Player target in App.Client.Players.Values.Where(p => p.IsVisible && (App.Client.QueueIdFor(p) != queue.QueueId)).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
             var entry = new MenuFlyoutItem { Text = target.DisplayName };
             entry.Click += (_, _) => _ = TransferAsync(queue, target);
             TransferMenu.Items.Add(entry);
+        }
+
+        if (TransferMenu.Items.Count == 0)
+        {
+            TransferMenu.Items.Add(new MenuFlyoutItem { Text = "No other players", IsEnabled = false });
         }
     }
 
@@ -249,6 +255,7 @@ public sealed partial class QueuePage : Page
         await App.Client.TransferQueueAsync(queue.QueueId, App.Client.QueueIdFor(target));
         App.SetActivePlayer(target.PlayerId);
     });
+
     private void OnAutoplay(object sender, RoutedEventArgs e)
     {
         if (Queue is not { } queue) return;
@@ -271,6 +278,15 @@ public sealed partial class QueuePage : Page
         {
             App.Window.ShowMessage(ex.Message);
         }
+    }
+
+    /// <summary>Caps the artwork's height so the artwork, the 24px gap and the title fit the body on short windows.</summary>
+    /// <param name="sender">The body grid or the title block.</param>
+    /// <param name="e">Unused.</param>
+    private void OnNowPlayingSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        double room = Body.ActualHeight - NowPlayingInfo.ActualHeight - 24 - 32;
+        ArtBox.MaxHeight = Math.Clamp(room, 96, 380);
     }
 
     private void OnImageOpened(object sender, RoutedEventArgs e) => Templates.FadeIn((UIElement)sender);

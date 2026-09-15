@@ -483,7 +483,7 @@ public sealed partial class PlayerBar : UserControl
 
         // Immediate feedback: flip the fill now and pop the icon; the server call confirms or reverts.
         bool willBe = !track.Favorite;
-        LikeIcon.Glyph      = willBe ? "" : "";
+        LikeIcon.Glyph      = willBe ? "\uEB52" : "\uEB51";
         LikeIcon.Foreground = willBe ? AccentBrush : DefaultBrush;
         Pop(LikeScale);
 

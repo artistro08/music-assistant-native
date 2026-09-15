@@ -539,6 +539,7 @@ public sealed class MassClient : IDisposable
     /// <returns>A task that completes when the server accepted the transfer.</returns>
     public Task TransferQueueAsync(string sourceQueueId, string targetQueueId)
         => SendAsync<JsonElement>("player_queues/transfer", new { source_queue_id = sourceQueueId, target_queue_id = targetQueueId });
+
     /// <summary>A page of the items in a queue.</summary>
     /// <param name="queueId">The queue to read.</param>
     /// <param name="limit">Maximum number of items to return.</param>

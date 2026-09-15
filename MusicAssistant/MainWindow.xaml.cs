@@ -58,8 +58,13 @@ public sealed partial class MainWindow : Window
         RestorePlacement();
         SyncTitleBarHeight();
 
-        // DPI or caption height changes.
-        AppWindow.Changed += (_, _) => SyncTitleBarHeight();
+        // DPI or caption height changes; a move between screens with different scaling also moves the search box's
+        // pass-through rectangle, which is in physical pixels.
+        AppWindow.Changed += (_, _) =>
+        {
+            SyncTitleBarHeight();
+            UpdateTitleSearchPassthrough();
+        };
 
         // App icon in the title bar / taskbar, and the tray icon with its menu.
         string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
@@ -546,7 +551,13 @@ public sealed partial class MainWindow : Window
         Nav.Visibility        = Visibility.Collapsed;
         Player.Visibility     = Visibility.Collapsed;
         TitleSearchHost.Visibility = Visibility.Collapsed;
+        TitleSearch.Text           = "";
         UpdateTitleSearchPassthrough();
+
+        // The pages of the signed-out session are not somewhere to go back to.
+        ContentFrame.BackStack.Clear();
+        UpdateBackButton();
+
         LoginFrame.Visibility = Visibility.Visible;
         LoginFrame.Navigate(typeof(LoginPage), message);
     }
@@ -558,9 +569,12 @@ public sealed partial class MainWindow : Window
         Nav.Visibility        = Visibility.Visible;
         Player.Visibility     = Visibility.Visible;
         TitleSearchHost.Visibility = Visibility.Visible;
-        ContentFrame.BackStack.Clear();
         Nav.SelectedItem = Nav.MenuItems[1];
         Navigate(typeof(HomePage), null);
+
+        // Cleared after navigating, or the page left over from before signing in would become the back entry.
+        ContentFrame.BackStack.Clear();
+        UpdateBackButton();
 
         User? user = App.Client.CurrentUser;
         UserNameText.Text = user?.DisplayName ?? user?.Username ?? "";
@@ -714,9 +728,6 @@ public sealed partial class MainWindow : Window
     private void OnQueueHostSizeChanged(object sender, SizeChangedEventArgs e)
         => QueueHost.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
 
-    /// <summary>Width of the back button's slot when shown: the 36px square button plus the 4px gap before the logo.</summary>
-    private const double BackSlotWidth = 40;
-
     /// <summary>How far the panel travels: the content row's height, which is valid even on the first open (the frame itself has ActualHeight 0 until laid out).</summary>
     private double QueueDistance => Math.Max(120, Nav.ActualHeight);
 
@@ -745,7 +756,10 @@ public sealed partial class MainWindow : Window
         storyboard.Begin();
     }
 
-    // Title Bar Search.
+    // Title Bar.
+
+    /// <summary>Width of the back button's slot when shown: the 36px square button plus the 4px gap before the logo.</summary>
+    private const double BackSlotWidth = 40;
 
     /// <summary>Widest the title bar search box gets, in effective pixels.</summary>
     private const double TitleSearchMaxWidth = 460;
@@ -833,7 +847,11 @@ public sealed partial class MainWindow : Window
     /// </summary>
     /// <param name="sender">The title bar row.</param>
     /// <param name="e">The row's new size.</param>
-    private void OnTitleBarSizeChanged(object sender, SizeChangedEventArgs e)
+    private void OnTitleBarSizeChanged(object sender, SizeChangedEventArgs e) => FitTitleSearch(e.NewSize.Width);
+
+    /// <summary>Sizes the search box to fit between the title and the caption buttons, up to its widest.</summary>
+    /// <param name="rowWidth">Width of the title bar row.</param>
+    private void FitTitleSearch(double rowWidth)
     {
         double scale      = TitleBarRow.XamlRoot?.RasterizationScale ?? 1;
         double rightInset = AppWindow.TitleBar.RightInset / scale;
@@ -841,11 +859,29 @@ public sealed partial class MainWindow : Window
         // The title's right edge, with the back button shown: its slot, the row padding, the logo, and the app name.
         double leftInset = BackSlotWidth + 4 + AppTitleBar.Padding.Left + 16 + AppTitleBar.ColumnSpacing + AppTitleContent.ActualWidth;
         double side      = Math.Max(leftInset, rightInset) + 16;
-        TitleSearchHost.Width = Math.Clamp(e.NewSize.Width - (2 * side), TitleSearchMinWidth, TitleSearchMaxWidth);
+        TitleSearchHost.Width = Math.Clamp(rowWidth - (2 * side), TitleSearchMinWidth, TitleSearchMaxWidth);
         UpdateTitleSearchPassthrough();
     }
 
+    /// <summary>Keeps the pass-through region on top of the search box whenever the box changes size.</summary>
+    /// <param name="sender">The search box host.</param>
+    /// <param name="e">Unused.</param>
     private void OnTitleSearchSizeChanged(object sender, SizeChangedEventArgs e) => UpdateTitleSearchPassthrough();
+
+    /// <summary>Re-fits the search box when the title's width changes, for example when the REMOTE badge appears.</summary>
+    /// <param name="sender">The title text and badge.</param>
+    /// <param name="e">Unused.</param>
+    private void OnAppTitleSizeChanged(object sender, SizeChangedEventArgs e) => FitTitleSearch(TitleBarRow.ActualWidth);
+
+    /// <summary>Puts text in the title bar search box, for a page that shows results for it again.</summary>
+    /// <param name="query">The query to show.</param>
+    public void SetSearchText(string query)
+    {
+        if (TitleSearch.Text != query)
+        {
+            TitleSearch.Text = query;
+        }
+    }
 
     /// <summary>
     /// Marks the search box as a pass-through region of the title bar. The title bar element around it is a drag region,
@@ -920,8 +956,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // Disabled while hidden, so keyboard focus and Narrator skip it.
+        // Disabled, and collapsed once the hide animation ends, so keyboard focus and Narrator skip it while hidden.
         BackButton.IsEnabled = canGoBack;
+        if (canGoBack)
+        {
+            BackButton.Visibility = Visibility.Visible;
+        }
 
         var easing     = new CubicEase { EasingMode = canGoBack ? EasingMode.EaseOut : EasingMode.EaseIn };
         var duration   = TimeSpan.FromMilliseconds(canGoBack ? 250 : 180);
@@ -929,8 +969,17 @@ public sealed partial class MainWindow : Window
         storyboard.Children.Add(BackButtonAnimation(BackSlot, "Width", canGoBack ? BackSlotWidth : 0, duration, easing));
         storyboard.Children.Add(BackButtonAnimation(BackButton, "Opacity", canGoBack ? 1 : 0, duration, easing));
         storyboard.Children.Add(BackButtonAnimation(BackButtonShift, "X", canGoBack ? 0 : -12, duration, easing));
+        storyboard.Completed += (_, _) =>
+        {
+            // A navigation during the animation may have brought the button back.
+            if (!BackButton.IsEnabled)
+            {
+                BackButton.Visibility = Visibility.Collapsed;
+            }
+        };
         storyboard.Begin();
     }
+
 
     /// <summary>Builds one timeline of the back button's show or hide animation.</summary>
     /// <param name="target">The element or transform to animate.</param>
@@ -1013,4 +1062,18 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnBackClick(object sender, RoutedEventArgs e) => GoBack();
+
+    /// <summary>Alt+Left and the keyboard's Back key go back, as in other Windows apps.</summary>
+    /// <param name="sender">The accelerator.</param>
+    /// <param name="args">Marked handled when there was somewhere to go back to.</param>
+    private void OnBackShortcut(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!QueueOpen && !ContentFrame.CanGoBack)
+        {
+            return;
+        }
+
+        args.Handled = true;
+        GoBack();
+    }
 }

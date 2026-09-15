@@ -13,6 +13,8 @@
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Space" Invoked="OnSpace" />
             <KeyboardAccelerator Modifiers="Control" Key="F" Invoked="OnFindShortcut" />
+            <KeyboardAccelerator Modifiers="Menu" Key="Left" Invoked="OnBackShortcut" />
+            <KeyboardAccelerator Key="GoBack" Invoked="OnBackShortcut" />
         </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -32,7 +34,7 @@
                 <!-- Back Button: a 36px square, only there while there is a page to go back to. The slot's width (button plus its 4px gap)
                      animates open and closed so the logo slides over with it; starts closed on the first page -->
                 <Grid x:Name="BackSlot" Width="0" HorizontalAlignment="Left">
-                    <Button x:Name="BackButton" Style="{StaticResource SubtleButtonStyle}" Width="36" Height="36" Padding="0" Opacity="0" IsEnabled="False" HorizontalAlignment="Left" VerticalAlignment="Center" Click="OnBackClick" ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
+                    <Button x:Name="BackButton" Style="{StaticResource SubtleButtonStyle}" Width="36" Height="36" Padding="0" Opacity="0" IsEnabled="False" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Center" Click="OnBackClick" ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
                         <Button.RenderTransform>
                             <TranslateTransform x:Name="BackButtonShift" X="-12" />
                         </Button.RenderTransform>
@@ -72,7 +74,7 @@
                             </Path>
                         </Grid>
                     </Viewbox>
-                    <StackPanel x:Name="AppTitleContent" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <StackPanel x:Name="AppTitleContent" SizeChanged="OnAppTitleSizeChanged" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <TextBlock Text="Music Assistant" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" />
                         <!-- Shown while connected through Music Assistant remote access -->
                         <Border x:Name="RemoteBadge" Padding="6,1" CornerRadius="8" Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="Collapsed" ToolTipService.ToolTip="Connected remotely through the Music Assistant relay">
@@ -96,9 +98,22 @@
                     KeyDown="OnTitleSearchKeyDown"
                     AutomationProperties.Name="Search">
                     <TextBox.Resources>
-                        <SolidColorBrush x:Key="TextControlElevationBorderBrush" Color="Transparent" />
-                        <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
-                        <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                        <!-- Borderless at rest in the light and dark themes only; contrast themes keep the system border so the box stays visible -->
+                        <ResourceDictionary>
+                            <ResourceDictionary.ThemeDictionaries>
+                                <ResourceDictionary x:Key="Default">
+                                    <SolidColorBrush x:Key="TextControlElevationBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                </ResourceDictionary>
+                                <ResourceDictionary x:Key="Light">
+                                    <SolidColorBrush x:Key="TextControlElevationBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                </ResourceDictionary>
+                                <ResourceDictionary x:Key="HighContrast" />
+                            </ResourceDictionary.ThemeDictionaries>
+                        </ResourceDictionary>
                     </TextBox.Resources>
                 </TextBox>
                 <FontIcon Glyph="&#xE721;" FontSize="14" Margin="14,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False" />
