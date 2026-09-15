@@ -3,8 +3,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <ScrollViewer>
-        <StackPanel Padding="24,16,24,24" Spacing="16" MaxWidth="720" HorizontalAlignment="Left">
+    <ScrollViewer SizeChanged="OnScrollerSizeChanged">
+        <!-- Full width, capped and centered on wide windows like the other pages; the width is set from the viewport in
+             OnScrollerSizeChanged, because a stretched panel with only a MaxWidth isn't centered inside a ScrollViewer -->
+        <StackPanel x:Name="Column" Padding="24,16,24,24" Spacing="16" HorizontalAlignment="Center">
             <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
 
             <!-- Server -->

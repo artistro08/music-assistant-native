@@ -269,6 +269,13 @@ public sealed partial class MainWindow : Window
         double scale     = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
         double logical   = (height - (maximized ? 0 : 1)) / scale;
         if (double.IsNaN(TitleBarRow.Height) || (Math.Abs(TitleBarRow.Height - logical) > 0.01)) TitleBarRow.Height = logical;
+
+        // Windows draws the caption glyphs a pixel above their buttons' center; lifting the title bar content one physical
+        // pixel lines the back arrow, logo, title and search box up with them (measured at 125%, maximized).
+        if ((TitleBarRow.RenderTransform as Microsoft.UI.Xaml.Media.TranslateTransform)?.Y != -1 / scale)
+        {
+            TitleBarRow.RenderTransform = new Microsoft.UI.Xaml.Media.TranslateTransform { Y = -1 / scale };
+        }
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]

@@ -149,4 +149,10 @@ public sealed partial class SettingsPage : Page
     }
 
     private async void OnSignOut(object sender, RoutedEventArgs e) => await App.Window.SignOutAsync();
+
+    /// <summary>Makes the settings column as wide as the page, up to the app's content cap, so it's centered on wide windows.</summary>
+    /// <param name="sender">The page's scroll viewer.</param>
+    /// <param name="e">The viewer's new size.</param>
+    private void OnScrollerSizeChanged(object sender, SizeChangedEventArgs e)
+        => Column.Width = Math.Min(e.NewSize.Width, (double)Application.Current.Resources["ContentMaxWidth"]);
 }

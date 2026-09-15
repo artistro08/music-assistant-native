@@ -26,7 +26,13 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button Style="{StaticResource SubtleButtonStyle}" HorizontalAlignment="Left" Click="OnClose" AutomationProperties.Name="Close now playing">
+            <!-- Dismiss: a plain chevron with no hover surface, 32px tall like the buttons on the right. Keyboard focus still shows the system focus rectangle -->
+            <Button Height="32" Padding="10,0" HorizontalAlignment="Left" VerticalAlignment="Center" Click="OnClose" ToolTipService.ToolTip="Close" AutomationProperties.Name="Close now playing">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter Padding="{TemplateBinding Padding}" Content="{TemplateBinding Content}" Background="Transparent" VerticalContentAlignment="Center" />
+                    </ControlTemplate>
+                </Button.Template>
                 <FontIcon Glyph="&#xE70D;" FontSize="14" />
             </Button>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
