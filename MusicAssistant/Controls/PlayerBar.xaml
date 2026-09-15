@@ -10,13 +10,15 @@
         <!-- Plain Icon Button: no hover or press background, just the icon. Same padding everywhere keeps the transport row symmetric
              around play. Disabled buttons are dimmed in code (PlayerBar constructor); no visual states in the template -->
         <Style x:Key="PlainIconButtonStyle" TargetType="Button">
-            <Setter Property="Padding" Value="10,8" />
+            <!-- 32px tall like the player picker and queue button, whatever the icon's size (the Now Playing block overrides it) -->
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="10,0" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <ContentPresenter Padding="{TemplateBinding Padding}" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" Background="Transparent" />
+                        <ContentPresenter Padding="{TemplateBinding Padding}" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" Background="Transparent" VerticalContentAlignment="Center" />
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -40,7 +42,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Now Playing: the whole block is a plain button that opens and closes the queue, like the queue button -->
-        <Button Style="{StaticResource PlainIconButtonStyle}" Padding="0" HorizontalAlignment="Stretch" Click="OnQueue" AutomationProperties.Name="Show queue">
+        <Button Style="{StaticResource PlainIconButtonStyle}" Height="Auto" Padding="0" HorizontalAlignment="Stretch" Click="OnQueue" AutomationProperties.Name="Show queue">
             <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -104,7 +106,7 @@
                 <ToggleButton x:Name="QueueButton" Height="32" Padding="10,0" Click="OnQueue" AutomationProperties.Name="Queue">
                     <ToggleButton.Template>
                         <ControlTemplate TargetType="ToggleButton">
-                            <ContentPresenter Padding="{TemplateBinding Padding}" Content="{TemplateBinding Content}" VerticalAlignment="Center" />
+                            <ContentPresenter Padding="{TemplateBinding Padding}" Content="{TemplateBinding Content}" VerticalContentAlignment="Center" />
                         </ControlTemplate>
                     </ToggleButton.Template>
                     <FontIcon x:Name="QueueIcon" Glyph="&#xE8FD;" FontSize="16" />
@@ -161,14 +163,14 @@
 
         <!-- Volume + Player: one row, even gaps, hugging the right edge -->
         <StackPanel x:Name="RightPanel" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
-            <Button x:Name="MuteButton" Style="{StaticResource SubtleButtonStyle}" Click="OnMute" PointerWheelChanged="OnVolumeWheel" ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute">
+            <Button x:Name="MuteButton" Style="{StaticResource SubtleButtonStyle}" Width="32" Height="32" Padding="0" Click="OnMute" PointerWheelChanged="OnVolumeWheel" ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute">
                 <FontIcon x:Name="VolumeIcon" Glyph="&#xE767;" FontSize="16" />
             </Button>
             <!-- Extra right margin widens the gap between the volume group and the player controls -->
             <Slider x:Name="VolumeSlider" Width="100" Margin="0,0,8,0" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="OnVolumeChanged" PointerWheelChanged="OnVolumeWheel" />
 
             <!-- Compact volume: shown instead of the inline slider on narrow windows -->
-            <Button x:Name="VolumeFlyoutButton" Style="{StaticResource SubtleButtonStyle}" Margin="0,0,8,0" Visibility="Collapsed" PointerWheelChanged="OnVolumeWheel" ToolTipService.ToolTip="Volume" AutomationProperties.Name="Volume">
+            <Button x:Name="VolumeFlyoutButton" Style="{StaticResource SubtleButtonStyle}" Width="32" Height="32" Padding="0" Margin="0,0,8,0" Visibility="Collapsed" PointerWheelChanged="OnVolumeWheel" ToolTipService.ToolTip="Volume" AutomationProperties.Name="Volume">
                 <FontIcon x:Name="VolumeFlyoutIcon" Glyph="&#xE767;" FontSize="16" />
                 <Button.Flyout>
                     <Flyout Placement="Top" Opening="OnVolumeFlyoutOpening">
@@ -182,7 +184,7 @@
                     </Flyout>
                 </Button.Flyout>
             </Button>
-            <Button x:Name="PowerButton" Style="{StaticResource SubtleButtonStyle}" Click="OnPower" ToolTipService.ToolTip="Power" AutomationProperties.Name="Power">
+            <Button x:Name="PowerButton" Style="{StaticResource SubtleButtonStyle}" Width="32" Height="32" Padding="0" Click="OnPower" ToolTipService.ToolTip="Power" AutomationProperties.Name="Power">
                 <FontIcon Glyph="&#xE7E8;" FontSize="16" />
             </Button>
             <DropDownButton x:Name="PlayerPicker" Height="32" ToolTipService.ToolTip="Select player">

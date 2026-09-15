@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using MusicAssistant.Api;
@@ -19,9 +20,16 @@ public sealed partial class MediaRow : UserControl
     private const int SlotCount = 5;
 
     private readonly List<Button> slots = [];
+
+    /// <summary>Hover overlays of self-drawn cards; their brush comes from code, so a theme change re-applies it.</summary>
+    private readonly List<Border> tints = [];
     private IList<object> items = [];
     private int page;
 
+    /// <summary>
+    /// Creates the row with the shared media card template and re-renders its cards whenever the image cache is dropped
+    /// while the row is in the visual tree.
+    /// </summary>
     public MediaRow()
     {
         InitializeComponent();
@@ -29,8 +37,25 @@ public sealed partial class MediaRow : UserControl
 
         // Re-render the visible page when the image cache is dropped (transport switch) so the cards re-resolve their
         // art against the new base URL. Subscribed only while in the tree, so a paged-away row does not leak.
-        Loaded   += (_, _) => { BuildSlots(); Templates.ImagesInvalidated -= Rebind; Templates.ImagesInvalidated += Rebind; };
+        Loaded   += (_, _) =>
+        {
+            BuildSlots();
+            Templates.ImagesInvalidated -= Rebind;
+            Templates.ImagesInvalidated += Rebind;
+        };
         Unloaded += (_, _) => Templates.ImagesInvalidated -= Rebind;
+
+        // Card colors picked in code (player card backgrounds, hover overlays) are resolved once; switching between light
+        // and dark mode resolves them again.
+        ActualThemeChanged += (_, _) =>
+        {
+            foreach (Border tint in tints)
+            {
+                tint.Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+            }
+
+            Rebind();
+        };
     }
 
     /// <summary>
@@ -39,21 +64,23 @@ public sealed partial class MediaRow : UserControl
     /// </summary>
     public void Rebind()
     {
-        foreach (var slot in slots)
+        foreach (Button slot in slots)
         {
-            var item = slot.Content;
+            object? item = slot.Content;
             if (item is null) continue;
             slot.Content = null;
             slot.Content = item;
         }
     }
 
+    /// <summary>Heading text shown above the row.</summary>
     public string Title
     {
         get => TitleText.Text;
         set => TitleText.Text = value;
     }
 
+    /// <summary>Secondary line under the heading; null or empty hides it.</summary>
     public string? Subtitle
     {
         get => SubtitleText.Text;
@@ -75,45 +102,49 @@ public sealed partial class MediaRow : UserControl
         }
     }
 
+    /// <summary>Template each slot renders its item with; defaults to the shared media card template.</summary>
     public DataTemplate ItemTemplate { get; set; }
 
     /// <summary>Show every item at once, wrapping into rows of five, instead of paging. No pager is shown.</summary>
     public bool ShowAll { get; set; }
 
+    /// <summary>Media items or players to show; setting it goes back to the first page and re-renders the slots.</summary>
     public IEnumerable<object> Items
     {
         get => items;
         set
         {
-            items = value.ToList();
+            items = [.. value];
             page  = 0;
             BuildSlots();
             Render();
         }
     }
 
-    // Slots
+    // Slots.
 
     /// <summary>Slots to keep: one page, or enough full rows for every item when showing all.</summary>
     private int SlotsNeeded => ShowAll ? Math.Max(SlotCount, (int)Math.Ceiling(items.Count / (double)SlotCount) * SlotCount) : SlotCount;
 
     private void BuildSlots()
     {
-        var needed = SlotsNeeded;
-        if (slots.Count >= needed) return;   // ponytail: slots only grow; a shrinking list leaves collapsed slots behind
+        int needed = SlotsNeeded;
+
+        // ponytail: slots only grow; a shrinking list leaves collapsed slots behind.
+        if (slots.Count >= needed) return;
 
         while (Slots.ColumnDefinitions.Count < SlotCount)
             Slots.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        // Card grids (players) have no hover bleed, so the gap is the real gap
+        // Card grids (players) have no hover bleed, so the gap is the real gap.
         if (ShowAll) Slots.ColumnSpacing = Slots.RowSpacing = 12;
 
-        for (var i = slots.Count; i < needed; i++)
+        for (int i = slots.Count; i < needed; i++)
         {
-            var row = i / SlotCount;
+            int row = i / SlotCount;
             if (Slots.RowDefinitions.Count <= row) Slots.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            // A subtle button gives the hover/press surface around image and text, plus keyboard and narrator support for free
+            // A subtle button gives the hover/press surface around image and text, plus keyboard and narrator support for free.
             var slot = new Button
             {
                 Style                      = (Style)Application.Current.Resources["SubtleButtonStyle"],
@@ -144,6 +175,7 @@ public sealed partial class MediaRow : UserControl
                     IsHitTestVisible  = false,
                     OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(150) },
                 };
+                tints.Add(tint);
                 slot.PointerEntered += (_, _) => tint.Opacity = 1;
                 slot.PointerExited  += (_, _) => tint.Opacity = 0;
 
@@ -168,14 +200,18 @@ public sealed partial class MediaRow : UserControl
         if (slots.Count == 0) return;
         page = Math.Clamp(page, 0, PageCount - 1);
 
-        for (var i = 0; i < slots.Count; i++)
+        for (int i = 0; i < slots.Count; i++)
         {
-            var index = page * PerPage + i;
-            var item  = index < items.Count ? items[index] : null;
+            int index = page * PerPage + i;
+            object? item  = index < items.Count ? items[index] : null;
             slots[i].Content    = item;
             slots[i].Visibility = item is null ? Visibility.Collapsed : Visibility.Visible;
             slots[i].IsTabStop  = item is not null;
             AutomationProperties.SetName(slots[i], item switch { MediaItem m => m.Name, Player p => p.DisplayName, _ => "" });
+
+            // Item menu on the focusable button, so right-click, Shift+F10 and the menu key all open it. Player cards
+            // (the Home page's Players row) have no item menu.
+            slots[i].ContextFlyout = item is MediaItem ? (FlyoutBase)Application.Current.Resources["ItemMenu"] : null;
         }
 
         Pager.Visibility     = PageCount > 1 ? Visibility.Visible : Visibility.Collapsed;
@@ -185,12 +221,13 @@ public sealed partial class MediaRow : UserControl
     }
 
     private void OnPrev(object sender, RoutedEventArgs e) => TurnPage(-1);
+
     private void OnNext(object sender, RoutedEventArgs e) => TurnPage(+1);
 
     private void TurnPage(int direction)
     {
-        var target = page + direction;
-        if (target < 0 || target >= PageCount) return;
+        int target = page + direction;
+        if ((target < 0) || (target >= PageCount)) return;
         page = target;
         Render();
         Paging.Slide(Slots, direction);
@@ -199,20 +236,24 @@ public sealed partial class MediaRow : UserControl
     /// <summary>Horizontal wheel or trackpad swipe (or Shift + wheel) turns the page.</summary>
     private void OnPointerWheel(object sender, PointerRoutedEventArgs e)
     {
-        var step = Paging.WheelStep(e, this);
+        int step = Paging.WheelStep(e, this);
         if (step == 0) return;
         e.Handled = true;
         TurnPage(step);
     }
 
-    // Activation
+    // Activation.
 
     private void OnSlotClick(object sender, RoutedEventArgs e)
     {
         switch (((Button)sender).Content)
         {
-            case MediaItem item: _ = App.OpenAsync(item); break;
-            case Player player:  App.SetActivePlayer(player.PlayerId); break;
+            case MediaItem item:
+                _ = App.OpenAsync(item);
+                break;
+            case Player player:
+                App.SetActivePlayer(player.PlayerId);
+                break;
         }
     }
 }

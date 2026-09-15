@@ -20,14 +20,16 @@ public sealed class OAuthLoopback : IDisposable
     private readonly HttpListener listener = new();
     private readonly string nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
+    /// <summary>The loopback URL to pass to the server as the sign-in return URL.</summary>
     public string ReturnUrl { get; }
 
+    /// <summary>Start listening on a free loopback port with a fresh random callback path.</summary>
     public OAuthLoopback()
     {
-        // Pick a free port by binding, then hand it to HttpListener
+        // Pick a free port by binding, then hand it to HttpListener.
         var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
         probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        int port = ((IPEndPoint)probe.LocalEndpoint).Port;
         probe.Stop();
 
         ReturnUrl = $"http://127.0.0.1:{port}/callback/{nonce}";
@@ -36,19 +38,27 @@ public sealed class OAuthLoopback : IDisposable
     }
 
     /// <summary>Wait for the browser to land on ReturnUrl and return the code query parameter.</summary>
+    /// <param name="ct">Stops the listener and cancels the wait.</param>
+    /// <returns>The access token the server passed back as ?code=.</returns>
     public async Task<string> WaitForCodeAsync(CancellationToken ct)
     {
-        using var registration = ct.Register(listener.Stop);
+        using CancellationTokenRegistration registration = ct.Register(listener.Stop);
 
         while (true)
         {
             HttpListenerContext context;
-            try { context = await listener.GetContextAsync(); }
-            catch (Exception) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
+            try
+            {
+                context = await listener.GetContextAsync();
+            }
+            catch (Exception) when (ct.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(ct);
+            }
 
-            var request = context.Request;
-            var code    = HttpUtility.ParseQueryString(request.Url?.Query ?? "").Get("code");
-            var matches = request.Url?.AbsolutePath.EndsWith($"/callback/{nonce}", StringComparison.Ordinal) == true;
+            HttpListenerRequest request = context.Request;
+            string?             code    = HttpUtility.ParseQueryString(request.Url?.Query ?? "").Get("code");
+            bool                matches = request.Url?.AbsolutePath.EndsWith($"/callback/{nonce}", StringComparison.Ordinal) == true;
 
             if (!matches || string.IsNullOrEmpty(code))
             {
@@ -63,9 +73,9 @@ public sealed class OAuthLoopback : IDisposable
 
     private static async Task RespondAsync(HttpListenerResponse response, int status, string text)
     {
-        var body = Encoding.UTF8.GetBytes(
-            $"<!doctype html><html><head><meta charset=\"utf-8\"><title>Music Assistant</title></head>" +
-            $"<body style=\"font-family:Segoe UI,sans-serif;display:grid;place-items:center;height:100vh;margin:0\"><p>{text}</p></body></html>");
+        byte[] body = Encoding.UTF8.GetBytes(
+            $"<!doctype html><html><head><meta charset=\"utf-8\"><title>Music Assistant</title></head>"
+            + $"<body style=\"font-family:Segoe UI,sans-serif;display:grid;place-items:center;height:100vh;margin:0\"><p>{text}</p></body></html>");
         response.StatusCode      = status;
         response.ContentType     = "text/html; charset=utf-8";
         response.ContentLength64 = body.Length;
@@ -74,6 +84,7 @@ public sealed class OAuthLoopback : IDisposable
         response.Close();
     }
 
+    /// <summary>Stop and release the listener.</summary>
     public void Dispose()
     {
         if (listener.IsListening) listener.Stop();

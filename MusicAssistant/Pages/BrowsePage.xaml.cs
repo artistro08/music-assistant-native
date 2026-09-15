@@ -10,17 +10,21 @@ public sealed partial class BrowsePage : Page
 {
     private string? loadedPath;
 
+    /// <summary>Creates the browse page; the folder to list arrives with the navigation.</summary>
     public BrowsePage()
     {
         InitializeComponent();
     }
 
+    /// <inheritdoc/>
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        // The navigation tag "browse" means root; anything else is a provider path
-        var path = e.Parameter as string;
+        // The navigation tag "browse" means root; anything else is a provider path.
+        string? path = e.Parameter as string;
         if (path == "browse") path = null;
-        if (path == loadedPath && List.ItemsSource is not null) return;   // back/forward to the same folder
+
+        // Back/forward to the same folder.
+        if ((path == loadedPath) && List.ItemsSource is not null) return;
 
         loadedPath    = path;
         PathText.Text = path ?? "All providers";
@@ -31,7 +35,7 @@ public sealed partial class BrowsePage : Page
     {
         try
         {
-            var items = await App.Client.BrowseAsync(path);
+            List<MediaItem> items = await App.Client.BrowseAsync(path);
             List.ItemsSource     = items;
             EmptyText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -41,7 +45,8 @@ public sealed partial class BrowsePage : Page
         }
         finally
         {
-            Busy.IsActive = false; Busy.Visibility = Visibility.Collapsed;
+            Busy.IsActive = false;
+            Busy.Visibility = Visibility.Collapsed;
         }
     }
 

@@ -13,16 +13,24 @@ namespace MusicAssistant;
 /// </summary>
 public partial class App : Application
 {
+    /// <summary>The one Music Assistant server connection the whole app shares.</summary>
     public static MassClient  Client   { get; } = new();
+
+    /// <summary>Saved settings and sign-in state, loaded from disk at startup.</summary>
     public static Session     Settings { get; } = Session.Load();
+
+    /// <summary>The main application window, set once the app has launched.</summary>
     public static MainWindow  Window   { get; private set; } = null!;
+
+    /// <summary>The main window's UI-thread dispatcher, for moving work from background threads onto the UI.</summary>
     public static DispatcherQueue Dispatcher => Window.DispatcherQueue;
 
     /// <summary>Raised on the UI thread whenever a player or queue changed, or the active player switched.</summary>
     public static event Action? StateChanged;
 
+    /// <summary>The player selected in the app, or null when none is selected or it is not in the server's player list.</summary>
     public static Player? ActivePlayer
-        => Settings.ActivePlayerId is { } id && Client.Players.TryGetValue(id, out var player) ? player : null;
+        => Settings.ActivePlayerId is { } id && Client.Players.TryGetValue(id, out Player? player) ? player : null;
 
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "crash.log");
@@ -33,9 +41,11 @@ public partial class App : Application
     [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
 
+    /// <summary>Sets the app identity, wires the API client's logging and events to the UI, and installs the crash handler.</summary>
     public App()
     {
-        if (!Packaging.IsPackaged) SetCurrentProcessExplicitAppUserModelID(AppUserModelId);   // MSIX builds carry identity already
+        // MSIX builds carry identity already.
+        if (!Packaging.IsPackaged) SetCurrentProcessExplicitAppUserModelID(AppUserModelId);
         InitializeComponent();
         Images.Resolver   = Client.ImageUrl;
         MassClient.Logger = Log;
@@ -54,38 +64,56 @@ public partial class App : Application
     private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         Log($"{e.Message}{Environment.NewLine}{e.Exception}");
-        e.Handled = true;   // a failed UI action must not take the whole app down
-        if (Window is null) return;   // failed while the main window was still being built: nothing to show it in
+
+        // A failed UI action must not take the whole app down.
+        e.Handled = true;
+
+        // Failed while the main window was still being built: nothing to show it in.
+        if (Window is null) return;
         Dispatcher.TryEnqueue(() => Window.ShowMessage("Something went wrong. Details were written to crash.log."));
     }
 
     /// <summary>Append a line to the app log (same file as crashes). Never include tokens or passwords. Never throws.</summary>
+    /// <param name="message">The text to write; a timestamp is added in front of it.</param>
     public static void Log(string message)
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+
             // The app runs for days and logs every player state change, so cap the file: past 1 MB the current log
-            // becomes crash.log.1 (replacing the previous one) and a fresh file starts
-            if (new FileInfo(LogPath) is { Exists: true, Length: > 1_000_000 }) File.Move(LogPath, LogPath + ".1", overwrite: true);
+            // becomes crash.log.1 (replacing the previous one) and a fresh file starts.
+            if (new FileInfo(LogPath) is { Exists: true, Length: > 1_000_000 }) File.Move(LogPath, $"{LogPath}.1", overwrite: true);
             File.AppendAllText(LogPath, $"{DateTime.Now:O} {message}{Environment.NewLine}{Environment.NewLine}");
         }
-        catch (Exception) { }   // unwritable profile folder: logging must not become the crash
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            // Unwritable profile folder: logging must not become the crash.
+        }
     }
 
     /// <summary>Verbose diagnostics (speaker sync, remote lifecycle); written only when MA_RTC_LOG is set, so the log stays for crashes.</summary>
     public static readonly bool Verbose = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MA_RTC_LOG"));
-    public static void Debug(string message) { if (Verbose) Log(message); }
 
+    /// <summary>Writes a diagnostics line to the app log, but only when verbose logging is turned on.</summary>
+    /// <param name="message">The text to write.</param>
+    public static void Debug(string message)
+    {
+        if (Verbose) Log(message);
+    }
+
+    /// <inheritdoc/>
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         if (!SingleInstance.Claim())
         {
-            Exit();   // the running copy was told to show itself
+            // The running copy was told to show itself.
+            Exit();
             return;
         }
 
-        Player.OwnPlayerId = Settings.SpeakerClientId;   // this PC's speaker stays listed even though the server hides web players
+        // This PC's speaker stays listed even though the server hides web players.
+        Player.OwnPlayerId = Settings.SpeakerClientId;
         Remote.DiagnosticLog.EnableIfRequested();
         Templates.TrimArtCache();
         Window = new MainWindow();
@@ -97,6 +125,8 @@ public partial class App : Application
     // PLAYER SELECTION
     // =========================================================================
 
+    /// <summary>Selects the player the app controls, saves the choice and tells every page to refresh.</summary>
+    /// <param name="playerId">Id of the player to select, or null to clear the selection.</param>
     public static void SetActivePlayer(string? playerId)
     {
         Settings.ActivePlayerId = playerId;
@@ -119,13 +149,15 @@ public partial class App : Application
         // server restart the other speakers are missing from players/all until their providers rediscover them.
         // Only give it up when the server said player_removed, or when the own speaker was switched off here.
         // Overwriting on mere absence is what silently moved playback from the remembered speaker to this PC.
-        var remembered = Settings.ActivePlayerId;
+        string? remembered = Settings.ActivePlayerId;
         if (!string.IsNullOrEmpty(remembered))
         {
             if (Client.Players.ContainsKey(remembered)) return;
-            var own     = remembered == Player.OwnPlayerId;
-            var ownOff  = own && !Settings.SpeakerEnabled;
-            var removed = !own && Client.RemovedPlayers.ContainsKey(remembered);   // own speaker comes and goes with its connection
+            bool own     = remembered == Player.OwnPlayerId;
+            bool ownOff  = own && !Settings.SpeakerEnabled;
+
+            // Own speaker comes and goes with its connection.
+            bool removed = !own && Client.RemovedPlayers.ContainsKey(remembered);
             if (!ownOff && !removed) return;
         }
 
@@ -134,13 +166,16 @@ public partial class App : Application
         // No usable remembered selection: pick the first playing player, else the first visible one. The own web
         // player counts as playing only when the local speaker is really streaming, so a stale server flag after a
         // crash does not make the app open selecting itself.
-        var ownStreaming = Window.SpeakerPlaying;
-        var fallback     = (visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId;
-        if (fallback is null) return;   // nothing to select yet; re-evaluated on the next player event
+        bool ownStreaming = Window.SpeakerPlaying;
+        string? fallback     = (visible.FirstOrDefault(p => p.IsPlaying && (!p.IsThisDevice || ownStreaming)) ?? visible.FirstOrDefault())?.PlayerId;
+
+        // Nothing to select yet; re-evaluated on the next player event.
+        if (fallback is null) return;
         Log($"Active player fallback: '{remembered}' is gone, selecting '{fallback}'");
         SetActivePlayer(fallback);
     }
 
+    /// <summary>Raises <see cref="StateChanged"/> so every page refreshes from the current state.</summary>
     public static void NotifyStateChanged() => StateChanged?.Invoke();
 
     // =========================================================================
@@ -154,7 +189,10 @@ public partial class App : Application
     // another queue item. The bar shows a spinner in the play button and locks the seek bar until the player is playing
     // (the target item, for a jump), the command fails, or the wait runs out. Play from paused is instant and skips it.
     private static string?  startingPlayerId;
-    private static string?  startingItemId;   // the queue item the player has to be on, for a jump within the queue
+
+    /// <summary>The queue item the player has to be on, for a jump within the queue.</summary>
+    private static string?  startingItemId;
+
     private static DateTime startingUntil;
     private static readonly TimeSpan StartingWait = TimeSpan.FromSeconds(20);
 
@@ -163,9 +201,11 @@ public partial class App : Application
     /// media keys. A play or play_pause to a player that is neither playing nor paused shows the loading state; a
     /// failed command ends it and shows the error. UI thread.
     /// </summary>
+    /// <param name="player">The player to send the command to.</param>
+    /// <param name="command">The server's player command name, such as play, pause, play_pause, next or previous.</param>
     public static void SendPlayerCommand(Player player, string command)
     {
-        var starts = command is "play" or "play_pause" && player.PlaybackState is not ("playing" or "paused");
+        bool starts = command is "play" or "play_pause" && player.PlaybackState is not ("playing" or "paused");
         if (starts) MarkStarting(player, null);
 
         _ = Client.PlayerCommandAsync(player.PlayerId, command).ContinueWith(t => Dispatcher.TryEnqueue(() =>
@@ -176,10 +216,12 @@ public partial class App : Application
     }
 
     /// <summary>Jump to another item in a queue (a click in the queue, or Play here). Shows the loading state until the player plays that item. UI thread.</summary>
+    /// <param name="item">The queue item to play.</param>
+    /// <returns>A task that completes once the server accepted the jump or the error was shown.</returns>
     public static async Task PlayQueueItemAsync(QueueItem item)
     {
-        // Every member of a synced group maps to the leader's queue; mark the player the bar shows, so its spinner and seek lock apply
-        var player = ActivePlayer is { } active && Client.QueueIdFor(active) == item.QueueId
+        // Every member of a synced group maps to the leader's queue; mark the player the bar shows, so its spinner and seek lock apply.
+        Player? player = ActivePlayer is { } active && (Client.QueueIdFor(active) == item.QueueId)
             ? active
             : Client.Players.Values.FirstOrDefault(p => Client.QueueIdFor(p) == item.QueueId);
         if (player is not null) MarkStarting(player, item.QueueItemId);
@@ -188,7 +230,7 @@ public partial class App : Application
         {
             await Client.QueueCommandAsync(item.QueueId, "play_index", new { index = item.QueueItemId });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             if (player is not null) ClearStarting(player.PlayerId);
             Window.ShowMessage(ex.Message);
@@ -211,15 +253,18 @@ public partial class App : Application
     }
 
     /// <summary>True while playback started on this player is still loading. Clears itself once it plays or the wait runs out. UI thread.</summary>
+    /// <param name="player">The player to check.</param>
+    /// <returns><see langword="true"/> while the player bar should show the loading state for this player.</returns>
     public static bool IsStarting(Player player)
     {
         if (startingPlayerId != player.PlayerId) return false;
 
-        var current = Client.Queues.GetValueOrDefault(Client.QueueIdFor(player))?.CurrentItem?.QueueItemId;
-        var started = player.IsPlaying && (startingItemId is null || startingItemId == current);
-        if (!started && DateTime.UtcNow < startingUntil) return true;
+        string? current = Client.Queues.GetValueOrDefault(Client.QueueIdFor(player))?.CurrentItem?.QueueItemId;
+        bool started = player.IsPlaying && (startingItemId is null || (startingItemId == current));
+        if (!started && (DateTime.UtcNow < startingUntil)) return true;
 
-        startingPlayerId = null;   // playing now, or gave up: a later pause must not bring the spinner back
+        // Playing now, or gave up: a later pause must not bring the spinner back.
+        startingPlayerId = null;
         return false;
     }
 
@@ -228,7 +273,11 @@ public partial class App : Application
     /// to let the server apply its configured default for the media type (what the web app's play button
     /// does: replace the queue for albums and playlists, insert and play for single tracks).
     /// </summary>
+    /// <param name="item">The media item to play.</param>
+    /// <param name="option">The queue option (play, replace, next, replace_next or add), or null for the server's default.</param>
+    /// <param name="startItem">Optional id of the item inside <paramref name="item"/> to start playback from.</param>
     /// <param name="loadingItem">The item whose loading spinner to show while playback starts; defaults to <paramref name="item"/>. For a track clicked inside an album or playlist, pass the clicked track so its row shows the spinner, not the container.</param>
+    /// <returns>A task that completes once playback was accepted (and, for immediate playback, started or timed out) or the error was shown.</returns>
     public static async Task PlayAsync(MediaItem item, string? option = null, string? startItem = null, MediaItem? loadingItem = null)
     {
         if (ActivePlayer is not { } player)
@@ -237,24 +286,30 @@ public partial class App : Application
             return;
         }
 
-        // Only immediate playback shows a loading state; queueing for later is instant
-        var startsNow = option is null or "play" or "replace";
-        var loading   = loadingItem ?? item;
+        // Only immediate playback shows a loading state; queueing for later is instant.
+        bool startsNow = option is null or "play" or "replace";
+        MediaItem loading   = loadingItem ?? item;
         if (startsNow) BeginLoading(loading);
 
         try
         {
-            // Snapshot before sending: the server pushes the queue update before it answers the command
-            var queueId = Client.QueueIdFor(player);
-            var before  = Client.Queues.GetValueOrDefault(queueId)?.CurrentItem?.QueueItemId;
+            // Snapshot before sending: the server pushes the queue update before it answers the command.
+            string queueId = Client.QueueIdFor(player);
+            string? before  = Client.Queues.GetValueOrDefault(queueId)?.CurrentItem?.QueueItemId;
 
             // The server builds an album's queue from the same track list the album page shows, so an album whose stored
             // track numbers are still 0 would be queued in alphabetical order. Loading its tracks first has the server
             // repair the numbers (see GetAlbumTracksAsync). A failure here must not block playback.
             if (item.MediaType == "album")
             {
-                try { await Client.GetAlbumTracksAsync(item.ItemId, item.Provider, item.Uri); }
-                catch (ApiException ex) { Log("Album track order check: " + ex.Message); }
+                try
+                {
+                    await Client.GetAlbumTracksAsync(item.ItemId, item.Provider, item.Uri);
+                }
+                catch (ApiException ex)
+                {
+                    Log($"Album track order check: {ex.Message}");
+                }
             }
 
             var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -262,12 +317,12 @@ public partial class App : Application
             if (watch.Elapsed > TimeSpan.FromSeconds(5)) Log($"play_media on {player.Name} took {watch.Elapsed.TotalSeconds:0}s to be accepted");
             if (startsNow && !await WaitForPlaybackAsync(player.PlayerId, queueId, before, TimeSpan.FromSeconds(15)))
             {
-                var current = Client.Players.GetValueOrDefault(player.PlayerId);
-                var queue   = Client.Queues.GetValueOrDefault(queueId);
+                Player? current = Client.Players.GetValueOrDefault(player.PlayerId);
+                PlayerQueue? queue   = Client.Queues.GetValueOrDefault(queueId);
                 Log($"{player.Name} did not report playback within 15s: player {current?.PlaybackState}, queue {queue?.State} at {queue?.ElapsedTime:0}s of '{queue?.CurrentItem?.Name}'");
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             Window.ShowMessage(ex.Message);
         }
@@ -299,9 +354,9 @@ public partial class App : Application
 
         void Check()
         {
-            var queue   = Client.Queues.GetValueOrDefault(queueId);
-            var playing = queue?.State == "playing" || Client.Players.GetValueOrDefault(playerId)?.IsPlaying == true;
-            var changed = queue?.CurrentItem is { } current && (current.QueueItemId != before || queue.ElapsedTime < 3);
+            PlayerQueue? queue   = Client.Queues.GetValueOrDefault(queueId);
+            bool playing = (queue?.State == "playing") || (Client.Players.GetValueOrDefault(playerId)?.IsPlaying == true);
+            bool changed = queue?.CurrentItem is { } current && ((current.QueueItemId != before) || (queue.ElapsedTime < 3));
             if (playing && changed) started.TrySetResult();
         }
 
@@ -318,6 +373,8 @@ public partial class App : Application
     }
 
     /// <summary>Open an item: detail page for albums/artists/playlists, browse for folders, otherwise play it.</summary>
+    /// <param name="item">The media item that was clicked.</param>
+    /// <returns>A completed task after navigating, or the playback task when the item is played.</returns>
     public static Task OpenAsync(MediaItem item)
     {
         if (item.HasDetailPage)
@@ -335,14 +392,17 @@ public partial class App : Application
         return PlayAsync(item);
     }
 
+    /// <summary>Adds the item to the library favorites, or removes it when it already is one, and flips its heart state.</summary>
+    /// <param name="item">The media item to favorite or unfavorite.</param>
+    /// <returns>A task that completes once the server accepted the change or the error was shown.</returns>
     public static async Task ToggleFavoriteAsync(MediaItem item)
     {
         try
         {
             if (item.Favorite)
             {
-                // Removal needs the library id; queue and provider items carry the provider's id instead
-                var library = item.Provider == "library" ? item : await Client.GetItemByUriAsync(item.Uri);
+                // Removal needs the library id; queue and provider items carry the provider's id instead.
+                MediaItem library = item.Provider == "library" ? item : await Client.GetItemByUriAsync(item.Uri);
                 await Client.RemoveFavoriteAsync(library);
             }
             else
@@ -351,7 +411,7 @@ public partial class App : Application
             }
             item.Favorite = !item.Favorite;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             Window.ShowMessage(ex.Message);
         }

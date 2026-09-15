@@ -23,19 +23,22 @@ public sealed class LocalImageProxy : IDisposable
     /// <summary>Base URL to substitute for the server's own base URL.</summary>
     public string BaseUrl { get; }
 
+    /// <summary>Creates the proxy on a free loopback port for the given peer; it serves nothing until <see cref="Start"/>.</summary>
+    /// <param name="peer">The remote connection whose HTTP proxy channel carries the image requests.</param>
     public LocalImageProxy(RemotePeer peer)
     {
         this.peer = peer;
 
         var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
         probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        int port = ((IPEndPoint)probe.LocalEndpoint).Port;
         probe.Stop();
 
         BaseUrl = $"http://127.0.0.1:{port}/{nonce}";
         listener.Prefixes.Add($"http://127.0.0.1:{port}/{nonce}/");
     }
 
+    /// <summary>Starts listening and serving image requests in the background; does nothing if it is already listening.</summary>
     public void Start()
     {
         if (listener.IsListening) return;
@@ -44,12 +47,14 @@ public sealed class LocalImageProxy : IDisposable
         _ = Task.Run(() => ServeAsync(cts.Token));
     }
 
+    /// <summary>Stops accepting requests and cancels the ones in progress.</summary>
     public void Stop()
     {
         cts?.Cancel();
         if (listener.IsListening) listener.Stop();
     }
 
+    /// <summary>Stops the proxy and releases the HTTP listener.</summary>
     public void Dispose()
     {
         Stop();
@@ -61,9 +66,18 @@ public sealed class LocalImageProxy : IDisposable
         while (!ct.IsCancellationRequested)
         {
             HttpListenerContext context;
-            try { context = await listener.GetContextAsync(); }
-            catch (Exception) when (ct.IsCancellationRequested || !listener.IsListening) { return; }
-            catch (Exception) { continue; }
+            try
+            {
+                context = await listener.GetContextAsync();
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex) && (ct.IsCancellationRequested || !listener.IsListening))
+            {
+                return;
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+                continue;
+            }
 
             _ = Task.Run(() => HandleAsync(context, ct), ct);
         }
@@ -71,31 +85,38 @@ public sealed class LocalImageProxy : IDisposable
 
     private async Task HandleAsync(HttpListenerContext context, CancellationToken ct)
     {
-        var response = context.Response;
+        HttpListenerResponse response = context.Response;
         try
         {
-            // Strip the nonce prefix; refuse anything that is not an allowed GET
-            var path = context.Request.Url?.PathAndQuery ?? "";
+            // Strip the nonce prefix; refuse anything that is not an allowed GET.
+            string path = context.Request.Url?.PathAndQuery ?? "";
             path = path.StartsWith($"/{nonce}", StringComparison.Ordinal) ? path[(nonce.Length + 1)..] : "";
 
-            if (context.Request.HttpMethod != "GET" || !AllowedPrefixes.Any(p => path.StartsWith(p, StringComparison.Ordinal)))
+            if ((context.Request.HttpMethod != "GET") || !AllowedPrefixes.Any(p => path.StartsWith(p, StringComparison.Ordinal)))
             {
                 response.StatusCode = 404;
                 response.Close();
                 return;
             }
 
-            var reply = await peer.HttpAsync("GET", path, null, ct);
+            RemotePeer.HttpReply reply = await peer.HttpAsync("GET", path, null, ct);
             response.StatusCode = reply.Status == 0 ? 502 : reply.Status;
-            if (reply.Headers.TryGetValue("Content-Type", out var type)) response.ContentType = type;
+            if (reply.Headers.TryGetValue("Content-Type", out string? type)) response.ContentType = type;
             response.Headers["Cache-Control"] = "private, max-age=3600";
             response.ContentLength64 = reply.Body.Length;
             await response.OutputStream.WriteAsync(reply.Body, ct);
             response.Close();
         }
-        catch (Exception)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            try { response.StatusCode = 502; response.Close(); } catch { }
+            try
+            {
+                response.StatusCode = 502;
+                response.Close();
+            }
+            catch (Exception cleanupEx) when (ExceptionFilters.IsRecoverable(cleanupEx))
+            {
+            }
         }
     }
 }

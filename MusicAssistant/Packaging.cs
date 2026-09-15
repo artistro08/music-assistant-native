@@ -13,11 +13,12 @@ public static class Packaging
 {
     private const int AppModelErrorNoPackage = 15700;
 
+    /// <summary>True when this process runs with MSIX package identity; detected once at startup.</summary>
     public static bool IsPackaged { get; } = DetectPackaged();
 
     private static bool DetectPackaged()
     {
-        var length = 0;
+        int length = 0;
         return GetCurrentPackageFullName(ref length, null) != AppModelErrorNoPackage;
     }
 

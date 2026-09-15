@@ -18,12 +18,14 @@ public static class SingleInstance
     /// <summary>Broadcast by a second launch; the running copy's window subclass (TrayIcon) answers by showing itself.</summary>
     public static readonly uint ActivateMessage = RegisterWindowMessage("DevinGreen.MusicAssistant.Activate");
 
-    private static Mutex? mutex;   // held for the life of the process
+    /// <summary>Held for the life of the process.</summary>
+    private static Mutex? mutex;
 
     /// <summary>True when this process is the first; false after asking the running copy to show itself.</summary>
+    /// <returns><see langword="true"/> when this process owns the single-instance mutex; otherwise <see langword="false"/>.</returns>
     public static bool Claim()
     {
-        mutex = new Mutex(true, MutexName, out var first);
+        mutex = new Mutex(true, MutexName, out bool first);
         if (first) return true;
 
         PostMessage(HWND_BROADCAST, ActivateMessage, IntPtr.Zero, IntPtr.Zero);
@@ -32,6 +34,9 @@ public static class SingleInstance
 
     private static readonly IntPtr HWND_BROADCAST = 0xFFFF;
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern uint RegisterWindowMessage(string message);
-    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string message);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }

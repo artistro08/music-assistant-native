@@ -28,12 +28,17 @@ public sealed partial class PlayerBar : UserControl
     private int     pendingVolume;
     private string? lastImageUrl;
 
-    // Value tooltip shown while scrolling the volume; the Slider's own thumb tooltip only appears on a pointer drag
+    /// <summary>Value tooltip shown while scrolling the volume; the Slider's own thumb tooltip only appears on a pointer drag.</summary>
     private ToolTip?          volumeTip;
     private FrameworkElement? volumeTipOwner;
     private object?           volumeTipSaved;
-    private DateTime          volumeSentAt;   // last volume_set send; the server echo is expected shortly after
 
+    /// <summary>Last volume_set send; the server echo is expected shortly after.</summary>
+    private DateTime          volumeSentAt;
+
+    /// <summary>
+    /// Creates the bar, starts the once-a-second progress tick and follows app state changes.
+    /// </summary>
     public PlayerBar()
     {
         InitializeComponent();
@@ -55,20 +60,53 @@ public sealed partial class PlayerBar : UserControl
 
         ProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler(OnProgressPointerPressed), true);
 
-        // Seek thumb starts hidden (scale 0 in XAML) and grows or shrinks from its center on hover
+        // Seek thumb starts hidden (scale 0 in XAML) and grows or shrinks from its center on hover.
         SeekArea.AddHandler(PointerEnteredEvent, new PointerEventHandler(OnProgressPointerEntered), true);
         SeekArea.AddHandler(PointerMovedEvent,   new PointerEventHandler(OnProgressPointerMoved), true);
         SeekArea.AddHandler(PointerExitedEvent,  new PointerEventHandler(OnProgressPointerExited), true);
 
-        // Plain icon buttons have no disabled visual state of their own; dim them when they cannot be used
-        foreach (var button in new Control[] { LikeButton, ShuffleButton, PreviousButton, NextButton, RepeatButton })
+        // Plain icon buttons have no disabled visual state of their own; dim them when they cannot be used.
+        foreach (Control button in new Control[] { LikeButton, ShuffleButton, PreviousButton, NextButton, RepeatButton })
         {
             button.IsEnabledChanged += (s, _) => DimWhenDisabled((Control)s);
             DimWhenDisabled(button);
         }
 
+        // The tick only redraws the bar, so it stops while the window is minimized or hidden in the tray and the app
+        // doesn't wake the CPU in the background.
+        Loaded += (_, _) =>
+        {
+            App.Window.VisibilityChanged -= OnWindowVisibilityChanged;
+            App.Window.VisibilityChanged += OnWindowVisibilityChanged;
+        };
+        Unloaded += (_, _) => App.Window.VisibilityChanged -= OnWindowVisibilityChanged;
+
+        // Icon colors (accent when on) are assigned in code, so switching between light and dark mode assigns them again.
+        ActualThemeChanged += (_, _) =>
+        {
+            Refresh();
+            SetQueueOpen(QueueButton.IsChecked == true);
+        };
+
         App.StateChanged += Refresh;
         Refresh();
+    }
+
+    /// <summary>
+    /// Pauses the progress tick while the window can't be seen, and catches the bar up as soon as it's shown again.
+    /// </summary>
+    /// <param name="sender">The main window.</param>
+    /// <param name="args">Whether the window is now visible.</param>
+    private void OnWindowVisibilityChanged(object sender, WindowVisibilityChangedEventArgs args)
+    {
+        if (!args.Visible)
+        {
+            tickTimer.Stop();
+            return;
+        }
+
+        UpdateProgress();
+        tickTimer.Start();
     }
 
     private static void DimWhenDisabled(Control control) => control.Opacity = control.IsEnabled ? 1 : 0.4;
@@ -76,7 +114,7 @@ public sealed partial class PlayerBar : UserControl
     private static Player? Player => App.ActivePlayer;
 
     private static PlayerQueue? Queue
-        => Player is { } p && App.Client.Queues.TryGetValue(App.Client.QueueIdFor(p), out var q) ? q : null;
+        => Player is { } p && App.Client.Queues.TryGetValue(App.Client.QueueIdFor(p), out PlayerQueue? q) ? q : null;
 
     private static bool Starting => Player is { } p && App.IsStarting(p);
 
@@ -86,26 +124,26 @@ public sealed partial class PlayerBar : UserControl
 
     private void Refresh()
     {
-        var player = Player;
-        var queue  = Queue;
+        Player? player = Player;
+        PlayerQueue? queue  = Queue;
 
         PlayerNameText.Text = player?.DisplayName ?? "No player";
         PlayPauseButton.IsEnabled = player is not null;
         // Skipping is a queue operation when MA is driving the player; the player feature only matters for
-        // external sources (a WiiM playing from its own app reports no next_previous at all)
-        PreviousButton.IsEnabled  = queue is not null || player?.Supports("next_previous") == true;
+        // external sources (a WiiM playing from its own app reports no next_previous at all).
+        PreviousButton.IsEnabled  = queue is not null || (player?.Supports("next_previous") == true);
         NextButton.IsEnabled      = PreviousButton.IsEnabled;
 
-        // Now playing: prefer the MA queue item, fall back to whatever the player reports
-        var item  = queue?.CurrentItem;
-        var media = player?.CurrentMedia;
+        // Now playing: prefer the MA queue item, fall back to whatever the player reports.
+        QueueItem? item  = queue?.CurrentItem;
+        PlayerMedia? media = player?.CurrentMedia;
 
         TitleText.Text    = item?.Title ?? media?.Title ?? "Nothing playing";
         SubtitleText.Text = item?.SubtitleText ?? JoinNonEmpty(media?.Artist, media?.Album);
         TrimTip(TitleText);
         TrimTip(SubtitleText);
 
-        var imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 160) : media?.ImageUrl;
+        string? imageUrl = item is not null ? App.Client.ImageUrl(item.FindImage(), 160) : media?.ImageUrl;
         if (imageUrl != lastImageUrl)
         {
             lastImageUrl = imageUrl;
@@ -114,20 +152,20 @@ public sealed partial class PlayerBar : UserControl
 
         PlayPauseIcon.Glyph = player?.IsPlaying == true ? "\uE769" : "\uE768";
 
-        // Loading overlay while a clicked item is being started
-        var loading = App.PendingItem is not null;
+        // Loading overlay while a clicked item is being started.
+        bool loading = App.PendingItem is not null;
         LoadingOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
         LoadingRing.IsActive      = loading;
 
-        // Favorite state of the current track
-        var track = item?.MediaItem;
+        // Favorite state of the current track.
+        MediaItem? track = item?.MediaItem;
         LikeButton.IsEnabled = track is not null;
         LikeIcon.Glyph       = track?.Favorite == true ? "\uEB52" : "\uEB51";
         LikeIcon.Foreground  = track?.Favorite == true ? AccentBrush : DefaultBrush;
 
-        // Sound quality chip: queue item stream details, else the player's live external source
-        var fidelity = item?.Streamdetails?.AudioProcessing?.InputFidelity ?? player?.ActiveSourceAudio?.InputFidelity;
-        var format   = item?.Streamdetails?.AudioFormat ?? player?.ActiveSourceAudio?.InputFormat;
+        // Sound quality chip: queue item stream details, else the player's live external source.
+        AudioFidelity? fidelity = item?.Streamdetails?.AudioProcessing?.InputFidelity ?? player?.ActiveSourceAudio?.InputFidelity;
+        AudioFormat? format   = item?.Streamdetails?.AudioFormat ?? player?.ActiveSourceAudio?.InputFormat;
         if (fidelity is { Label.Length: > 0 })
         {
             QualityChip.Visibility = Visibility.Visible;
@@ -148,7 +186,7 @@ public sealed partial class PlayerBar : UserControl
         // Server volume wins, except while the user's own change is still on its way (debounce running, or the send
         // went out under a second ago and its echo has not come back): resetting then would snap the slider back
         // under the pointer and lose wheel notches.
-        if (!volumeTimer.IsRunning && DateTime.UtcNow - volumeSentAt > TimeSpan.FromSeconds(1))
+        if (!volumeTimer.IsRunning && (DateTime.UtcNow - volumeSentAt > TimeSpan.FromSeconds(1)))
         {
             VolumeSlider.Value       = player?.VolumeLevel ?? 0;
             VolumeFlyoutSlider.Value = VolumeSlider.Value;
@@ -156,8 +194,10 @@ public sealed partial class PlayerBar : UserControl
         }
         VolumeSlider.IsEnabled  = VolumeFlyoutSlider.IsEnabled = player?.Supports("volume_set") == true;
         MuteButton.IsEnabled    = player?.Supports("volume_mute") == true;
-        VolumeFlyoutButton.IsEnabled = player?.Supports("volume_set") == true || player?.Supports("volume_mute") == true;
-        PowerButton.Visibility  = player?.Supports("power") == true ? Visibility.Visible : Visibility.Collapsed;   // only players with a power control
+        VolumeFlyoutButton.IsEnabled = (player?.Supports("volume_set") == true) || (player?.Supports("volume_mute") == true);
+
+        // Only players with a power control.
+        PowerButton.Visibility  = player?.Supports("power") == true ? Visibility.Visible : Visibility.Collapsed;
         ShuffleButton.IsEnabled = queue is not null;
         RepeatButton.IsEnabled  = queue is not null;
         PowerButton.Opacity     = player?.Powered == false ? 0.5 : 1;
@@ -166,15 +206,20 @@ public sealed partial class PlayerBar : UserControl
         suppressVolume = false;
 
         UpdateProgress();
-        BalanceColumns();   // the player name or the power button may have changed the right group's width
+
+        // The player name or the power button may have changed the right group's width.
+        BalanceColumns();
     }
 
     // =========================================================================
     // LAYOUT
     // =========================================================================
 
-    private const double MinSideWidth      = 220;   // art plus a short title
-    private const double MinTransportWidth = 320;   // heart, shuffle, previous, play, next, repeat, queue
+    /// <summary>Art plus a short title.</summary>
+    private const double MinSideWidth      = 220;
+
+    /// <summary>Heart, shuffle, previous, play, next, repeat, queue.</summary>
+    private const double MinTransportWidth = 320;
 
     /// <summary>
     /// Keep the transport at the true center of the window: both side columns get the same width, the width the right
@@ -186,8 +231,8 @@ public sealed partial class PlayerBar : UserControl
         if (BarRoot.ActualWidth <= 0) return;
 
         RightPanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var available = BarRoot.ActualWidth - BarRoot.Padding.Left - BarRoot.Padding.Right - 2 * BarRoot.ColumnSpacing;
-        var side      = Math.Min(Math.Max(RightPanel.DesiredSize.Width, MinSideWidth), Math.Max(0, (available - MinTransportWidth) / 2));
+        double available = BarRoot.ActualWidth - BarRoot.Padding.Left - BarRoot.Padding.Right - 2 * BarRoot.ColumnSpacing;
+        double side      = Math.Min(Math.Max(RightPanel.DesiredSize.Width, MinSideWidth), Math.Max(0, (available - MinTransportWidth) / 2));
 
         if (Math.Abs(LeftColumn.Width.Value - side) < 0.5) return;
         LeftColumn.Width  = new GridLength(side);
@@ -206,17 +251,18 @@ public sealed partial class PlayerBar : UserControl
 
     private void UpdateProgress()
     {
-        var queue    = Queue;
-        var starting = Starting;
+        PlayerQueue? queue    = Queue;
+        bool starting = Starting;
 
-        // Spinner in the play button while playback is loading; on the 1 s tick so it also clears when the wait runs out
+        // Spinner in the play button while playback is loading; on the 1 s tick so it also clears when the wait runs out.
         PlayPauseIcon.Visibility = starting ? Visibility.Collapsed : Visibility.Visible;
         PlayPauseRing.Visibility = starting ? Visibility.Visible : Visibility.Collapsed;
         PlayPauseRing.IsActive   = starting;
 
         if (isSeeking) return;
 
-        double elapsed, duration;
+        double elapsed;
+        double duration;
 
         if (queue?.CurrentItem is { } item)
         {
@@ -234,13 +280,17 @@ public sealed partial class PlayerBar : UserControl
         // Queue playback seeks on the server by restarting the stream, so it works even for players without a native
         // seek (the PC speaker). Locked while playback is loading: the position stays put, but a seek would race it.
         // Locked by ignoring input rather than disabling, which would flash the fill gray and back.
-        ProgressSlider.IsEnabled        = duration > 0 && (queue?.CurrentItem is not null || Player?.Supports("seek") == true);
+        ProgressSlider.IsEnabled        = (duration > 0) && (queue?.CurrentItem is not null || (Player?.Supports("seek") == true));
         ProgressSlider.IsHitTestVisible = !starting;
-        SetThumbVisible(CanSeekNow && progressHovered);   // re-applied every tick: the bar can lock while the pointer rests on it
-        PositionThumb();   // a new maximum moves the thumb without a value change
 
-        var shown = duration > 0 ? Math.Min(elapsed, duration) : elapsed;
-        ElapsedText.Text  = showTimeLeft && duration > 0 ? "-" + Format.Duration(Math.Max(0, duration - shown)) : Format.Duration(shown);
+        // Re-applied every tick: the bar can lock while the pointer rests on it.
+        SetThumbVisible(CanSeekNow && progressHovered);
+
+        // A new maximum moves the thumb without a value change.
+        PositionThumb();
+
+        double shown = duration > 0 ? Math.Min(elapsed, duration) : elapsed;
+        ElapsedText.Text  = (showTimeLeft && (duration > 0)) ? $"-{Format.Duration(Math.Max(0, duration - shown))}" : Format.Duration(shown);
         DurationText.Text = duration > 0 ? Format.Duration(duration) : "--:--";
     }
 
@@ -252,17 +302,26 @@ public sealed partial class PlayerBar : UserControl
         UpdateProgress();
     }
 
-    // Seek Bar Thumb
+    // Seek Bar Thumb.
 
     private const double SeekThumbSize     = 22;
-    private const double InnerScaleNormal  = 0.86;    // Fluent slider thumb dot: 12px drawn at 86%
-    private const double InnerScaleOver    = 1.167;   // grows to 14px while the pointer is over the thumb
-    private const double InnerScalePressed = 0.71;    // shrinks to 10px while pressed
+
+    /// <summary>Fluent slider thumb dot: 12px drawn at 86%.</summary>
+    private const double InnerScaleNormal  = 0.86;
+
+    /// <summary>Grows to 14px while the pointer is over the thumb.</summary>
+    private const double InnerScaleOver    = 1.167;
+
+    /// <summary>Shrinks to 10px while pressed.</summary>
+    private const double InnerScalePressed = 0.71;
 
     private bool   progressHovered;
     private bool   thumbShown;
     private double innerScale   = InnerScaleNormal;
-    private double lastPointerX = double.NaN;   // pointer position over the slider, to tell whether it rests on the thumb
+
+    /// <summary>Pointer position over the slider, to tell whether it rests on the thumb.</summary>
+    private double lastPointerX = double.NaN;
+
     private Thumb? templateThumb;
 
     private bool CanSeekNow => ProgressSlider.IsEnabled && ProgressSlider.IsHitTestVisible;
@@ -271,17 +330,17 @@ public sealed partial class PlayerBar : UserControl
     {
         get
         {
-            var range = ProgressSlider.Maximum - ProgressSlider.Minimum;
+            double range = ProgressSlider.Maximum - ProgressSlider.Minimum;
             return range > 0 ? (ProgressSlider.Value - ProgressSlider.Minimum) / range * ProgressSlider.ActualWidth : 0;
         }
     }
 
     private static T? FindNamed<T>(DependencyObject root, string name) where T : FrameworkElement
     {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match && match.Name == name) return match;
+            DependencyObject child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match && (match.Name == name)) return match;
             if (FindNamed<T>(child, name) is { } found) return found;
         }
         return null;
@@ -290,8 +349,8 @@ public sealed partial class PlayerBar : UserControl
     /// <summary>Only a press that drags the slider (left button, touch, pen) starts a seek; a right-click or the back button must not freeze the bar.</summary>
     private void OnProgressPointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        var point = e.GetCurrentPoint(ProgressSlider);
-        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse && !point.Properties.IsLeftButtonPressed) return;
+        Microsoft.UI.Input.PointerPoint point = e.GetCurrentPoint(ProgressSlider);
+        if ((e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse) && !point.Properties.IsLeftButtonPressed) return;
         isSeeking = true;
         UpdateInnerThumb();
     }
@@ -331,13 +390,14 @@ public sealed partial class PlayerBar : UserControl
     /// <summary>The thumb's dot follows the Fluent slider: bigger while the pointer rests on the thumb, smaller while pressed.</summary>
     private void UpdateInnerThumb()
     {
-        var overThumb = !double.IsNaN(lastPointerX) && Math.Abs(lastPointerX - ThumbCenterX) <= SeekThumbSize / 2;
-        var target    = isSeeking ? InnerScalePressed : overThumb ? InnerScaleOver : InnerScaleNormal;
+        bool overThumb = !double.IsNaN(lastPointerX) && (Math.Abs(lastPointerX - ThumbCenterX) <= SeekThumbSize / 2);
+        double target    = isSeeking ? InnerScalePressed : overThumb ? InnerScaleOver : InnerScaleNormal;
         if (target == innerScale) return;
         innerScale = target;
-        Templates.ScaleTo(SeekInnerScale, target, target == InnerScaleNormal ? 167 : 250, EasingMode.EaseOut);   // Fluent's fast and normal control durations
-    }
 
+        // Fluent's fast and normal control durations.
+        Templates.ScaleTo(SeekInnerScale, target, target == InnerScaleNormal ? 167 : 250, EasingMode.EaseOut);
+    }
 
     private void OnProgressValueChanged(object sender, RangeBaseValueChangedEventArgs e) => PositionThumb();
 
@@ -347,7 +407,7 @@ public sealed partial class PlayerBar : UserControl
     private void PositionThumb()
     {
         // The zero-size template thumb still draws its border as a dot at the value; hide it. The template is applied
-        // lazily, so look for it until it exists
+        // lazily, so look for it until it exists.
         if (templateThumb is null && FindNamed<Thumb>(ProgressSlider, "HorizontalThumb") is { } thumb)
         {
             templateThumb         = thumb;
@@ -356,7 +416,9 @@ public sealed partial class PlayerBar : UserControl
 
         Canvas.SetLeft(SeekThumb, ThumbCenterX - SeekThumbSize / 2);
         Canvas.SetTop(SeekThumb, (ProgressSlider.ActualHeight - SeekThumbSize) / 2);
-        UpdateInnerThumb();   // playback can move the thumb under a resting pointer
+
+        // Playback can move the thumb under a resting pointer.
+        UpdateInnerThumb();
     }
 
     private static Brush AccentBrush  => (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
@@ -374,8 +436,14 @@ public sealed partial class PlayerBar : UserControl
 
     private static async Task RunAsync(Func<Task> action)
     {
-        try { await action(); }
-        catch (Exception ex) { App.Window.ShowMessage(ex.Message); }
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            App.Window.ShowMessage(ex.Message);
+        }
     }
 
     private void OnPlayPause(object sender, RoutedEventArgs e)
@@ -402,13 +470,14 @@ public sealed partial class PlayerBar : UserControl
     private void OnRepeat(object sender, RoutedEventArgs e)
     {
         if (Queue is not { } queue) return;
-        var next = queue.RepeatMode switch { "off" => "all", "all" => "one", _ => "off" };
+        string next = queue.RepeatMode switch { "off" => "all", "all" => "one", _ => "off" };
         _ = RunAsync(() => App.Client.QueueCommandAsync(queue.QueueId, "repeat", new { repeat_mode = next }));
     }
 
     private void OnQueue(object sender, RoutedEventArgs e) => App.Window.ToggleQueue();
 
     /// <summary>Mirror the Now Playing overlay state on the queue button.</summary>
+    /// <param name="open">Whether the Now Playing overlay is open.</param>
     public void SetQueueOpen(bool open)
     {
         QueueButton.IsChecked = open;
@@ -419,9 +488,9 @@ public sealed partial class PlayerBar : UserControl
     {
         if (Queue?.CurrentItem?.MediaItem is not { } track) return;
 
-        // Immediate feedback: flip the fill now and pop the icon; the server call confirms or reverts
-        var willBe = !track.Favorite;
-        LikeIcon.Glyph      = willBe ? "" : "";
+        // Immediate feedback: flip the fill now and pop the icon; the server call confirms or reverts.
+        bool willBe = !track.Favorite;
+        LikeIcon.Glyph      = willBe ? "\uEB52" : "\uEB51";
         LikeIcon.Foreground = willBe ? AccentBrush : DefaultBrush;
         Pop(LikeScale);
 
@@ -453,9 +522,11 @@ public sealed partial class PlayerBar : UserControl
         if (!isSeeking) return;
         isSeeking = false;
         UpdateInnerThumb();
-        SetThumbVisible(progressHovered && CanSeekNow);   // released outside the bar: shrink now
+
+        // Released outside the bar: shrink now.
+        SetThumbVisible(progressHovered && CanSeekNow);
         if (Player is not { } player) return;
-        var position = (int)ProgressSlider.Value;
+        int position = (int)ProgressSlider.Value;
         _ = Queue?.CurrentItem is not null
             ? RunAsync(() => App.Client.QueueCommandAsync(App.Client.QueueIdFor(player), "seek", new { position }))
             : RunAsync(() => App.Client.PlayerCommandAsync(player.PlayerId, "seek", new { position }));
@@ -465,13 +536,13 @@ public sealed partial class PlayerBar : UserControl
     private void OnVolumeWheel(object sender, PointerRoutedEventArgs e)
     {
         if (Player is not { } player || !player.Supports("volume_set")) return;
-        var delta = e.GetCurrentPoint((UIElement)sender).Properties.MouseWheelDelta;
+        int delta = e.GetCurrentPoint((UIElement)sender).Properties.MouseWheelDelta;
         if (delta == 0) return;
         e.Handled = true;
 
         // Drive the inline slider; its ValueChanged runs the same debounced send as a drag. Works even while it is
         // collapsed on narrow windows (the wheel came from the mute or compact volume button instead).
-        var next = Math.Clamp((int)Math.Round(VolumeSlider.Value) + (delta > 0 ? 2 : -2), 0, 100);
+        int next = Math.Clamp((int)Math.Round(VolumeSlider.Value) + (delta > 0 ? 2 : -2), 0, 100);
         VolumeSlider.Value = next;
         ShowVolumeTip((FrameworkElement)sender, next);
     }
@@ -481,7 +552,7 @@ public sealed partial class PlayerBar : UserControl
     {
         volumeTip ??= new ToolTip { Placement = PlacementMode.Top };
 
-        // Move the tooltip to the element being scrolled, restoring the previous owner's own tooltip ("Mute", "Volume") first
+        // Move the tooltip to the element being scrolled, restoring the previous owner's own tooltip ("Mute", "Volume") first.
         if (!ReferenceEquals(volumeTipOwner, owner))
         {
             HideVolumeTip();
@@ -502,7 +573,8 @@ public sealed partial class PlayerBar : UserControl
         if (volumeTip is not null) volumeTip.IsOpen = false;
         if (volumeTipOwner is not null)
         {
-            ToolTipService.SetToolTip(volumeTipOwner, volumeTipSaved);   // put the element's label tooltip back
+            // Put the element's label tooltip back.
+            ToolTipService.SetToolTip(volumeTipOwner, volumeTipSaved);
             volumeTipOwner = null;
             volumeTipSaved = null;
         }
@@ -516,9 +588,16 @@ public sealed partial class PlayerBar : UserControl
         VolumePercentText.Text = $"{pendingVolume}%";
 
         // Keep the other slider in step, so the flyout thumb follows the wheel and a flyout drag leaves the inline
-        // slider (the wheel's base value) current
+        // slider (the wheel's base value) current.
         suppressVolume = true;
-        if (ReferenceEquals(sender, VolumeSlider)) VolumeFlyoutSlider.Value = e.NewValue; else VolumeSlider.Value = e.NewValue;
+        if (ReferenceEquals(sender, VolumeSlider))
+        {
+            VolumeFlyoutSlider.Value = e.NewValue;
+        }
+        else
+        {
+            VolumeSlider.Value = e.NewValue;
+        }
         suppressVolume = false;
 
         volumeTimer.Stop();
@@ -537,11 +616,11 @@ public sealed partial class PlayerBar : UserControl
     {
         if (Player is not { } player) return Task.CompletedTask;
         volumeSentAt = DateTime.UtcNow;
-        var volume_level = pendingVolume;
+        int volume_level = pendingVolume;
         return RunAsync(() => App.Client.PlayerCommandAsync(player.PlayerId, "volume_set", new { volume_level }));
     }
 
-    // Player Picker
+    // Player Picker.
 
     /// <summary>Fresh list each time the picker opens: check on the selected player, live bars on playing ones.</summary>
     private void OnPlayerMenuOpening(object? sender, object e)

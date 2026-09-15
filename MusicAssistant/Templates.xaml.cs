@@ -11,6 +11,9 @@ namespace MusicAssistant;
 /// <summary>Shared item templates plus the context-menu handlers they reference.</summary>
 public sealed partial class Templates : ResourceDictionary
 {
+    /// <summary>
+    /// Loads the shared item templates this dictionary's code-behind handlers belong to.
+    /// </summary>
     public Templates()
     {
         InitializeComponent();
@@ -20,8 +23,18 @@ public sealed partial class Templates : ResourceDictionary
     /// x:Bind helper: a null or unusable URL yields no image instead of a binding crash.
     /// Images are decoded at the size they are shown (logical pixels) to keep memory low.
     /// </summary>
+    /// <param name="url">The artwork URL.</param>
+    /// <returns>The card-size bitmap (184 logical pixels), or null.</returns>
     public static ImageSource? ToImage(string? url) => Decode(url, 184);
+
+    /// <summary>x:Bind helper for large artwork, decoded at 480 logical pixels; a null or unusable URL yields no image.</summary>
+    /// <param name="url">The artwork URL.</param>
+    /// <returns>The large bitmap, or null.</returns>
     public static ImageSource? ToLargeImage(string? url) => Decode(url, 480);
+
+    /// <summary>x:Bind helper for thumbnails, decoded at 48 logical pixels; a null or unusable URL yields no image.</summary>
+    /// <param name="url">The artwork URL.</param>
+    /// <returns>The thumbnail bitmap, or null.</returns>
     public static ImageSource? ToThumb(string? url) => Decode(url, 48);
 
     /// <summary>
@@ -29,14 +42,27 @@ public sealed partial class Templates : ResourceDictionary
     /// 0 when it still has to load, so ImageOpened can fade it in. Also resets a recycled container's image
     /// to hidden before its new bitmap renders, which is what stopped the "visible, gone, fade in" flash.
     /// </summary>
+    /// <param name="url">The artwork URL.</param>
+    /// <returns>1 or 0.</returns>
     public static double Ready(string? url) => Decode(url, 184) is { PixelWidth: > 0 } ? 1 : 0;
+
+    /// <summary>Starting opacity for large artwork (480 logical pixels): 1 when already decoded, 0 while it still has to load.</summary>
+    /// <param name="url">The artwork URL.</param>
+    /// <returns>1 or 0.</returns>
     public static double ReadyLarge(string? url) => Decode(url, 480) is { PixelWidth: > 0 } ? 1 : 0;
+
+    /// <summary>Starting opacity for a thumbnail (48 logical pixels): 1 when already decoded, 0 while it still has to load.</summary>
+    /// <param name="url">The artwork URL.</param>
+    /// <returns>1 or 0.</returns>
     public static double ReadyThumb(string? url) => Decode(url, 48) is { PixelWidth: > 0 } ? 1 : 0;
 
     /// <summary>Code-behind counterpart of the template bindings: set an Image's source from the cache with the matching starting opacity.</summary>
+    /// <param name="image">The image element to fill.</param>
+    /// <param name="url">The artwork URL.</param>
+    /// <param name="logicalWidth">The width the image is shown at, in logical pixels, which is also its decode width.</param>
     public static void Show(Image image, string? url, int logicalWidth)
     {
-        var bitmap    = Decode(url, logicalWidth);
+        BitmapImage? bitmap    = Decode(url, logicalWidth);
         image.Source  = bitmap;
         image.Opacity = bitmap is { PixelWidth: > 0 } ? 1 : 0;
     }
@@ -55,12 +81,23 @@ public sealed partial class Templates : ResourceDictionary
     private const int  CacheSize    = 200;
     private const long MaxArtBytes  = 500L * 1024 * 1024;
     private const long TrimArtBytes = 400L * 1024 * 1024;
+
+    /// <summary>New art files written between trims, so a session that runs for days stays near the size cap.</summary>
+    private const int TrimEveryDownloads = 250;
+
+    /// <summary>Art files written since the last trim; updated from download continuations on the thread pool.</summary>
+    private static int downloadsSinceTrim;
     private static readonly int[]    RetryDelaysSeconds = [1, 3, 8];
     private static readonly TimeSpan PlaylistMaxAge     = TimeSpan.FromDays(1);
     private static readonly string   ArtDir             = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MusicAssistant", "art");
     private static readonly HttpClient    http      = new() { Timeout = TimeSpan.FromSeconds(30) };
-    private static readonly SemaphoreSlim downloads = new(6);   // a fast scroll through a big library must not flood the server's image resizer
-    private static readonly Dictionary<string, Task<string?>> inflight = [];   // file path -> its running download
+
+    /// <summary>A fast scroll through a big library must not flood the server's image resizer.</summary>
+    private static readonly SemaphoreSlim downloads = new(6);
+
+    /// <summary>File path -> its running download.</summary>
+    private static readonly Dictionary<string, Task<string?>> inflight = [];
+
     private static readonly Dictionary<string, LinkedListNode<(string Key, BitmapImage Bitmap)>> cache = [];
     private static readonly LinkedList<(string Key, BitmapImage Bitmap)> recent = [];
 
@@ -79,12 +116,19 @@ public sealed partial class Templates : ResourceDictionary
         ImagesInvalidated?.Invoke();
     }
 
+    /// <summary>
+    /// Returns the cached bitmap for an image URL at a decode width, creating it and starting its load when it is not
+    /// cached yet.
+    /// </summary>
+    /// <param name="url">The artwork URL; only http, https and data URLs are loaded.</param>
+    /// <param name="logicalWidth">The decode width in logical pixels.</param>
+    /// <returns>The bitmap, which may still be loading, or null for a missing or unsupported URL.</returns>
     public static BitmapImage? Decode(string? url, int logicalWidth)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https" or "data")) return null;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https" or "data")) return null;
 
-        var key = $"{logicalWidth}|{url}";
-        if (cache.TryGetValue(key, out var node))
+        string key = $"{logicalWidth}|{url}";
+        if (cache.TryGetValue(key, out LinkedListNode<(string Key, BitmapImage Bitmap)>? node))
         {
             recent.Remove(node);
             recent.AddFirst(node);
@@ -99,8 +143,15 @@ public sealed partial class Templates : ResourceDictionary
             recent.RemoveLast();
         }
 
-        if (uri.Scheme == "data") bitmap.UriSource = uri;   // inline image, nothing to fetch or store
-        else _ = LoadAsync(bitmap, uri, key);
+        if (uri.Scheme == "data")
+        {
+            // Inline image, nothing to fetch or store.
+            bitmap.UriSource = uri;
+        }
+        else
+        {
+            _ = LoadAsync(bitmap, uri, key);
+        }
         return bitmap;
     }
 
@@ -118,14 +169,22 @@ public sealed partial class Templates : ResourceDictionary
 
         try
         {
-            // Delete sharing lets a playlist refresh replace the file while this read is open
+            // Delete sharing lets a playlist refresh replace the file while this read is open.
             using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             App.Debug($"Art: {uri} failed: {ex.Message}");
-            try { File.Delete(file); } catch (Exception) { }   // a corrupt file must not poison every later load
+
+            // A corrupt file must not poison every later load.
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception deleteEx) when (deleteEx is IOException or UnauthorizedAccessException)
+            {
+            }
             Evict(key, bitmap);
         }
     }
@@ -134,37 +193,52 @@ public sealed partial class Templates : ResourceDictionary
     /// Path of the cached file for an image URL, downloading it (or refreshing a stale playlist cover) first. Null when
     /// the art cannot be had or the URL is not http(s). Also used for the Windows media overlay thumbnail.
     /// </summary>
+    /// <param name="url">The artwork URL.</param>
+    /// <returns>The local file path, or null.</returns>
     public static Task<string?> ArtFileAsync(string? url)
-        => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? ArtFileAsync(uri) : Task.FromResult<string?>(null);
+        => Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) && uri.Scheme is "http" or "https" ? ArtFileAsync(uri) : Task.FromResult<string?>(null);
 
     private static Task<string?> ArtFileAsync(Uri uri)
     {
-        var file  = Path.Combine(ArtDir, FileNameFor(uri));
-        var fresh = File.Exists(file) && (uri.Fragment != "#playlist" || DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < PlaylistMaxAge);
+        string file  = Path.Combine(ArtDir, FileNameFor(uri));
+        bool fresh = File.Exists(file) && ((uri.Fragment != "#playlist") || (DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < PlaylistMaxAge));
         if (fresh) return Task.FromResult<string?>(file);
 
-        // One download per file: a second caller (another display size, a re-bind mid-download) waits for the first
-        if (inflight.TryGetValue(file, out var running)) return running;
-        var task = DownloadAsync(uri, file);
+        // One download per file: a second caller (another display size, a re-bind mid-download) waits for the first.
+        if (inflight.TryGetValue(file, out Task<string?>? running)) return running;
+        Task<string?> task = DownloadAsync(uri, file);
         inflight[file] = task;
         return task;
     }
 
     private static async Task<string?> DownloadAsync(Uri uri, string file)
     {
-        await Task.Yield();   // never finish synchronously, so the inflight entry exists before the finally removes it
+        // Never finish synchronously, so the inflight entry exists before the finally removes it.
+        await Task.Yield();
         try
         {
-            var bytes = await FetchAsync(new UriBuilder(uri) { Fragment = "" }.Uri);
-            if (bytes is null) return File.Exists(file) ? file : null;   // a stale playlist cover that failed to refresh keeps its old file
+            byte[]? bytes = await FetchAsync(new UriBuilder(uri) { Fragment = "" }.Uri);
+
+            // A stale playlist cover that failed to refresh keeps its old file.
+            if (bytes is null) return File.Exists(file) ? file : null;
 
             Directory.CreateDirectory(ArtDir);
-            var temp = file + ".tmp";
+            string temp = $"{file}.tmp";
             await File.WriteAllBytesAsync(temp, bytes);
-            File.Move(temp, file, overwrite: true);   // readers never see a half-written file
+
+            // Readers never see a half-written file.
+            File.Move(temp, file, overwrite: true);
+
+            // The launch trim alone would let a long-running session grow the folder past the cap.
+            if (Interlocked.Increment(ref downloadsSinceTrim) >= TrimEveryDownloads)
+            {
+                Interlocked.Exchange(ref downloadsSinceTrim, 0);
+                TrimArtCache(atLaunch: false);
+            }
+
             return file;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
             App.Debug($"Art: saving {uri} failed: {ex.Message}");
             return File.Exists(file) ? file : null;
@@ -178,17 +252,17 @@ public sealed partial class Templates : ResourceDictionary
     /// <summary>GET the bytes with a few retries for network and server errors; null after the last failure or on a 4xx, which retrying cannot fix.</summary>
     private static async Task<byte[]?> FetchAsync(Uri uri)
     {
-        for (var attempt = 0; ; attempt++)
+        for (int attempt = 0; ; attempt++)
         {
             await downloads.WaitAsync();
             try
             {
-                using var response = await http.GetAsync(uri);
+                using HttpResponseMessage response = await http.GetAsync(uri);
                 if (response.IsSuccessStatusCode) return await response.Content.ReadAsByteArrayAsync();
                 App.Debug($"Art: {uri} -> {(int)response.StatusCode}");
                 if ((int)response.StatusCode is >= 400 and < 500) return null;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
             {
                 App.Debug($"Art: {uri} -> {ex.Message}");
             }
@@ -200,8 +274,8 @@ public sealed partial class Templates : ResourceDictionary
             if (attempt >= RetryDelaysSeconds.Length) return null;
             await Task.Delay(TimeSpan.FromSeconds(RetryDelaysSeconds[attempt]));
 
-            // A dropped connection gets up to two minutes to come back instead of burning the retries on it
-            for (var waited = 0; waited < 60 && !App.Client.IsConnected; waited++) await Task.Delay(TimeSpan.FromSeconds(2));
+            // A dropped connection gets up to two minutes to come back instead of burning the retries on it.
+            for (int waited = 0; (waited < 60) && !App.Client.IsConnected; waited++) await Task.Delay(TimeSpan.FromSeconds(2));
         }
     }
 
@@ -212,53 +286,82 @@ public sealed partial class Templates : ResourceDictionary
     /// </summary>
     private static string FileNameFor(Uri uri)
     {
-        var pathAndQuery = uri.PathAndQuery;
-        var proxyAt      = pathAndQuery.IndexOf("/imageproxy", StringComparison.Ordinal);
-        var identity     = proxyAt >= 0 ? pathAndQuery[proxyAt..] : uri.GetLeftPart(UriPartial.Query);
-        var hash         = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity));
-        return Convert.ToHexString(hash.AsSpan(0, 16)) + ".img";
+        string pathAndQuery = uri.PathAndQuery;
+        int proxyAt      = pathAndQuery.IndexOf("/imageproxy", StringComparison.Ordinal);
+        string identity     = proxyAt >= 0 ? pathAndQuery[proxyAt..] : uri.GetLeftPart(UriPartial.Query);
+        byte[] hash         = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity));
+        return $"{Convert.ToHexString(hash.AsSpan(0, 16))}.img";
     }
 
     /// <summary>
-    /// Keep the art folder under 500 MB and clear leftover partial downloads. Runs once at launch, off the UI thread,
-    /// while the app is still connecting; a card that loses its file to the trim re-downloads it on its next bind.
+    /// Keep the art folder under 500 MB and clear leftover partial downloads. Runs off the UI thread at launch, while the
+    /// app is still connecting, and again after every <see cref="TrimEveryDownloads"/> new files; a card that loses its
+    /// file to the trim re-downloads it on its next bind.
     /// </summary>
-    public static void TrimArtCache() => Task.Run(() =>
+    /// <param name="atLaunch">True for the launch trim, the only one that clears partial downloads: later on, a .tmp file may be one another download is still writing.</param>
+    public static void TrimArtCache(bool atLaunch = true) => Task.Run(() =>
     {
         try
         {
             if (!Directory.Exists(ArtDir)) return;
-            var files = new DirectoryInfo(ArtDir).GetFiles();
-            foreach (var partial in files.Where(f => f.Extension == ".tmp")) partial.Delete();
+            FileInfo[] files = new DirectoryInfo(ArtDir).GetFiles();
+            if (atLaunch)
+            {
+                foreach (FileInfo partial in files.Where(f => f.Extension == ".tmp"))
+                {
+                    TryDelete(partial);
+                }
+            }
 
             var art   = files.Where(f => f.Extension == ".img").OrderBy(f => f.LastWriteTimeUtc).ToList();
-            var total = art.Sum(f => f.Length);
+            long total = art.Sum(f => f.Length);
             if (total <= MaxArtBytes) return;
 
-            // ponytail: oldest download goes first, not least recently shown; track reads if a big library keeps evicting favorites
-            foreach (var file in art)
+            // ponytail: oldest download goes first, not least recently shown; track reads if a big library keeps evicting favorites.
+            foreach (FileInfo file in art)
             {
                 if (total <= TrimArtBytes) break;
-                total -= file.Length;
-                file.Delete();
+
+                // A file that's open or already gone is skipped rather than ending the whole trim.
+                if (TryDelete(file))
+                {
+                    total -= file.Length;
+                }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            App.Debug("Art: trim failed: " + ex.Message);
+            App.Debug($"Art: trim failed: {ex.Message}");
         }
     });
 
+    /// <summary>Deletes a cache file, reporting instead of throwing when it's in use or already gone.</summary>
+    /// <param name="file">The file to delete.</param>
+    /// <returns>Whether the file was deleted.</returns>
+    private static bool TryDelete(FileInfo file)
+    {
+        try
+        {
+            file.Delete();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            App.Debug($"Art: could not delete {file.Name}: {ex.Message}");
+            return false;
+        }
+    }
+
     private static void Evict(string key, BitmapImage bitmap)
     {
-        if (cache.TryGetValue(key, out var current) && ReferenceEquals(current.Value.Bitmap, bitmap))
+        if (cache.TryGetValue(key, out LinkedListNode<(string Key, BitmapImage Bitmap)>? current) && ReferenceEquals(current.Value.Bitmap, bitmap))
         {
             recent.Remove(current);
             cache.Remove(key);
         }
     }
 
-    // Queue row menu
+    // Queue row menu.
 
     private static QueueItem? QueueItemOf(object sender) => (sender as FrameworkElement)?.DataContext as QueueItem;
 
@@ -279,11 +382,24 @@ public sealed partial class Templates : ResourceDictionary
     private static async void QueueAction(object sender, Func<QueueItem, Task> action)
     {
         if (QueueItemOf(sender) is not { } item) return;
-        try { await action(item); }
-        catch (Exception ex) { App.Window.ShowMessage(ex.Message); }
+        try
+        {
+            await action(item);
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            App.Window.ShowMessage(ex.Message);
+        }
     }
 
+    /// <summary>x:Bind helper: Visible when the value is true, Collapsed otherwise.</summary>
+    /// <param name="value">The condition to show on.</param>
+    /// <returns>The matching visibility.</returns>
     public static Visibility Vis(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>x:Bind helper: Collapsed when the value is true, Visible otherwise.</summary>
+    /// <param name="value">The condition to hide on.</param>
+    /// <returns>The matching visibility.</returns>
     public static Visibility VisNot(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
 
     /// <summary>
@@ -291,6 +407,7 @@ public sealed partial class Templates : ResourceDictionary
     /// Already visible artwork (cached bitmap, opacity set to 1 up front) is left alone. The animation
     /// releases the property when done, so a later local Opacity (recycled container) is honored.
     /// </summary>
+    /// <param name="element">The image or other element to fade in.</param>
     public static void FadeIn(UIElement element)
     {
         if (element.Opacity >= 1) return;
@@ -301,11 +418,17 @@ public sealed partial class Templates : ResourceDictionary
         var storyboard = new Storyboard { FillBehavior = FillBehavior.Stop };
         storyboard.Children.Add(fade);
         storyboard.Completed += (_, _) => element.Opacity = 1;
-        element.Opacity = 1;   // final value underneath the animation, so the frame after Stop does not flash to 0
+
+        // Final value underneath the animation, so the frame after Stop does not flash to 0.
+        element.Opacity = 1;
         storyboard.Begin();
     }
 
     /// <summary>Ease a scale transform to a uniform size from wherever it is now, taking over any animation still running on it.</summary>
+    /// <param name="target">The scale transform to animate.</param>
+    /// <param name="to">The final scale on both axes.</param>
+    /// <param name="milliseconds">The animation length in milliseconds.</param>
+    /// <param name="easing">The cubic easing mode.</param>
     public static void ScaleTo(ScaleTransform target, double to, int milliseconds, EasingMode easing)
         => AnimateBothAxes(target, () => new DoubleAnimation
         {
@@ -315,12 +438,14 @@ public sealed partial class Templates : ResourceDictionary
         });
 
     /// <summary>Run one animation on both axes of a scale transform; <paramref name="make"/> builds the timeline for each axis.</summary>
+    /// <param name="target">The scale transform to animate.</param>
+    /// <param name="make">Builds a fresh timeline; called once for ScaleX and once for ScaleY.</param>
     public static void AnimateBothAxes(ScaleTransform target, Func<Timeline> make)
     {
         var storyboard = new Storyboard();
-        foreach (var property in new[] { "ScaleX", "ScaleY" })
+        foreach (string? property in new[] { "ScaleX", "ScaleY" })
         {
-            var timeline = make();
+            Timeline timeline = make();
             Storyboard.SetTarget(timeline, target);
             Storyboard.SetTargetProperty(timeline, property);
             storyboard.Children.Add(timeline);
@@ -336,37 +461,64 @@ public sealed partial class Templates : ResourceDictionary
     }
 
     /// <summary>Check mark visibility for the selected player in pickers.</summary>
+    /// <param name="playerId">The id of the player the row shows.</param>
+    /// <returns>Visible for the active player, Collapsed otherwise.</returns>
     public static Visibility ActiveVis(string playerId) => Vis(playerId == App.Settings.ActivePlayerId);
 
     /// <summary>The active player card is filled with the accent color; its text and bars switch to the on-accent brushes.</summary>
+    /// <param name="playerId">The id of the player the card shows.</param>
+    /// <returns>The card background brush.</returns>
     public static Brush PlayerBackground(string playerId) => PlayerBrush(playerId, "AccentFillColorDefaultBrush", "CardBackgroundFillColorDefaultBrush");
+
+    /// <summary>Primary text brush for a player card: on-accent for the active player, the default text brush otherwise.</summary>
+    /// <param name="playerId">The id of the player the card shows.</param>
+    /// <returns>The primary text brush.</returns>
     public static Brush PlayerForeground(string playerId) => PlayerBrush(playerId, "TextOnAccentFillColorPrimaryBrush", "TextFillColorPrimaryBrush");
+
+    /// <summary>Secondary text brush for a player card: on-accent for the active player, the default secondary text brush otherwise.</summary>
+    /// <param name="playerId">The id of the player the card shows.</param>
+    /// <returns>The secondary text brush.</returns>
     public static Brush PlayerSecondary(string playerId)  => PlayerBrush(playerId, "TextOnAccentFillColorSecondaryBrush", "TextFillColorSecondaryBrush");
+
+    /// <summary>Now playing bars brush for a player card: on-accent for the active player, the accent text brush otherwise.</summary>
+    /// <param name="playerId">The id of the player the card shows.</param>
+    /// <returns>The bars brush.</returns>
     public static Brush PlayerBars(string playerId)       => PlayerBrush(playerId, "TextOnAccentFillColorPrimaryBrush", "AccentTextFillColorPrimaryBrush");
 
     private static Brush PlayerBrush(string playerId, string activeKey, string idleKey)
         => (Brush)Application.Current.Resources[playerId == App.Settings.ActivePlayerId ? activeKey : idleKey];
 
-    private static MediaItem? ItemOf(object sender) => (sender as FrameworkElement)?.DataContext as MediaItem;
-
     /// <summary>
-    /// Track row menu (right-click or the "..." button): rebuilt for the row's track each time it opens. The page the row
-    /// sits on is found by walking up from the row, so an album or playlist page can offer "play from here".
+    /// Item menu (right-click, Shift+F10 or the menu key on a row or card, or a row's "..." button): rebuilt for the item
+    /// each time it opens. The page the row or card sits on is found by walking up from it, so an album or playlist page
+    /// can offer "play from here".
     /// </summary>
-    private void OnTrackMenuOpening(object sender, object e)
+    /// <param name="sender">The shared item menu.</param>
+    /// <param name="e">Unused.</param>
+    private void OnItemMenuOpening(object sender, object e)
     {
-        if (sender is not MenuFlyout menu || (menu.Target as FrameworkElement)?.DataContext is not MediaItem track) return;
+        if (sender is not MenuFlyout menu)
+        {
+            return;
+        }
+
+        // Cards and list rows carry their item as content; a row's "..." button only has it as its data context.
+        MediaItem? item = ((menu.Target as ContentControl)?.Content as MediaItem) ?? ((menu.Target as FrameworkElement)?.DataContext as MediaItem);
+        if (item is null)
+        {
+            menu.Items.Clear();
+            return;
+        }
 
         MediaItem? parent = null;
         for (DependencyObject? node = menu.Target; node is not null; node = VisualTreeHelper.GetParent(node))
         {
-            if (node is Pages.ItemPage page) { parent = page.Item; break; }
+            if (node is Pages.ItemPage page)
+            {
+                parent = page.Item;
+                break;
+            }
         }
-        Controls.TrackMenu.Populate(menu, track, parent);
+        Controls.ItemMenu.Populate(menu, item, parent);
     }
-
-    private async void OnPlayNow(object sender, RoutedEventArgs e)        { if (ItemOf(sender) is { } item) await App.PlayAsync(item, "play"); }
-    private async void OnPlayNext(object sender, RoutedEventArgs e)       { if (ItemOf(sender) is { } item) await App.PlayAsync(item, "next"); }
-    private async void OnAddToQueue(object sender, RoutedEventArgs e)     { if (ItemOf(sender) is { } item) await App.PlayAsync(item, "add"); }
-    private async void OnToggleFavorite(object sender, RoutedEventArgs e) { if (ItemOf(sender) is { } item) await App.ToggleFavoriteAsync(item); }
 }

@@ -25,12 +25,13 @@ public static partial class RemoteId
     /// <summary>The 16 fingerprint bytes a Remote ID encodes.</summary>
     public static byte[] Decode(string remoteId)
     {
-        var text = remoteId.Trim().ToUpperInvariant().Replace('9', '2');
+        string text = remoteId.Trim().ToUpperInvariant().Replace('9', '2');
         var output = new List<byte>(16);
-        int value = 0, bits = 0;
-        foreach (var ch in text)
+        int value = 0;
+        int bits  = 0;
+        foreach (char ch in text)
         {
-            var index = Alphabet.IndexOf(ch);
+            int index = Alphabet.IndexOf(ch);
             if (index < 0) throw new FormatException("Invalid Remote ID");
             value = (value << 5) | index;
             bits += 5;
@@ -51,16 +52,16 @@ public static partial class RemoteId
     public static string VerifyAndSanitizeSdp(string? sdp, string remoteId)
     {
         if (string.IsNullOrEmpty(sdp)) throw new InvalidOperationException("No SDP in answer");
-        var expected  = Decode(remoteId);
-        var sanitized = WeakFingerprintLine().Replace(sdp, "");
-        var matches   = Sha256Fingerprint().Matches(sanitized);
+        byte[]          expected  = Decode(remoteId);
+        string          sanitized = WeakFingerprintLine().Replace(sdp, "");
+        MatchCollection matches   = Sha256Fingerprint().Matches(sanitized);
         if (matches.Count == 0) throw new InvalidOperationException("No SHA-256 fingerprint in answer");
 
         foreach (Match match in matches)
         {
-            var hex = match.Groups[1].Value.Replace(":", "");
+            string hex = match.Groups[1].Value.Replace(":", "");
             if (hex.Length < 32) throw new InvalidOperationException("Server certificate does not match the Remote ID");
-            for (var i = 0; i < 16; i++)
+            for (int i = 0; i < 16; i++)
             {
                 if (Convert.ToByte(hex.Substring(i * 2, 2), 16) != expected[i]) throw new InvalidOperationException("Server certificate does not match the Remote ID");
             }

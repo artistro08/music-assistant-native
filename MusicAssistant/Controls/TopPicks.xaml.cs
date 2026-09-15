@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -16,14 +17,21 @@ namespace MusicAssistant.Controls;
 /// </summary>
 public sealed partial class TopPicks : UserControl
 {
-    private const int    LeadSpan     = 2;   // lead tile is as wide as two tile columns
-    private const int    Columns      = 3;   // columns of two tiles after the lead (2 + 3 = 5 units per row)
+    /// <summary>Lead tile is as wide as two tile columns.</summary>
+    private const int    LeadSpan     = 2;
+
+    /// <summary>Columns of two tiles after the lead (2 + 3 = 5 units per row).</summary>
+    private const int    Columns      = 3;
+
     private const int    MaxPicks     = 25;
 
     private readonly List<ContentControl> tiles = [];
     private List<MediaItem> picks = [];
     private int page;
 
+    /// <summary>
+    /// Creates the collage; its tiles are built the first time the control is loaded.
+    /// </summary>
     public TopPicks()
     {
         InitializeComponent();
@@ -31,20 +39,22 @@ public sealed partial class TopPicks : UserControl
     }
 
     /// <summary>Build the pick list from rows (each with its title and items) and a fallback list.</summary>
+    /// <param name="rows">Recommendation rows, each with the title shown on its picks and the items it offers.</param>
+    /// <param name="fallback">Recently played items that fill the collage when the rows run short.</param>
     public void Load(IEnumerable<(string title, List<MediaItem> items)> rows, List<MediaItem> fallback)
     {
         var seen   = new HashSet<string>();
         var result = new List<MediaItem>();
         var queues = rows.Where(r => r.items.Count > 0).Select(r => (r.title, queue: new Queue<MediaItem>(r.items))).ToList();
 
-        // Round-robin across rows so the collage mixes sources
+        // Round-robin across rows so the collage mixes sources.
         while (queues.Any(q => q.queue.Count > 0) && result.Count < MaxPicks)
         {
-            foreach (var (title, queue) in queues)
+            foreach ((string title, Queue<MediaItem> queue) in queues)
             {
                 while (queue.Count > 0)
                 {
-                    var item = queue.Dequeue();
+                    MediaItem item = queue.Dequeue();
                     if (!seen.Add(item.Uri)) continue;
                     item.Tag = title;
                     result.Add(item);
@@ -53,7 +63,7 @@ public sealed partial class TopPicks : UserControl
             }
         }
 
-        foreach (var item in fallback)
+        foreach (MediaItem item in fallback)
         {
             if (result.Count >= MaxPicks) break;
             if (!seen.Add(item.Uri)) continue;
@@ -67,7 +77,7 @@ public sealed partial class TopPicks : UserControl
         Fill();
     }
 
-    // Layout: built once
+    // Layout: built once.
 
     private void BuildTiles()
     {
@@ -77,11 +87,11 @@ public sealed partial class TopPicks : UserControl
         var template = (DataTemplate)Application.Current.Resources["HeroCardTemplate"];
 
         Collage.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(LeadSpan, GridUnitType.Star) });
-        for (var c = 0; c < columns; c++) Collage.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (int c = 0; c < columns; c++) Collage.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        // Lead tile, then column by column top to bottom
+        // Lead tile, then column by column top to bottom.
         AddTile(template, column: 0, row: 0, rowSpan: 2);
-        for (var c = 1; c <= columns; c++)
+        for (int c = 1; c <= columns; c++)
         {
             AddTile(template, c, 0, 1);
             AddTile(template, c, 1, 1);
@@ -98,9 +108,15 @@ public sealed partial class TopPicks : UserControl
             VerticalContentAlignment   = VerticalAlignment.Stretch,
             IsTabStop                  = true,
             UseSystemFocusVisuals      = true,
+
+            // Item menu on the focusable tile, so right-click, Shift+F10 and the menu key all open it.
+            ContextFlyout              = (FlyoutBase)Application.Current.Resources["ItemMenu"],
         };
         tile.Tapped  += (s, _) => Open(((ContentControl)s).Content);
-        tile.KeyDown += (s, e) => { if (e.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space) Open(((ContentControl)s).Content); };
+        tile.KeyDown += (s, e) =>
+        {
+            if (e.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space) Open(((ContentControl)s).Content);
+        };
         tile.PointerEntered += (s, _) => ZoomArt((ContentControl)s, true);
         tile.PointerExited  += (s, _) => ZoomArt((ContentControl)s, false);
         Grid.SetColumn(tile, column);
@@ -110,7 +126,7 @@ public sealed partial class TopPicks : UserControl
         tiles.Add(tile);
     }
 
-    // Hover
+    // Hover.
 
     private const double ArtZoom = 1.08;
 
@@ -132,16 +148,16 @@ public sealed partial class TopPicks : UserControl
 
     private static Image? FindImage(DependencyObject root)
     {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            var child = VisualTreeHelper.GetChild(root, i);
+            DependencyObject child = VisualTreeHelper.GetChild(root, i);
             if (child is Image image) return image;
             if (FindImage(child) is { } found) return found;
         }
         return null;
     }
 
-    // Paging: each page fills the same tiles with the next slice of picks
+    // Paging: each page fills the same tiles with the next slice of picks.
 
     private int PerPage   => Math.Max(1, tiles.Count);
     private int PageCount => Math.Max(1, (int)Math.Ceiling(picks.Count / (double)PerPage));
@@ -151,10 +167,10 @@ public sealed partial class TopPicks : UserControl
         if (tiles.Count == 0) return;
         page = Math.Clamp(page, 0, PageCount - 1);
 
-        for (var i = 0; i < tiles.Count; i++)
+        for (int i = 0; i < tiles.Count; i++)
         {
-            var index = page * PerPage + i;
-            var item  = index < picks.Count ? picks[index] : null;
+            int index = page * PerPage + i;
+            MediaItem? item  = index < picks.Count ? picks[index] : null;
             tiles[i].Content    = item;
             tiles[i].Visibility = item is null ? Visibility.Collapsed : Visibility.Visible;
             tiles[i].IsTabStop  = item is not null;
@@ -170,9 +186,9 @@ public sealed partial class TopPicks : UserControl
     /// <summary>Re-run every tile's template so art resolved after the first bind shows (the image binding is OneTime).</summary>
     public void Rebind()
     {
-        foreach (var tile in tiles)
+        foreach (ContentControl tile in tiles)
         {
-            var item = tile.Content;
+            object? item = tile.Content;
             if (item is null) continue;
             tile.Content = null;
             tile.Content = item;
@@ -180,12 +196,13 @@ public sealed partial class TopPicks : UserControl
     }
 
     private void OnPrev(object sender, RoutedEventArgs e) => TurnPage(-1);
+
     private void OnNext(object sender, RoutedEventArgs e) => TurnPage(+1);
 
     private void TurnPage(int direction)
     {
-        var target = page + direction;
-        if (target < 0 || target >= PageCount) return;
+        int target = page + direction;
+        if ((target < 0) || (target >= PageCount)) return;
         page = target;
         Fill();
         Paging.Slide(Collage, direction);
@@ -193,7 +210,7 @@ public sealed partial class TopPicks : UserControl
 
     private void OnPointerWheel(object sender, PointerRoutedEventArgs e)
     {
-        var step = Paging.WheelStep(e, this);
+        int step = Paging.WheelStep(e, this);
         if (step == 0) return;
         e.Handled = true;
         TurnPage(step);

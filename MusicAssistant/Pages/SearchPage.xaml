@@ -11,9 +11,9 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- Results for the query typed in the title bar search box -->
         <StackPanel Margin="24,16,24,8" Spacing="12" MaxWidth="{StaticResource ContentMaxWidth}">
-            <TextBlock Text="Search" Style="{StaticResource TitleTextBlockStyle}" />
-            <AutoSuggestBox x:Name="QueryBox" PlaceholderText="Search artists, albums, tracks, playlists, radio" QueryIcon="Find" QuerySubmitted="OnQuerySubmitted" />
+            <TextBlock x:Name="TitleText" Text="Search" Style="{StaticResource TitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
         </StackPanel>
 
         <ScrollViewer Grid.Row="1">

@@ -9,12 +9,13 @@ public sealed partial class SettingsPage : Page
 {
     private bool loadingRemote;
 
+    /// <summary>Creates the settings page, fills in the connection and app details, and starts loading the server's remote access state.</summary>
     public SettingsPage()
     {
         InitializeComponent();
 
-        var info = App.Client.ServerInfo;
-        var user = App.Client.CurrentUser;
+        ServerInfo? info = App.Client.ServerInfo;
+        User? user = App.Client.CurrentUser;
 
         ServerText.Text  = App.Settings.ServerAddress ?? "(remote only)";
         VersionText.Text = info is null ? "" : $"{info.Name ?? "Music Assistant"} • server {info.ServerVersion} • schema {info.SchemaVersion}";
@@ -23,7 +24,7 @@ public sealed partial class SettingsPage : Page
         ConnectionText.Text = App.Client.IsRemote ? "Currently connected remotely through the relay." : "Currently connected over your local network.";
         RemoteIdBox.Text    = App.Settings.RemoteId ?? "";
 
-        if (!App.Client.IsRemote && Uri.TryCreate(App.Settings.ServerAddress, UriKind.Absolute, out var uri)) WebLink.NavigateUri = uri;
+        if (!App.Client.IsRemote && Uri.TryCreate(App.Settings.ServerAddress, UriKind.Absolute, out Uri? uri)) WebLink.NavigateUri = uri;
         else WebLink.Visibility = Visibility.Collapsed;
 
         _ = LoadRemoteAccessAsync();
@@ -95,14 +96,16 @@ public sealed partial class SettingsPage : Page
         RemoteEnabledSwitch.IsOn     = info.Enabled;
         ServerRemoteIdText.Text      = info.Enabled ? info.RemoteIdDisplay : "";
         CopyRemoteIdButton.IsEnabled = info.Enabled;
-        RemoteStatusText.Text = !info.Enabled ? "Off. Turn it on to reach this server from anywhere."
-            : info.Connected ? (info.UsingHaCloud ? "Connected to the relay (using Home Assistant Cloud for the best route)." : "Connected to the relay.")
-            : "Enabled, waiting for the relay connection…";
+        RemoteStatusText.Text = !info.Enabled
+            ? "Off. Turn it on to reach this server from anywhere."
+            : info.Connected
+                ? (info.UsingHaCloud ? "Connected to the relay (using Home Assistant Cloud for the best route)." : "Connected to the relay.")
+                : "Enabled, waiting for the relay connection…";
         loadingRemote = false;
 
-        // Keep this PC in sync with the server so roaming works without copying
-        var id = info.Enabled ? MassClient.NormalizeRemoteId(info.RemoteId) : null;
-        if (id is not null && id != App.Settings.RemoteId)
+        // Keep this PC in sync with the server so roaming works without copying.
+        string? id = info.Enabled ? MassClient.NormalizeRemoteId(info.RemoteId) : null;
+        if (id is not null && (id != App.Settings.RemoteId))
         {
             App.Settings.RemoteId = id;
             App.Settings.Save();
@@ -113,8 +116,15 @@ public sealed partial class SettingsPage : Page
     private async void OnRemoteToggled(object sender, RoutedEventArgs e)
     {
         if (loadingRemote) return;
-        try { Show(await App.Client.ConfigureRemoteAccessAsync(RemoteEnabledSwitch.IsOn)); }
-        catch (ApiException ex) { App.Window.ShowMessage(ex.Message); await LoadRemoteAccessAsync(); }
+        try
+        {
+            Show(await App.Client.ConfigureRemoteAccessAsync(RemoteEnabledSwitch.IsOn));
+        }
+        catch (ApiException ex)
+        {
+            App.Window.ShowMessage(ex.Message);
+            await LoadRemoteAccessAsync();
+        }
     }
 
     private void OnCopyRemoteId(object sender, RoutedEventArgs e)
@@ -127,9 +137,9 @@ public sealed partial class SettingsPage : Page
 
     private void OnRemoteIdEdited(object sender, RoutedEventArgs e)
     {
-        var text = RemoteIdBox.Text.Trim();
-        var id   = MassClient.NormalizeRemoteId(text);
-        if (text.Length > 0 && id is null)
+        string text = RemoteIdBox.Text.Trim();
+        string? id   = MassClient.NormalizeRemoteId(text);
+        if ((text.Length > 0) && id is null)
         {
             App.Window.ShowMessage("That Remote ID does not look right. It has 26 letters and digits.");
             return;
@@ -139,4 +149,10 @@ public sealed partial class SettingsPage : Page
     }
 
     private async void OnSignOut(object sender, RoutedEventArgs e) => await App.Window.SignOutAsync();
+
+    /// <summary>Makes the settings column as wide as the page, up to the app's content cap, so it's centered on wide windows.</summary>
+    /// <param name="sender">The page's scroll viewer.</param>
+    /// <param name="e">The viewer's new size.</param>
+    private void OnScrollerSizeChanged(object sender, SizeChangedEventArgs e)
+        => Column.Width = Math.Min(e.NewSize.Width, (double)Application.Current.Resources["ContentMaxWidth"]);
 }

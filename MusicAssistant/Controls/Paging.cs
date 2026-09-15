@@ -16,26 +16,35 @@ namespace MusicAssistant.Controls;
 public static class Paging
 {
     private const int    Notch    = 120;
-    private const double Cooldown = 250;   // milliseconds
 
-    private sealed class Progress { public int Accumulated; public DateTime LastStep; }
+    /// <summary>Milliseconds.</summary>
+    private const double Cooldown = 250;
 
-    // Weak keys: rows come and go with navigation and must not be kept alive by their scroll bookkeeping
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<UIElement, Progress> state = new();
+    private sealed class Progress
+    {
+        public int      Accumulated;
+        public DateTime LastStep;
+    }
+
+    /// <summary>Weak keys: rows come and go with navigation and must not be kept alive by their scroll bookkeeping.</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<UIElement, Progress> state = [];
 
     /// <summary>+1 for next page, -1 for previous, 0 when the event is not a horizontal scroll or not yet a full step.</summary>
+    /// <param name="e">The pointer wheel event raised on the paged control.</param>
+    /// <param name="owner">The paged control; wheel movement is accumulated separately for each one.</param>
+    /// <returns>The page step to take: +1, -1 or 0.</returns>
     public static int WheelStep(PointerRoutedEventArgs e, UIElement owner)
     {
-        var point = e.GetCurrentPoint(owner);
-        var props = point.Properties;
-        var shift = (e.KeyModifiers & VirtualKeyModifiers.Shift) != 0;
+        Microsoft.UI.Input.PointerPoint point = e.GetCurrentPoint(owner);
+        Microsoft.UI.Input.PointerPointProperties props = point.Properties;
+        bool shift = (e.KeyModifiers & VirtualKeyModifiers.Shift) != 0;
 
         if (!props.IsHorizontalMouseWheel && !shift) return 0;
 
         // Horizontal wheel: positive = right. Shift + vertical wheel: wheel down (negative) = next.
-        var delta = props.IsHorizontalMouseWheel ? props.MouseWheelDelta : -props.MouseWheelDelta;
+        int delta = props.IsHorizontalMouseWheel ? props.MouseWheelDelta : -props.MouseWheelDelta;
 
-        var progress = state.GetOrCreateValue(owner);
+        Progress progress = state.GetOrCreateValue(owner);
         if ((DateTime.UtcNow - progress.LastStep).TotalMilliseconds < Cooldown)
         {
             progress.Accumulated = 0;
@@ -45,7 +54,7 @@ public static class Paging
         progress.Accumulated += delta;
         if (Math.Abs(progress.Accumulated) < Notch) return 0;
 
-        var step = Math.Sign(progress.Accumulated);
+        int step = Math.Sign(progress.Accumulated);
         progress.Accumulated = 0;
         progress.LastStep    = DateTime.UtcNow;
         return step;
@@ -55,11 +64,13 @@ public static class Paging
     /// Slide the freshly filled page in from the side it came from (+1 = from the
     /// right for next, -1 = from the left for previous) with a short fade.
     /// </summary>
+    /// <param name="element">The element holding the page content.</param>
+    /// <param name="direction">+1 after turning to the next page, -1 after turning to the previous one; 0 does nothing.</param>
     public static void Slide(UIElement element, int direction)
     {
         if (direction == 0) return;
 
-        var transform = element.RenderTransform as TranslateTransform ?? new TranslateTransform();
+        TranslateTransform transform = element.RenderTransform as TranslateTransform ?? new TranslateTransform();
         element.RenderTransform = transform;
 
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };

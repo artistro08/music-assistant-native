@@ -19,9 +19,15 @@ namespace MusicAssistant.Sendspin;
 public sealed class WasapiOutput : IDisposable
 {
     /// <summary>Fill `frames` interleaved float frames into `buffer`; the first frame plays at `firstFrameTimeUs` (local clock).</summary>
+    /// <param name="buffer">The pre-cleared interleaved buffer to fill.</param>
+    /// <param name="frames">Number of frames to fill.</param>
+    /// <param name="firstFrameTimeUs">Local time the first frame leaves the device, in microseconds.</param>
     public delegate void RenderCallback(Span<float> buffer, int frames, long firstFrameTimeUs);
 
+    /// <summary>The device mix format's sample rate; set by <see cref="Start"/>.</summary>
     public int SampleRate { get; private set; }
+
+    /// <summary>The device mix format's channel count; set by <see cref="Start"/>.</summary>
     public int Channels   { get; private set; }
 
     /// <summary>Raised when the render thread dies unexpectedly (device invalidated, format change, driver reset), never on a normal Stop(). Handlers must not block or call Stop()/Dispose() inline, since this fires on the render thread mid-teardown.</summary>
@@ -41,6 +47,8 @@ public sealed class WasapiOutput : IDisposable
     private readonly RenderCallback callback;
     private float[]             scratch = [];
 
+    /// <summary>Creates an output that pulls audio from a callback; the device opens on <see cref="Start"/>.</summary>
+    /// <param name="callback">Called on the render thread to fill each period's frames.</param>
     public WasapiOutput(RenderCallback callback)
     {
         this.callback = callback;
@@ -60,25 +68,25 @@ public sealed class WasapiOutput : IDisposable
         try
         {
             enumerator.GetDefaultAudioEndpoint(EDataFlow.Render, ERole.Multimedia, out device);
-            var iid = typeof(IAudioClient).GUID;
-            device.Activate(ref iid, ClsCtxAll, IntPtr.Zero, out var clientObject);
+            Guid iid = typeof(IAudioClient).GUID;
+            device.Activate(ref iid, ClsCtxAll, IntPtr.Zero, out object? clientObject);
             client = (IAudioClient)clientObject;
         }
         finally
         {
-            // The enumerator and device are only needed to reach the client; release them now, not at GC
+            // The enumerator and device are only needed to reach the client; release them now, not at GC.
             if (device is not null) Marshal.ReleaseComObject(device);
             Marshal.ReleaseComObject(enumerator);
         }
 
-        // No render thread runs yet, so any failure here must release the COM objects itself; Stop() would no-op with running still false
+        // No render thread runs yet, so any failure here must release the COM objects itself; Stop() would no-op with running still false.
         try
         {
-            client.GetMixFormat(out var formatPtr);
+            client.GetMixFormat(out nint formatPtr);
             try
             {
                 ReadFormat(formatPtr);
-                // 100ms of buffer: room for a late wake-up; the device clock, not the buffer size, drives timing
+                // 100ms of buffer: room for a late wake-up; the device clock, not the buffer size, drives timing.
                 client.Initialize(ShareModeShared, StreamFlagsEventCallback, 100 * 10_000, 0, formatPtr, IntPtr.Zero);
             }
             finally
@@ -90,12 +98,12 @@ public sealed class WasapiOutput : IDisposable
             wake = new AutoResetEvent(false);
             client.SetEventHandle(wake.SafeWaitHandle.DangerousGetHandle());
 
-            var renderIid = typeof(IAudioRenderClient).GUID;
-            client.GetService(ref renderIid, out var renderObject);
+            Guid renderIid = typeof(IAudioRenderClient).GUID;
+            client.GetService(ref renderIid, out object? renderObject);
             render = (IAudioRenderClient)renderObject;
 
-            var clockIid = typeof(IAudioClock).GUID;
-            client.GetService(ref clockIid, out var clockObject);
+            Guid clockIid = typeof(IAudioClock).GUID;
+            client.GetService(ref clockIid, out object? clockObject);
             clock = (IAudioClock)clockObject;
             clock.GetFrequency(out clockFrequency);
         }
@@ -112,6 +120,7 @@ public sealed class WasapiOutput : IDisposable
         thread.Start();
     }
 
+    /// <summary>Signals the render thread to stop and waits up to 3 seconds for it; the thread releases the device itself.</summary>
     public void Stop()
     {
         if (!running) return;
@@ -125,8 +134,9 @@ public sealed class WasapiOutput : IDisposable
 
     private void RenderLoop()
     {
-        var taskIndex = 0u;
-        var mmcss = AvSetMmThreadCharacteristics("Pro Audio", ref taskIndex);   // scheduler priority meant for audio render threads
+        uint taskIndex = 0u;
+        // Scheduler priority meant for audio render threads.
+        nint mmcss = AvSetMmThreadCharacteristics("Pro Audio", ref taskIndex);
         try
         {
             Prime();
@@ -138,40 +148,48 @@ public sealed class WasapiOutput : IDisposable
                 FillOnce();
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
         {
-            App.Log("Speaker output stopped: " + ex.Message);
+            App.Log($"Speaker output stopped: {ex.Message}");
             running = false;
-            Failed?.Invoke();   // fire before the finally releases COM; the handler must only signal, not join this thread
+            // Fire before the finally releases COM; the handler must only signal, not join this thread.
+            Failed?.Invoke();
         }
         finally
         {
             if (mmcss != IntPtr.Zero) AvRevertMmThreadCharacteristics(mmcss);
-            try { client?.Stop(); } catch (Exception) { }
-            Release();   // the thread that used the COM objects is the one that releases them
+            try
+            {
+                client?.Stop();
+            }
+            catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+            {
+            }
+            // The thread that used the COM objects is the one that releases them.
+            Release();
         }
     }
 
     /// <summary>Fill the whole buffer with silence before starting so the clock runs from a known state.</summary>
     private void Prime()
     {
-        render!.GetBuffer(bufferFrames, out var data);
+        render!.GetBuffer(bufferFrames, out nint data);
         render.ReleaseBuffer(bufferFrames, BufferFlagsSilent);
         framesWritten += bufferFrames;
     }
 
     private void FillOnce()
     {
-        client!.GetCurrentPadding(out var padding);
-        var frames = (int)(bufferFrames - padding);
+        client!.GetCurrentPadding(out uint padding);
+        int frames = (int)(bufferFrames - padding);
         if (frames <= 0) return;
 
-        var firstFrameTime = FirstFrameTimeUs(padding);
-        var span = scratch.AsSpan(0, frames * Channels);
+        long firstFrameTime = FirstFrameTimeUs(padding);
+        Span<float> span = scratch.AsSpan(0, frames * Channels);
         span.Clear();
         callback(span, frames, firstFrameTime);
 
-        render!.GetBuffer((uint)frames, out var data);
+        render!.GetBuffer((uint)frames, out nint data);
         WriteSamples(data, frames * Channels);
         render.ReleaseBuffer((uint)frames, 0);
         framesWritten += frames;
@@ -182,17 +200,21 @@ public sealed class WasapiOutput : IDisposable
     {
         try
         {
-            clock!.GetPosition(out var position, out var qpc);
-            if (clockFrequency > 0 && qpc > 0)
+            clock!.GetPosition(out ulong position, out ulong qpc);
+            if ((clockFrequency > 0) && (qpc > 0))
             {
-                var playedFrames = (double)position / clockFrequency * SampleRate;
-                var playedAtUs   = (long)(qpc / 10);   // 100ns units
-                var ahead        = framesWritten - playedFrames;   // frames queued between the playing frame and the next write
+                double playedFrames = (double)position / clockFrequency * SampleRate;
+                // 100ns units.
+                long playedAtUs   = (long)(qpc / 10);
+                // Frames queued between the playing frame and the next write.
+                double ahead        = framesWritten - playedFrames;
                 return playedAtUs + (long)(ahead / SampleRate * 1_000_000.0);
             }
         }
-        catch (COMException) { }
-        // Clock not running yet: the queued frames are all that stand between now and the next write
+        catch (COMException)
+        {
+        }
+        // Clock not running yet: the queued frames are all that stand between now and the next write.
         return Clock.NowUs() + (long)(padding / (double)SampleRate * 1_000_000.0);
     }
 
@@ -210,24 +232,25 @@ public sealed class WasapiOutput : IDisposable
         if (bitsPerSample == 16)
         {
             if (shortScratch.Length < count) shortScratch = new short[count];
-            for (var i = 0; i < count; i++) shortScratch[i] = (short)Math.Clamp(scratch[i] * 32767f, -32768f, 32767f);
+            for (int i = 0; i < count; i++) shortScratch[i] = (short)Math.Clamp(scratch[i] * 32767f, -32768f, 32767f);
             Marshal.Copy(shortScratch, 0, data, count);
             return;
         }
-        if (intScratch.Length < count) intScratch = new int[count];   // 32-bit integer PCM
-        for (var i = 0; i < count; i++) intScratch[i] = (int)Math.Clamp(scratch[i] * 2147483647.0, int.MinValue, int.MaxValue);
+        // 32-bit integer PCM.
+        if (intScratch.Length < count) intScratch = new int[count];
+        for (int i = 0; i < count; i++) intScratch[i] = (int)Math.Clamp(scratch[i] * 2147483647.0, int.MinValue, int.MaxValue);
         Marshal.Copy(intScratch, 0, data, count);
     }
 
     private void ReadFormat(IntPtr format)
     {
-        var tag = (ushort)Marshal.ReadInt16(format, 0);
+        ushort tag = (ushort)Marshal.ReadInt16(format, 0);
         Channels      = Marshal.ReadInt16(format, 2);
         SampleRate    = Marshal.ReadInt32(format, 4);
         bitsPerSample = Marshal.ReadInt16(format, 14);
         if (tag == FormatExtensible)
         {
-            var subFormat = Marshal.PtrToStructure<Guid>(format + 24);
+            Guid subFormat = Marshal.PtrToStructure<Guid>(format + 24);
             isFloat = subFormat == SubtypeIeeeFloat;
         }
         else
@@ -242,10 +265,14 @@ public sealed class WasapiOutput : IDisposable
         if (render is not null) Marshal.ReleaseComObject(render);
         if (clock  is not null) Marshal.ReleaseComObject(clock);
         if (client is not null) Marshal.ReleaseComObject(client);
-        render = null; clock = null; client = null;
-        wake?.Dispose(); wake = null;
+        render = null;
+        clock  = null;
+        client = null;
+        wake?.Dispose();
+        wake = null;
     }
 
+    /// <summary>Stops the render thread, which releases the device.</summary>
     public void Dispose() => Stop();
 
     // =========================================================================
@@ -256,7 +283,8 @@ public sealed class WasapiOutput : IDisposable
     private const int  ShareModeShared = 0;
     private const int  StreamFlagsEventCallback = 0x00040000;
     private const int  BufferFlagsSilent = 0x2;
-    private const ushort FormatIeeeFloat = 3, FormatExtensible = 0xFFFE;
+    private const ushort FormatIeeeFloat = 3;
+    private const ushort FormatExtensible = 0xFFFE;
     private static readonly Guid SubtypeIeeeFloat = new("00000003-0000-0010-8000-00aa00389b71");
 
     private enum EDataFlow { Render = 0 }
