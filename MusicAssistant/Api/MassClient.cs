@@ -29,6 +29,9 @@ public sealed class MassClient : IDisposable
     /// <summary>Favorite states learned since connecting, by item URI.</summary>
     private readonly ConcurrentDictionary<string, bool> knownFavorites = new();
 
+    /// <summary>URIs whose favorite state was already asked of the server this connection, so each track is asked once.</summary>
+    private readonly ConcurrentDictionary<string, byte> favoriteLookups = new();
+
     /// <summary>Where the client reports non-fatal oddities (the app points this at its log file). The API layer has no UI dependency.</summary>
     public static Action<string>? Logger { get; set; }
 
@@ -71,6 +74,9 @@ public sealed class MassClient : IDisposable
 
     /// <summary>Raised when the transport closes for any reason after a successful connect.</summary>
     public event Action<Exception?>? Disconnected;
+
+    /// <summary>Raised on a background thread when a favorite state looked up from the server was applied to a loaded queue.</summary>
+    public event Action? FavoritesChanged;
 
     // =========================================================================
     // CONNECTION
@@ -146,6 +152,7 @@ public sealed class MassClient : IDisposable
         Players.Clear();
         Queues.Clear();
         knownFavorites.Clear();
+        favoriteLookups.Clear();
         RemovedPlayers.Clear();
         // A different server (or remote session) may run different providers.
         providersCache = null;
@@ -267,7 +274,12 @@ public sealed class MassClient : IDisposable
     private async Task FetchStateAsync()
     {
         foreach (Player player in await SendAsync<List<Player>>("players/all"))       Players[player.PlayerId] = player;
-        foreach (PlayerQueue queue  in await SendAsync<List<PlayerQueue>>("player_queues/all")) Queues[queue.QueueId] = Stamped(queue);
+        foreach (PlayerQueue queue  in await SendAsync<List<PlayerQueue>>("player_queues/all"))
+        {
+            ApplyKnownFavorites(queue.CurrentItem?.MediaItem);
+            ApplyKnownFavorites(queue.NextItem?.MediaItem);
+            Queues[queue.QueueId] = Stamped(queue);
+        }
         StateLoaded = true;
     }
 
@@ -738,7 +750,10 @@ public sealed class MassClient : IDisposable
         }
     }
 
-    /// <summary>Sets an item's favorite flag from the known states, when one of its URIs has one.</summary>
+    /// <summary>
+    /// Sets an item's favorite flag from the known states, when one of its URIs has one; otherwise asks the server once,
+    /// because a queue item's copy of its track keeps the favorite flag it had when it was queued.
+    /// </summary>
     /// <param name="item">A queue item's track, or null.</param>
     private void ApplyKnownFavorites(MediaItem? item)
     {
@@ -754,6 +769,36 @@ public sealed class MassClient : IDisposable
                 item.Favorite = favorite;
                 return;
             }
+        }
+
+        if ((item.Uri.Length > 0) && favoriteLookups.TryAdd(item.Uri, 0))
+        {
+            _ = LookUpFavoriteAsync(item.Uri);
+        }
+    }
+
+    /// <summary>Asks the server for a track's current favorite state and applies it to the loaded queues.</summary>
+    /// <param name="uri">The queue item track's URI.</param>
+    /// <returns>A task that completes once the state was applied or the lookup failed.</returns>
+    private async Task LookUpFavoriteAsync(string uri)
+    {
+        try
+        {
+            MediaItem current = await GetItemByUriAsync(uri);
+
+            // A like or unlike that arrived while this was in flight is newer than this answer.
+            if (UrisOf(current).Append(uri).Any(knownFavorites.ContainsKey))
+            {
+                return;
+            }
+
+            knownFavorites[uri] = current.Favorite;
+            RecordFavorite(current, current.Favorite);
+            FavoritesChanged?.Invoke();
+        }
+        catch (Exception ex) when (ExceptionFilters.IsRecoverable(ex))
+        {
+            Logger?.Invoke($"Couldn't look up whether {uri} is a favorite: {ex.Message}");
         }
     }
 
