@@ -36,6 +36,7 @@ public sealed partial class SettingsPage : Page
 
         BackgroundSwitch.IsOn = App.Settings.RunInBackground;
         TraySwitch.IsOn       = App.Settings.ShowTrayIcon;
+        MonoTraySwitch.IsOn   = App.Settings.MonochromeTrayIcon;
     }
 
     // =========================================================================
@@ -53,6 +54,14 @@ public sealed partial class SettingsPage : Page
     {
         if (TraySwitch.IsOn == App.Settings.ShowTrayIcon) return;
         App.Settings.ShowTrayIcon = TraySwitch.IsOn;
+        App.Settings.Save();
+        App.Window.ApplyWindowSettings();
+    }
+
+    private void OnMonochromeTrayToggled(object sender, RoutedEventArgs e)
+    {
+        if (MonoTraySwitch.IsOn == App.Settings.MonochromeTrayIcon) return;
+        App.Settings.MonochromeTrayIcon = MonoTraySwitch.IsOn;
         App.Settings.Save();
         App.Window.ApplyWindowSettings();
     }

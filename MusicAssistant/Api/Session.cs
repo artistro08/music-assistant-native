@@ -42,6 +42,9 @@ public sealed class Session
     /// <summary>Show the notification-area (tray) icon and its menu. Default on. When off, the Quit item appears in the sidebar.</summary>
     public bool    ShowTrayIcon    { get; set; } = true;
 
+    /// <summary>Draw the tray icon as a flat silhouette that follows the light or dark system theme, instead of the colored app icon. Default off.</summary>
+    public bool    MonochromeTrayIcon { get; set; }
+
     // Window placement (physical pixels).
 
     /// <summary>Left edge of the main window.</summary>
