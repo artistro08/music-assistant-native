@@ -18,6 +18,7 @@ public sealed class TrayIcon : IDisposable
     /// <summary>WM_APP + 1.</summary>
     private const uint TrayMessage = 0x8000 + 1;
 
+    private const int  WM_SETTINGCHANGE = 0x001A;
     private const int  WM_CONTEXTMENU   = 0x007B;
     private const int  WM_LBUTTONUP     = 0x0202;
     private const int  WM_LBUTTONDBLCLK = 0x0203;
@@ -30,9 +31,15 @@ public sealed class TrayIcon : IDisposable
     private const uint NIF_MESSAGE      = 1;
     private const uint NIF_ICON         = 2;
     private const uint NIF_TIP          = 4;
+    private const int  SM_CXSMICON      = 49;
+    private const int  SM_CYSMICON      = 50;
 
     private readonly IntPtr hwnd;
-    private readonly IntPtr icon;
+
+    /// <summary>Asked for the icon file every time it is (re)loaded, so a settings or theme change picks a different one.</summary>
+    private readonly Func<string> iconPath;
+
+    private IntPtr icon;
 
     /// <summary>Kept alive for the native callback.</summary>
     private readonly SubclassProc subclass;
@@ -43,18 +50,18 @@ public sealed class TrayIcon : IDisposable
 
     /// <summary>Loads the tray icon, hooks the main window's messages and adds the icon when it should be visible.</summary>
     /// <param name="hwnd">Handle of the main window that receives the tray and single-instance messages.</param>
-    /// <param name="iconPath">Path of the .ico file shown in the notification area.</param>
+    /// <param name="iconPath">Returns the path of the .ico file to show; called again on every reload.</param>
     /// <param name="open">Called to bring the main window back (icon click or a second launch).</param>
     /// <param name="exit">Called when Exit is picked in the tray menu.</param>
     /// <param name="visible">Whether to add the icon to the notification area right away.</param>
-    public TrayIcon(IntPtr hwnd, string iconPath, Action open, Action exit, bool visible)
+    public TrayIcon(IntPtr hwnd, Func<string> iconPath, Action open, Action exit, bool visible)
     {
-        this.hwnd = hwnd;
-        this.open = open;
+        this.hwnd     = hwnd;
+        this.open     = open;
+        this.iconPath = iconPath;
         menu = new TrayMenu(hwnd, open, exit);
 
-        // 1 is IMAGE_ICON and 0x10 is LR_LOADFROMFILE.
-        icon = LoadImage(IntPtr.Zero, iconPath, 1, 16, 16, 0x10);
+        icon = LoadCurrentIcon();
 
         // The window subclass carries the notification-area messages AND the single-instance "show yourself" signal, so
         // it is installed even when the icon is hidden: a second launch must still reopen the window with no tray icon.
@@ -97,6 +104,28 @@ public sealed class TrayIcon : IDisposable
         else Hide();
     }
 
+    /// <summary>Reload the icon file, after the monochrome setting changed or Windows switched between the light and dark theme.</summary>
+    public void Refresh()
+    {
+        IntPtr loaded = LoadCurrentIcon();
+
+        // A failed load keeps the icon already showing, rather than blanking the notification area.
+        if (loaded == IntPtr.Zero) return;
+
+        IntPtr previous = icon;
+        icon = loaded;
+
+        if (added)
+        {
+            NotifyIconData data = NewData();
+            data.uFlags = NIF_ICON;
+            data.hIcon  = icon;
+            Shell_NotifyIcon(NIM_MODIFY, ref data);
+        }
+
+        if (previous != IntPtr.Zero) DestroyIcon(previous);
+    }
+
     /// <summary>Tooltip shows what is playing.</summary>
     /// <param name="tip">The tooltip text; cut to the shell's 127-character limit.</param>
     public void SetTip(string tip)
@@ -119,6 +148,11 @@ public sealed class TrayIcon : IDisposable
 
     private NotifyIconData NewData() => new() { cbSize = (uint)Marshal.SizeOf<NotifyIconData>(), hWnd = hwnd, uID = 1 };
 
+    // 1 is IMAGE_ICON and 0x10 is LR_LOADFROMFILE. The size is the shell's small-icon metric, which already
+    // follows the system scaling (20px at 125%, 24 at 150%): ask for 16 and the shell stretches it, blurry.
+    private IntPtr LoadCurrentIcon() =>
+        LoadImage(IntPtr.Zero, iconPath(), 1, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0x10);
+
     // Messages
 
     private IntPtr WndProc(IntPtr h, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, IntPtr refData)
@@ -129,6 +163,9 @@ public sealed class TrayIcon : IDisposable
             open();
             return IntPtr.Zero;
         }
+
+        // Windows switched between the light and dark theme; the monochrome icon follows the taskbar.
+        if (msg == WM_SETTINGCHANGE && Marshal.PtrToStringUni(lParam) == "ImmersiveColorSet") Refresh();
 
         if (msg == TrayMessage)
         {
@@ -196,4 +233,7 @@ public sealed class TrayIcon : IDisposable
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr hIcon);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 }

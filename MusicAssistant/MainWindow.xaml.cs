@@ -74,7 +74,7 @@ public sealed partial class MainWindow : Window
         // App icon in the title bar / taskbar, and the tray icon with its menu.
         string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
         AppWindow.SetIcon(iconPath);
-        tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), iconPath, ShowFromTray, ExitApp, App.Settings.ShowTrayIcon);
+        tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), TrayIconPath, ShowFromTray, ExitApp, App.Settings.ShowTrayIcon);
         App.StateChanged += UpdateTrayTip;
         UpdateQuitItem();
 
@@ -125,10 +125,37 @@ public sealed partial class MainWindow : Window
     public void ApplyWindowSettings()
     {
         tray.SetVisible(App.Settings.ShowTrayIcon);
+        tray.Refresh();
 
         // A re-added icon starts with the plain app name; give it the now-playing tip straight away.
         UpdateTrayTip();
         UpdateQuitItem();
+    }
+
+    /// <summary>
+    /// Path of the .ico the notification area shows.
+    ///
+    /// The colored app icon by default. With the monochrome setting on, the flat silhouette in the
+    /// color the taskbar needs: the dark glyph on a light taskbar, the light one on a dark taskbar.
+    /// </summary>
+    /// <returns>Full path of the icon file to load.</returns>
+    private static string TrayIconPath()
+    {
+        string name = App.Settings.MonochromeTrayIcon
+            ? (SystemUsesLightTheme() ? "app-mono-dark.ico" : "app-mono-light.ico")
+            : "app.ico";
+
+        return Path.Combine(AppContext.BaseDirectory, "Assets", name);
+    }
+
+    /// <summary>Whether Windows draws the taskbar and notification area in the light theme, which is a separate setting from the app theme.</summary>
+    /// <returns>True for the light system theme; false for dark, and when the value cannot be read.</returns>
+    private static bool SystemUsesLightTheme()
+    {
+        using Microsoft.Win32.RegistryKey? key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+            @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+
+        return key?.GetValue("SystemUsesLightTheme") as int? == 1;
     }
 
     /// <summary>The sidebar Quit item is the only in-app way out when the tray icon (with its Exit) is hidden, so show it exactly then.</summary>

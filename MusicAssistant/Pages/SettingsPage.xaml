@@ -34,6 +34,8 @@
                 <TextBlock Text="When on, closing the window hides it and playback keeps going. Open Music Assistant from the Start menu or the tray icon to bring it back. When off, closing quits the app." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                 <ToggleSwitch x:Name="TraySwitch" Header="Show an icon in the notification area" OnContent="On" OffContent="Off" Toggled="OnTrayToggled" />
                 <TextBlock Text="The tray icon's menu can open the app or quit it. When it is hidden, a Quit Music Assistant item appears at the bottom of the sidebar instead." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                <ToggleSwitch x:Name="MonoTraySwitch" Header="Use a monochrome tray icon" OnContent="On" OffContent="Off" Toggled="OnMonochromeTrayToggled" />
+                <TextBlock Text="A flat one-color version of the icon that blends in with the other tray icons. It follows the Windows theme: dark on a light taskbar, light on a dark one." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
             </StackPanel>
             <!-- /General -->
 
