@@ -11,6 +11,12 @@
 </p>
 
 <p align="center">
+    <a href="https://apps.microsoft.com/detail/9N0L3WRKFC58">
+        <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft">
+    </a>
+</p>
+
+<p align="center">
     <img src="docs/screenshot.png" width="900" alt="Music Assistant for Windows">
 </p>
 
@@ -27,6 +33,16 @@ I hate web apps. Native feels better and uses less ram. Also <a href="https://ha
 ## Install
 
 You need a Music Assistant server already running on your network. If you don't have one, set it up first: https://www.music-assistant.io/
+
+### Microsoft Store
+
+The easiest way. Get it from the [Microsoft Store](https://apps.microsoft.com/detail/9N0L3WRKFC58) and it updates itself.
+
+<a href="https://apps.microsoft.com/detail/9N0L3WRKFC58">
+    <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft">
+</a>
+
+### Manual install
 
 1. Go to the [Releases](../../releases) page and download two files: `MusicAssistant_1.2.2.0_x64.msix` and `MusicAssistant-TestSigning.cer`.
 
