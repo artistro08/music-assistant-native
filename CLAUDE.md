@@ -60,7 +60,7 @@ The report's Risk Hotspots table gives each method a CRAP score (complexity weig
 
 The version appears in three places, and all three change together: `MusicAssistant/Package.appxmanifest` (Identity), `MusicAssistant/MusicAssistant.csproj` (`<Version>`), and the install filenames in `README.md`. Patch releases are bug fixes; a fourth number is a rebuild of the same release.
 
-Work goes on a `feature/...` or `fix/...` branch and merges into `main` with `--no-ff`. A release is a tag plus a GitHub release carrying the `.msix` and `MusicAssistant-TestSigning.cer`. Commit, push, merge and publish only when the user asks.
+Work goes on a `feature/...` or `fix/...` branch and merges into `main` with `--no-ff`. A release is a tag plus a GitHub release carrying the `.msix` and `MusicAssistant-TestSigning.cer`. The app is also on the [Microsoft Store](https://apps.microsoft.com/detail/9N0L3WRKFC58); every release's notes open with the "Get it from Microsoft" badge linking there, same as the README. Commit, push, merge and publish only when the user asks.
 
 ## Things that bite
 
