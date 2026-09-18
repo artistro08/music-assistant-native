@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-    <img src="docs/screenshot.png" width="900" alt="Music Assistant for Windows">
+    <img src="docs/screenshots/01-discover.png" width="900" alt="Music Assistant for Windows">
 </p>
 
 ## What it is
