@@ -145,7 +145,7 @@ public sealed class Speaker
     // =========================================================================
 
     /// <summary>Starts the listener and the mDNS announcement; returns false when either can't start, so the caller dials instead.</summary>
-    /// <param name="ct">Cancelled when the speaker stops.</param>
+    /// <param name="ct">Canceled when the speaker stops.</param>
     /// <returns>Whether the speaker is now listening.</returns>
     private bool TryListen(CancellationToken ct)
     {
@@ -180,7 +180,7 @@ public sealed class Speaker
     }
 
     /// <summary>Connects through the server's proxy when no server has connected to the listener within <see cref="DiscoveryTimeout"/>.</summary>
-    /// <param name="ct">Cancelled when the speaker stops.</param>
+    /// <param name="ct">Canceled when the speaker stops.</param>
     /// <returns>A task that completes once discovery succeeded or the fallback started.</returns>
     private async Task FallBackUnlessDiscoveredAsync(CancellationToken ct)
     {
@@ -392,7 +392,7 @@ public sealed class Speaker
     // =========================================================================
 
     /// <summary>Connect and stay connected; reconnect with backoff while the feature and the app connection are up.</summary>
-    /// <param name="ct">Cancelled when the speaker stops.</param>
+    /// <param name="ct">Canceled when the speaker stops.</param>
     /// <returns>A task that runs until the speaker stops.</returns>
     private async Task RunDialAsync(CancellationToken ct)
     {

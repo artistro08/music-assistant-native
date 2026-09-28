@@ -28,6 +28,11 @@ public sealed class AudioScheduler
     private const int   CorrectionSpacing = 200;
     private const float GainTimeConstantMs = 15f;
 
+    // Any device on the network can stream to an unpaired speaker, so the queue is bounded. The server keeps a few
+    // seconds ahead, well inside a minute; the chunk cap stops a flood of one-frame chunks the minute can't see.
+    private const int   MaxQueuedSeconds  = 60;
+    private const int   MaxQueuedChunks   = 8192;
+
     // Below the deadband the audio is left untouched (LAN: sub-ms for lock-step; relay: wide, so a solo speaker
     // free-runs without chasing offset wobble). Beyond the snap threshold the scheduler resyncs in one shot.
     private readonly long softDeadbandUs;
@@ -41,6 +46,7 @@ public sealed class AudioScheduler
 
     /// <summary>Frames already consumed from `current`.</summary>
     private int    offset;
+    private long   queuedFrames;
     private int    framesSinceCorrection;
     private int    generation;
     private float  gain = 1f;
@@ -97,14 +103,23 @@ public sealed class AudioScheduler
     /// <param name="linear">Linear amplitude from 0 to 1; values outside are clamped.</param>
     public void SetGain(float linear) => targetGain = Math.Clamp(linear, 0f, 1f);
 
-    /// <summary>Queues a chunk by its server timestamp, ignoring it when it belongs to a cleared generation.</summary>
+    /// <summary>Queues a chunk by its server timestamp.</summary>
+    /// <remarks>
+    /// A chunk from a cleared generation is ignored. So is one that would push the queue past a minute of audio or
+    /// <see cref="MaxQueuedChunks"/> chunks, which keeps a misbehaving sender from filling memory.
+    /// </remarks>
     /// <param name="chunk">The decoded chunk.</param>
-    public void Enqueue(Chunk chunk)
+    /// <returns><see langword="true"/> when the chunk was queued.</returns>
+    public bool Enqueue(Chunk chunk)
     {
         lock (gate)
         {
-            if (chunk.Generation != generation) return;
+            if (chunk.Generation != generation) return false;
+            if ((queue.Count >= MaxQueuedChunks) || (queuedFrames + chunk.Frames > (long)SampleRate * MaxQueuedSeconds)) return false;
+
             queue.Enqueue(chunk, chunk.ServerTimeUs);
+            queuedFrames += chunk.Frames;
+            return true;
         }
     }
 
@@ -115,6 +130,7 @@ public sealed class AudioScheduler
         {
             generation++;
             queue.Clear();
+            queuedFrames = 0;
             current = null;
             offset  = 0;
             framesSinceCorrection = 0;
@@ -152,6 +168,7 @@ public sealed class AudioScheduler
                 if (current is null)
                 {
                     if (!queue.TryDequeue(out current, out _)) break;
+                    queuedFrames -= current.Frames;
                     offset = 0;
                 }
 
