@@ -28,7 +28,7 @@ public abstract class WebSocketWire : ISendspinSocket
     /// <summary>The underlying WebSocket.</summary>
     protected abstract WebSocket Socket { get; }
 
-    /// <summary>Cancelled when the wire closes; subclasses tie their own waits to it.</summary>
+    /// <summary>Canceled when the wire closes; subclasses tie their own waits to it.</summary>
     protected CancellationToken Lifetime => lifetime.Token;
 
     /// <inheritdoc/>

@@ -44,7 +44,7 @@ The easiest way. Get it from the [Microsoft Store](https://apps.microsoft.com/de
 
 ### Manual install
 
-1. Go to the [Releases](../../releases) page and download two files: `MusicAssistant_1.2.2.0_x64.msix` and `MusicAssistant-TestSigning.cer`.
+1. Go to the [Releases](../../releases) page and download two files: `MusicAssistant_1.2.3.0_x64.msix` and `MusicAssistant-TestSigning.cer`.
 
 2. Windows only installs apps it trusts, and this one is signed with a test certificate, so you tell Windows to trust it once. Open PowerShell **as Administrator** and run:
 
@@ -52,7 +52,7 @@ The easiest way. Get it from the [Microsoft Store](https://apps.microsoft.com/de
    Import-Certificate -FilePath .\MusicAssistant-TestSigning.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
    ```
 
-3. Double-click `MusicAssistant_1.2.2.0_x64.msix` and click **Install**.
+3. Double-click `MusicAssistant_1.2.3.0_x64.msix` and click **Install**.
 
 4. Open the app, enter your server address (for example `http://192.168.1.10:8095`), and sign in.
 

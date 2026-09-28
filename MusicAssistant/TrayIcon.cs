@@ -34,6 +34,9 @@ public sealed class TrayIcon : IDisposable
     private const int  SM_CXSMICON      = 49;
     private const int  SM_CYSMICON      = 50;
 
+    /// <summary>Broadcast to every top-level window when Explorer (re)starts; the new taskbar has none of the old icons.</summary>
+    private static readonly uint TaskbarCreated = RegisterWindowMessage("TaskbarCreated");
+
     private readonly IntPtr hwnd;
 
     /// <summary>Asked for the icon file every time it is (re)loaded, so a settings or theme change picks a different one.</summary>
@@ -47,6 +50,9 @@ public sealed class TrayIcon : IDisposable
     private readonly Action open;
     private readonly TrayMenu menu;
     private bool added;
+
+    /// <summary>Whether the tray setting wants the icon shown, so it can be added again after Explorer restarts.</summary>
+    private bool wanted;
 
     /// <summary>Loads the tray icon, hooks the main window's messages and adds the icon when it should be visible.</summary>
     /// <param name="hwnd">Handle of the main window that receives the tray and single-instance messages.</param>
@@ -74,6 +80,7 @@ public sealed class TrayIcon : IDisposable
     /// <summary>Add the icon to the notification area (idempotent).</summary>
     public void Show()
     {
+        wanted = true;
         if (added) return;
         NotifyIconData data = NewData();
         data.uFlags           = NIF_MESSAGE | NIF_ICON | NIF_TIP;
@@ -90,6 +97,7 @@ public sealed class TrayIcon : IDisposable
     /// <summary>Remove the icon from the notification area, keeping the subclass alive (idempotent).</summary>
     public void Hide()
     {
+        wanted = false;
         if (!added) return;
         NotifyIconData data = NewData();
         Shell_NotifyIcon(NIM_DELETE, ref data);
@@ -167,6 +175,13 @@ public sealed class TrayIcon : IDisposable
         // Windows switched between the light and dark theme; the monochrome icon follows the taskbar.
         if (msg == WM_SETTINGCHANGE && Marshal.PtrToStringUni(lParam) == "ImmersiveColorSet") Refresh();
 
+        // Explorer restarted (crash, update or sign-in hiccup) and the icon went with the old taskbar: add it again.
+        if (msg == TaskbarCreated)
+        {
+            added = false;
+            if (wanted) Show();
+        }
+
         if (msg == TrayMessage)
         {
             // Version 4: low word of lParam is the event, wParam carries the anchor point.
@@ -236,4 +251,7 @@ public sealed class TrayIcon : IDisposable
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string message);
 }

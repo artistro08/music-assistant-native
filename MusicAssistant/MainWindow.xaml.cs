@@ -36,7 +36,7 @@ public sealed partial class MainWindow : Window
     private readonly TrayIcon tray;
     private int  reconnectAttempt;
 
-    /// <summary>Ordered teardown started (ExitApp).</summary>
+    /// <summary>Ordered teardown started (ExitAppAsync).</summary>
     private bool exiting;
 
     /// <summary>Teardown done; the next Closing may pass.</summary>
@@ -74,14 +74,14 @@ public sealed partial class MainWindow : Window
         // App icon in the title bar / taskbar, and the tray icon with its menu.
         string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
         AppWindow.SetIcon(iconPath);
-        tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), TrayIconPath, ShowFromTray, ExitApp, App.Settings.ShowTrayIcon);
+        tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), TrayIconPath, ShowFromTray, () => _ = ExitAppAsync(), App.Settings.ShowTrayIcon);
         App.StateChanged += UpdateTrayTip;
         UpdateQuitItem();
 
         // Closing the window keeps the app running in the background (hidden) when that setting is on; otherwise it quits.
-        AppWindow.Closing += (_, args) =>
+        AppWindow.Closing += (sender, args) =>
         {
-            // ExitApp's own Close() after the ordered teardown.
+            // ExitAppAsync's own Close() after the ordered teardown.
             if (closeAllowed) return;
 
             // Every other close request is decided here, never by the default close.
@@ -97,7 +97,7 @@ public sealed partial class MainWindow : Window
             else
             {
                 // Off the Closing callback, so Close() is not re-entered from inside it.
-                DispatcherQueue.TryEnqueue(ExitApp);
+                DispatcherQueue.TryEnqueue(() => _ = ExitAppAsync());
             }
         };
 
@@ -213,7 +213,7 @@ public sealed partial class MainWindow : Window
         int MoveWindowToDesktop(IntPtr topLevelWindow, ref Guid desktopId);
     }
 
-    private async void ExitApp()
+    private async Task ExitAppAsync()
     {
         // Tray Exit, sidebar Quit and X can all land while the teardown below is awaiting.
         if (exiting) return;
@@ -1104,7 +1104,7 @@ public sealed partial class MainWindow : Window
     {
         if (args.InvokedItemContainer?.Tag is "quit")
         {
-            ExitApp();
+            _ = ExitAppAsync();
             return;
         }
 

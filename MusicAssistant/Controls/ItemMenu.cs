@@ -383,7 +383,7 @@ public static class ItemMenu
         }
     }
 
-    /// <summary>The name for a new playlist, or null when cancelled. Create stays disabled until a name is typed.</summary>
+    /// <summary>The name for a new playlist, or null when canceled. Create stays disabled until a name is typed.</summary>
     private static async Task<string?> AskPlaylistNameAsync()
     {
         var input  = new TextBox { Header = "Enter a name for the new playlist" };

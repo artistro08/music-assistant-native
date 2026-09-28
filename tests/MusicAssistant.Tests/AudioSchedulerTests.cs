@@ -76,6 +76,41 @@ public sealed class AudioSchedulerTests
     }
 
     [Fact]
+    public void Refuses_audio_past_a_minute_ahead()
+    {
+        AudioScheduler scheduler = Synchronized();
+        long due = Clock.NowUs() + 100_000;
+
+        // Sixty one-second chunks fill the queue; the sixty-first second has nowhere to go.
+        for (int second = 0; second < 60; second++)
+        {
+            Assert.True(scheduler.Enqueue(Chunk(scheduler, due + (second * 1_000_000L), SampleRate, 0.5f)));
+        }
+
+        Assert.False(scheduler.Enqueue(Chunk(scheduler, due + 60_000_000L, SampleRate, 0.5f)));
+
+        // Clearing frees the room again.
+        scheduler.Clear();
+        Assert.True(scheduler.Enqueue(Chunk(scheduler, due, SampleRate, 0.5f)));
+    }
+
+    [Fact]
+    public void Refuses_a_flood_of_tiny_chunks()
+    {
+        AudioScheduler scheduler = Synchronized();
+        long due = Clock.NowUs() + 100_000;
+
+        // One-frame chunks stay far under the minute of audio, so only the chunk count can stop them.
+        bool accepted = true;
+        for (int i = 0; (i < 10_000) && accepted; i++)
+        {
+            accepted = scheduler.Enqueue(Chunk(scheduler, due + i, 1, 0.5f));
+        }
+
+        Assert.False(accepted);
+    }
+
+    [Fact]
     public void Mute_ramps_down_to_silence()
     {
         AudioScheduler scheduler = Synchronized();

@@ -50,8 +50,10 @@ public static class DiagnosticLog
                     {
                         File.AppendAllText(path, $"{line}{Environment.NewLine}");
                     }
-                    catch (IOException)
+                    catch (IOException writeError)
                     {
+                        // A locked or full log file drops the line rather than break the connection being logged.
+                        App.Log($"sipsorcery.log write failed: {writeError.Message}");
                     }
                 }
             }
